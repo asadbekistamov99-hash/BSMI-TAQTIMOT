@@ -1,0 +1,142 @@
+--- src/pages/Atlas.tsx	2026-07-09 05:30:47.028678590 +0000
++++ temp_git/src/pages/Atlas.tsx	2026-07-09 05:39:58.018318002 +0000
+@@ -7,9 +7,41 @@
+ import PaymentModal from '../components/PaymentModal';
+ import '@google/model-viewer';
+ import Anatomy3DSuite from '../components/Anatomy3DSuite';
++import { ANATOMY_MODELS, SEED_MODELS, type AnatomyModel } from '../data/anatomyModels';
+ 
+ const ModelViewer = 'model-viewer' as any;
+ 
++// 3D modellar katalogini Atlas yozuvi ko'rinishiga o'tkazish (bir bo'limda birlashtirish uchun)
++function catalogToAtlasEntries(): any[] {
++  let custom: AnatomyModel[] = [];
++  try {
++    const raw = localStorage.getItem('anatomy_models_custom_v1');
++    if (raw) {
++      const parsed = JSON.parse(raw);
++      if (Array.isArray(parsed)) custom = parsed;
++    }
++  } catch {}
++  const map = new Map<string, AnatomyModel>();
++  [...ANATOMY_MODELS, ...SEED_MODELS, ...custom].forEach((m) => {
++    if (m && m.id) map.set(m.id, m);
++  });
++  return Array.from(map.values()).map((m) => ({
++    id: 'cat-' + m.id,
++    latinName: m.title?.en || m.title?.uz || '',
++    uzbekName: m.title?.uz || '',
++    russianName: m.title?.ru || '',
++    englishName: m.title?.en || '',
++    name: m.title?.uz || '',
++    description: m.description || '',
++    image: m.thumbnail || '',
++    modelUrl: m.fileUrl || '',
++    embedUrl: m.embedUrl || '',
++    system: m.system,
++    pins: m.pins || [],
++    __catalog: true,
++  }));
++}
++
+ function AnimatedModelViewer({ src, alt, fallbackImage }: { src: string, alt: string, fallbackImage?: string }) {
+   const [progress, setProgress] = useState(0);
+   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+@@ -1206,7 +1238,9 @@
+           };
+         });
+         
+-        setEntries(augmentedAtlas);
++        // 3D modellar katalogini (organ/muskul/suyak/nerv/tomir) shu bo'limga qo'shamiz
++        const catalogEntries = catalogToAtlasEntries();
++        setEntries([...augmentedAtlas, ...catalogEntries]);
+ 
+         // Fetch Topics
+         const topicsData = await dbService.getTopics();
+@@ -1387,7 +1421,7 @@
+   };
+ 
+   const filteredEntries = entries.filter(entry => {
+-    if (only3D && !entry.modelUrl) {
++    if (only3D && !entry.modelUrl && !entry.embedUrl) {
+       return false;
+     }
+     if (onlyFavorites && !favorites.includes(entry.id)) {
+@@ -1675,12 +1709,19 @@
+                       className="bg-white rounded-[32px] border border-brand-border shadow-sm overflow-hidden group hover:shadow-2xl hover:shadow-brand-accent/10 hover:border-brand-accent transition-all duration-500 cursor-pointer"
+                     >
+                       <div className="aspect-[1.2/1] bg-slate-100 overflow-hidden relative">
+-                        <img 
+-                          src={entry.image || "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&auto=format"} 
+-                          alt={entry.latinName}
+-                          className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-700"
+-                          referrerPolicy="no-referrer"
+-                        />
++                        {entry.image ? (
++                          <img
++                            src={entry.image}
++                            alt={entry.latinName}
++                            className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-700"
++                            referrerPolicy="no-referrer"
++                          />
++                        ) : (
++                          <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-slate-100 to-slate-200 text-slate-400 group-hover:scale-105 transition-transform duration-700">
++                            <Box className="w-14 h-14" />
++                            <span className="text-[10px] font-black uppercase tracking-widest px-4 text-center text-slate-500">{entry.latinName}</span>
++                          </div>
++                        )}
+                         <div className="absolute top-4 left-4 z-10">
+                           <span className="px-3 py-1.5 bg-brand-primary/80 backdrop-blur-md text-brand-accent text-[9px] font-black uppercase tracking-widest rounded-lg border border-white/10">
+                             IDENTIFIER {idx + 1}
+@@ -1697,7 +1738,7 @@
+                           >
+                             <Star className={`w-3.5 h-3.5 ${favorites.includes(entry.id) ? 'fill-white' : ''}`} />
+                           </button>
+-                          {entry.modelUrl && (
++                          {(entry.modelUrl || entry.embedUrl) && (
+                             <div className="p-2 bg-brand-accent text-brand-primary rounded-lg shadow-md border border-white/25">
+                               <Box size={14} />
+                             </div>
+@@ -1768,19 +1809,34 @@
+                 <div className="w-full h-full">
+                   <AnimatePresence mode="wait">
+                     {viewMode === '2d' || !selectedEntry.modelUrl ? (
+-                      <motion.div 
++                      <motion.div
+                         key="2d"
+                         initial={{ opacity: 0, scale: 0.8 }}
+                         animate={{ opacity: 1, scale: 1 }}
+                         exit={{ opacity: 0, scale: 0.8 }}
+-                        className="w-full h-full flex items-center justify-center p-10 md:p-20"
++                        className={`w-full h-full flex items-center justify-center ${selectedEntry.embedUrl ? '' : 'p-10 md:p-20'}`}
+                       >
+-                        <img 
+-                          src={selectedEntry.image} 
+-                          alt={selectedEntry.latinName} 
+-                          className="max-w-full max-h-full object-contain filter drop-shadow-[0_0_50px_rgba(255,255,255,0.1)]"
+-                          referrerPolicy="no-referrer"
+-                        />
++                        {selectedEntry.embedUrl ? (
++                          <iframe
++                            title={selectedEntry.latinName}
++                            src={selectedEntry.embedUrl}
++                            className="w-full h-full border-0"
++                            allow="autoplay; fullscreen; xr-spatial-tracking"
++                            allowFullScreen
++                          />
++                        ) : selectedEntry.image ? (
++                          <img
++                            src={selectedEntry.image}
++                            alt={selectedEntry.latinName}
++                            className="max-w-full max-h-full object-contain filter drop-shadow-[0_0_50px_rgba(255,255,255,0.1)]"
++                            referrerPolicy="no-referrer"
++                          />
++                        ) : (
++                          <div className="flex flex-col items-center justify-center gap-4 text-white/30">
++                            <Box className="w-20 h-20" />
++                            <span className="text-xs font-black uppercase tracking-widest">{selectedEntry.latinName}</span>
++                          </div>
++                        )}
+                       </motion.div>
+                     ) : (
+                       <motion.div 

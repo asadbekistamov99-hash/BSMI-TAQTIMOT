@@ -1,0 +1,18 @@
+--- src/App.tsx	2026-07-09 05:30:47.010206715 +0000
++++ temp_git/src/App.tsx	2026-07-09 05:39:58.003723047 +0000
+@@ -8,6 +8,7 @@
+ import TopicDetail from './pages/TopicDetail';
+ import QuizPage from './pages/QuizPage';
+ import Atlas from './pages/Atlas';
++import AnatomyModels from './pages/AnatomyModels';
+ import AdminLogin from './pages/AdminLogin';
+ import AdminDashboard from './pages/AdminDashboard';
+ import LatinGlossary from './pages/LatinGlossary';
+@@ -383,6 +384,7 @@
+           <Route path="/topic/:id" element={<TopicDetail isAdmin={isAdmin} user={user} />} />
+           <Route path="/quiz/:topicId" element={<QuizPage isAdmin={isAdmin} user={user} />} />
+           <Route path="/atlas" element={<Atlas isAdmin={isAdmin} user={user} />} />
++          <Route path="/models" element={<AnatomyModels isAdmin={isAdmin} user={user} />} />
+           <Route path="/latin-glossary" element={<LatinGlossary isAdmin={isAdmin} user={user} />} />
+           <Route path="/ai-assistant" element={<AiAssistant user={user} />} />
+           <Route path="/admin/login" element={!isAdmin ? <AdminLogin onLogin={handleAdminLogin} /> : <Navigate to="/admin" />} />

@@ -1,0 +1,6 @@
+{
+  "name": "BSMI ANATOMY",
+  "description": "Production-ready medical education platform for anatomy, featuring detailed theory, Latin terminology, atlas, and interactive quizzes.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

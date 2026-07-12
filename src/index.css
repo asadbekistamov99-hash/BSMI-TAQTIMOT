@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-brand, "Plus Jakarta Sans"), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-brand-primary: var(--color-brand-primary, #1E293B);
+  --color-brand-accent: var(--color-brand-accent, #38BDF8);
+  --color-brand-bg: var(--color-brand-bg, #F0F2F5);
+  --color-brand-card: var(--color-brand-card, #FFFFFF);
+  --color-brand-text: var(--color-brand-text, #1A202C);
+  --color-brand-muted: var(--color-brand-muted, #64748B);
+  --color-brand-border: #E2E8F0;
+  
+  --radius-brand: var(--radius-brand, 32px);
+}
+
+@layer base {
+  body {
+    @apply text-brand-text bg-brand-bg;
+  }
+}
+
+.prose h1, .prose h2, .prose h3 {
+  @apply font-bold tracking-tight text-brand-text mt-8 mb-4;
+}
+
+.prose p {
+  @apply mb-6 leading-relaxed text-brand-muted;
+}
+
+.prose ul {
+  @apply list-disc pl-6 mb-6 space-y-2 text-brand-muted;
+}
+
+/* Card 3D Flipping Utilities */
+.perspective-1000 {
+  perspective: 1000px;
+}
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+

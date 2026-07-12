@@ -1,0 +1,197 @@
+{
+  "entities": {
+    "topic": {
+      "title": "Topic",
+      "description": "An anatomy topic within a semester",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "semester": { "type": "number", "description": "1 or 2" },
+        "order": { "type": "number", "description": "1 to 13" },
+        "title": { "type": "string" },
+        "theory": { "type": "string" },
+        "latinTerms": { "type": "array", "items": { "type": "string" } },
+        "image": { "type": "string", "format": "uri" },
+        "videos": { "type": "array", "items": { "type": "string", "format": "uri" } }
+      },
+      "required": ["semester", "order", "title", "theory"]
+    },
+    "quiz": {
+      "title": "Quiz",
+      "description": "A quiz question for a specific topic",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "topicId": { "type": "string" },
+        "question": { "type": "string" },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "correctAnswerIndex": { "type": "number" },
+        "explanation": { "type": "string" }
+      },
+      "required": ["topicId", "question", "options", "correctAnswerIndex", "explanation"]
+    },
+    "atlas": {
+      "title": "Atlas Entry",
+      "description": "An entry in the anatomical atlas",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "latinName": { "type": "string" },
+        "uzbekName": { "type": "string" },
+        "description": { "type": "string" },
+        "image": { "type": "string", "format": "uri" }
+      },
+      "required": ["latinName", "uzbekName", "description"]
+    },
+    "user": {
+      "title": "User",
+      "description": "Profile information for a student",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "payment": {
+      "title": "Payment",
+      "description": "Subscription payment record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "completed", "rejected"] },
+        "image": { "type": "string", "format": "uri", "description": "Receipt image" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "admin": {
+      "title": "Admin",
+      "description": "Privileged administrator access record",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" }
+      }
+    },
+    "settings": {
+      "title": "App Settings",
+      "description": "Global application settings",
+      "type": "object",
+      "properties": {
+        "design": { "type": "object" }
+      }
+    },
+    "announcement": {
+      "title": "Announcement",
+      "description": "Global announcements and notifications",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "warning", "success", "danger"] },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "content", "type", "isActive"]
+    },
+    "midterm": {
+      "title": "Midterm File",
+      "description": "Uploaded exam file (e.g. DOCX) for a semester",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "topicId": { "type": "string", "enum": ["midterm_1", "midterm_2"] },
+        "fileName": { "type": "string" },
+        "fileUrl": { "type": "string", "format": "uri" },
+        "fileType": { "type": "string" },
+        "uploadedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["topicId", "fileName", "fileUrl"]
+    },
+    "semester": {
+      "title": "Semester",
+      "description": "A semester record for organizing topics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "number": { "type": "number" },
+        "title": { "type": "object" },
+        "description": { "type": "object" },
+        "isActive": { "type": "boolean" },
+        "order": { "type": "number" }
+      },
+      "required": ["number", "title"]
+    },
+    "anatomy_model": {
+      "title": "Anatomy 3D Model",
+      "description": "An interactive 3D model of an anatomical structure",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "object" },
+        "description": { "type": "object" },
+        "system": { "type": "string" },
+        "region": { "type": "string" },
+        "embedUrl": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "thumbnail": { "type": "string" },
+        "source": { "type": "string" },
+        "sourceUrl": { "type": "string" },
+        "license": { "type": "string" },
+        "author": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "pins": { "type": "array", "items": { "type": "object" } }
+      },
+      "required": ["id", "title", "system"]
+    }
+  },
+  "firestore": {
+    "topics": {
+      "schema": "topic",
+      "description": "Collection of anatomy topics"
+    },
+    "quizzes": {
+      "schema": "quiz",
+      "description": "Collection of quiz questions"
+    },
+    "atlas": {
+      "schema": "atlas",
+      "description": "Collection of atlas entries"
+    },
+    "anatomy_models": {
+      "schema": "anatomy_model",
+      "description": "Collection of interactive 3D anatomy models"
+    },
+    "users": {
+      "schema": "user",
+      "description": "Student user profiles"
+    },
+    "payments": {
+      "schema": "payment",
+      "description": "Payment records for subscriptions"
+    },
+    "admins": {
+      "schema": "admin",
+      "description": "List of administrators"
+    },
+    "settings": {
+      "schema": "settings",
+      "description": "Configuration and design settings"
+    },
+    "announcements": {
+      "schema": "announcement",
+      "description": "List of global announcements"
+    },
+    "midterms": {
+      "schema": "midterm",
+      "description": "Exam files for semesters"
+    },
+    "semesters": {
+      "schema": "semester",
+      "description": "Collection of academic semesters"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email.matches('(?i)asadbekistamov99@gmail.com');
+    }
+
+    match /midterms/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 10 * 1024 * 1024 * 1024;
+    }
+
+    match /atlas_models/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 10 * 1024 * 1024 * 1024;
+    }
+
+    match /site_assets/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 50 * 1024 * 1024; // 50MB max for assets
+    }
+    
+    // Default deny for everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
