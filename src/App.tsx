@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import { HelmetProvider } from 'react-helmet-async';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, getDocFromServer, setDoc, updateDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
@@ -13,10 +14,15 @@ import AdminDashboard from './pages/AdminDashboard';
 import LatinGlossary from './pages/LatinGlossary';
 import AiAssistant from './pages/AiAssistant';
 import Presentation from './pages/Presentation';
+import LeaderboardPage from './pages/LeaderboardPage';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import AnnouncementBar from './components/AnnouncementBar';
 import BiometricFaceGate from './components/BiometricFaceGate';
+import ActivityTracker from './components/ActivityTracker';
+import DailyRevisionReminder from './components/DailyRevisionReminder';
+import PomodoroTimer from './components/PomodoroTimer';
+import ErrorBoundary from './components/ErrorBoundary';
 import { useSettings } from './hooks/useSettings';
 import { Microscope } from 'lucide-react';
 import bsmiLogo from './assets/images/bsmi.jpg';
@@ -96,6 +102,16 @@ export default function App() {
   const [faceIdVerified, setFaceIdVerified] = useState<boolean>(false);
 
   useEffect(() => {
+    try {
+      localStorage.removeItem('student_mode_active');
+      localStorage.removeItem('anatomy_unlocked_semesters');
+      // Clean any stale mock payment keys from localStorage
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('payment_') || key.startsWith('profile_')) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch (e) {}
     // Face verification starts as false every time the application is loaded, user switches accounts,
     // or when the user's face ID enrollment state changes.
     setFaceIdVerified(false);
@@ -165,7 +181,7 @@ export default function App() {
               createdAt: new Date(),
               isAdmin: isActuallyAdminEmail,
               updatedAt: new Date(),
-              purchasedSemesters: firebaseUser.isAnonymous ? [1, 2] : [],
+              purchasedSemesters: [],
               isBlocked: false,
               role: isActuallyAdminEmail ? 'admin' : 'user'
             };
@@ -359,31 +375,40 @@ export default function App() {
     (!user.faceIdEnrolled || !faceIdVerified);
 
   return (
-    <BrowserRouter>
-      <ShortcutHandler />
-      {needsFaceVerification && (
-        <BiometricFaceGate 
-          user={user} 
-          onVerified={() => {
-            setFaceIdVerified(true);
-          }} 
-        />
-      )}
-      <LayoutWrapper isAdmin={isAdmin} user={user} handleAdminLogout={handleAdminLogout}>
-        <Routes>
-          <Route path="/" element={<Home isAdmin={isAdmin} user={user} />} />
-          <Route path="/semester/:id" element={<Semester isAdmin={isAdmin} user={user} />} />
-          <Route path="/topic/:id" element={<TopicDetail isAdmin={isAdmin} user={user} />} />
-          <Route path="/quiz/:topicId" element={<QuizPage isAdmin={isAdmin} user={user} />} />
-          <Route path="/atlas" element={<Navigate to="/models" replace />} />
-          <Route path="/models" element={<AnatomyModels isAdmin={isAdmin} user={user} />} />
-          <Route path="/latin-glossary" element={<LatinGlossary isAdmin={isAdmin} user={user} />} />
-          <Route path="/ai-assistant" element={<AiAssistant user={user} />} />
-          <Route path="/presentation" element={<Presentation />} />
-          <Route path="/admin/login" element={!isAdmin ? <AdminLogin onLogin={handleAdminLogin} /> : <Navigate to="/admin" />} />
-          <Route path="/admin/*" element={isAdmin ? <AdminDashboard onLogout={handleAdminLogout} /> : <Navigate to="/admin/login" />} />
-        </Routes>
-      </LayoutWrapper>
-    </BrowserRouter>
+    <HelmetProvider>
+      <BrowserRouter>
+        <ShortcutHandler />
+        <ActivityTracker user={user} />
+        <DailyRevisionReminder user={user} />
+        <PomodoroTimer user={user} />
+        {needsFaceVerification && (
+          <BiometricFaceGate 
+            user={user} 
+            onVerified={() => {
+              setFaceIdVerified(true);
+            }} 
+          />
+        )}
+        <LayoutWrapper isAdmin={isAdmin} user={user} handleAdminLogout={handleAdminLogout}>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<Home isAdmin={isAdmin} user={user} />} />
+              <Route path="/semester/:id" element={<Semester isAdmin={isAdmin} user={user} />} />
+              <Route path="/topic/:id" element={<TopicDetail isAdmin={isAdmin} user={user} />} />
+              <Route path="/quiz/:topicId" element={<QuizPage isAdmin={isAdmin} user={user} />} />
+              <Route path="/atlas" element={<Navigate to="/models" replace />} />
+              <Route path="/models" element={<AnatomyModels isAdmin={isAdmin} user={user} />} />
+              <Route path="/latin-glossary" element={<LatinGlossary isAdmin={isAdmin} user={user} />} />
+              <Route path="/pin-quiz" element={<Navigate to="/models" replace />} />
+              <Route path="/leaderboard" element={<LeaderboardPage user={user} />} />
+              <Route path="/ai-assistant" element={<AiAssistant user={user} />} />
+              <Route path="/presentation" element={<Presentation />} />
+              <Route path="/admin/login" element={!isAdmin ? <AdminLogin onLogin={handleAdminLogin} /> : <Navigate to="/admin" />} />
+              <Route path="/admin/*" element={isAdmin ? <AdminDashboard onLogout={handleAdminLogout} /> : <Navigate to="/admin/login" />} />
+            </Routes>
+          </ErrorBoundary>
+        </LayoutWrapper>
+      </BrowserRouter>
+    </HelmetProvider>
   );
 }

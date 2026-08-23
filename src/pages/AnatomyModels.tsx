@@ -13,6 +13,7 @@ import {
 } from '../data/anatomyModels';
 import Anatomy3DSuite from '../components/Anatomy3DSuite';
 import { dbService } from '../lib/dbService';
+import SEO from '../components/SEO';
 
 // Premium 3D Generated System Backdrops
 import skeletalBackdrop from '../assets/images/skeletal_system_backdrop_1783853676839.jpg';
@@ -188,6 +189,11 @@ export default function AnatomyModels({ isAdmin: isAdminProp }: { isAdmin?: bool
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <SEO 
+        title="3D Anatomiya Modellari va Interaktiv Atlas | BSMI Anatomy"
+        description="Organlar, muskullar, suyaklar, nervlar va qon tomirlarning interaktiv 3D modellari to'plami. 3D formatda aylantiring, pinlarni o'rganing va test topshiring."
+        keywords="3d anatomiya, anatomiya modellari, interaktiv atlas, 3d organlar, skelet 3d, muskullar 3d"
+      />
       {/* Hero */}
       <div className="bg-gradient-to-b from-brand-primary to-slate-900 text-white">
         <div className="max-w-[1550px] mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">

@@ -1,11 +1,14 @@
-import { Link, useNavigate } from 'react-router-dom';
-import { Menu, X, BookOpen, Microscope, LogOut, User as UserIcon, ChevronDown, Sparkles, Globe, Award, FileText, Trash2, Download, Wifi, WifiOff, RefreshCw, Box, Video } from 'lucide-react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Menu, X, BookOpen, Microscope, LogOut, User as UserIcon, ChevronDown, Sparkles, Globe, Award, FileText, Trash2, Download, Wifi, WifiOff, RefreshCw, Box, Video, Trophy, Target, ShieldCheck, Layers } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth';
 import { auth, googleProvider, robustSignInAnonymously, reconnectFirestore } from '../lib/firebase';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
 import GlobalSearch from './GlobalSearch';
+import { dbService } from '../lib/dbService';
+import { parseDate } from '../lib/dateUtils';
+import WeeklyStudyGoals from './WeeklyStudyGoals';
 
 interface NavbarProps {
   isAdmin: boolean;
@@ -16,13 +19,16 @@ interface NavbarProps {
 export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isLangOpen, setIsLangOpen] = useState(false);
+  const [isSemestersOpen, setIsSemestersOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [completedTopics, setCompletedTopics] = useState<any[]>([]);
   const [quizHistory, setQuizHistory] = useState<any[]>([]);
-  const [profTab, setProfTab] = useState<'topics' | 'quizzes' | 'badges'>('topics');
+  const [firestoreBadges, setFirestoreBadges] = useState<Record<string, any>>({});
+  const [profTab, setProfTab] = useState<'topics' | 'quizzes' | 'badges' | 'goals'>('goals');
   const { settings } = useSettings();
   const { language, setLanguage, t } = useLanguage();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -73,63 +79,127 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
         const compData = JSON.parse(localStorage.getItem(completedKey) || '[]');
         const quizData = JSON.parse(localStorage.getItem(quizKey) || '[]');
         
-        compData.sort((a: any, b: any) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
-        quizData.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        compData.sort((a: any, b: any) => parseDate(b.completedAt).getTime() - parseDate(a.completedAt).getTime());
+        quizData.sort((a: any, b: any) => parseDate(b.date).getTime() - parseDate(a.date).getTime());
         
         setCompletedTopics(compData);
         setQuizHistory(quizData);
+
+        // Fetch user badges from Firestore
+        dbService.getUserBadges(user.uid).then((saved) => {
+          const badgeMap: Record<string, any> = {};
+          (saved || []).forEach((b) => {
+            badgeMap[b.id] = b;
+          });
+          setFirestoreBadges(badgeMap);
+        });
       } catch (e) {
         console.error("Error loading study metrics:", e);
       }
     }
   }, [isProfileOpen, user]);
 
+  const currentHour = new Date().getHours();
+  const isMorningStudy = currentHour >= 5 && currentHour < 10;
+  const avgQuizScore = quizHistory.length > 0 
+    ? Math.round(quizHistory.reduce((sum, item) => sum + (item.percentageVal || Math.round((item.score / item.total) * 100) || 0), 0) / quizHistory.length)
+    : 0;
+
   const badgesList = [
     {
       id: 'first_step',
+      icon: '🌱',
       nameUz: 'Anatomiyada Birinchi Qadam',
       nameRu: 'Первый шаг в анатомии',
       nameEn: 'First Step in Anatomy',
       descUz: "Kamida 1 ta mavzuni to'liq o'rganib tugatganingiz uchun",
       descRu: 'За завершение обучения хотя бы одной темы',
       descEn: 'Awarded for completing at least one study session',
-      earned: completedTopics.length > 0,
+      earned: completedTopics.length > 0 || !!firestoreBadges['first_step'],
       color: 'from-blue-400 to-indigo-500',
     },
     {
+      id: 'early_bird',
+      icon: '🌅',
+      nameUz: 'Barvaqt Izlanuvchi (Early Bird)',
+      nameRu: 'Ранняя пташка (Early Bird)',
+      nameEn: 'Early Bird Scholar',
+      descUz: "Ertalabki baquvvat soatlarda (05:00 - 10:00) anatomiya darsini o'qiganingiz uchun",
+      descRu: 'За занятия анатомией в утренние часы (05:00 - 10:00)',
+      descEn: 'Awarded for morning study sessions between 05:00 and 10:00 AM',
+      earned: isMorningStudy || !!firestoreBadges['early_bird'],
+      color: 'from-amber-400 to-rose-500',
+    },
+    {
+      id: 'anatomy_master',
+      icon: '👑',
+      nameUz: 'Anatomiya Ustozi (Master)',
+      nameRu: 'Мастер Анатомии',
+      nameEn: 'Anatomy Master',
+      descUz: "O'rtacha test ballingiz 90%+ va kamida 3 ta darsni a'lo o'zlashtirganingiz uchun",
+      descRu: 'За средний балл тестов 90%+ и прохождение не менее 3 тем',
+      descEn: 'Awarded for 90%+ avg quiz accuracy and at least 3 completed topics',
+      earned: (avgQuizScore >= 90 && completedTopics.length >= 3) || !!firestoreBadges['anatomy_master'],
+      color: 'from-cyan-400 to-blue-600',
+    },
+    {
       id: 'scholar',
+      icon: '🎓',
       nameUz: 'Yosh Akademik',
       nameRu: 'Молодой Академик',
       nameEn: 'Anatomy Scholar',
       descUz: "Kamida 3 ta mavzuni muvaffaqiyatli o'rganib chiqqaningiz uchun",
       descRu: 'За изучение не менее 3 тем',
       descEn: 'Awarded for successfully studying at least 3 topics',
-      earned: completedTopics.length >= 3,
+      earned: completedTopics.length >= 3 || !!firestoreBadges['scholar'],
       color: 'from-emerald-400 to-green-600',
     },
     {
       id: 'quiz_master',
+      icon: '🎯',
       nameUz: 'Sinovlar Gʻolibi',
       nameRu: 'Победитель тестов',
       nameEn: 'Test Master',
       descUz: "Kamida 3 marta bilimni baholash testlarini topshirganingiz uchun",
       descRu: 'За прохождение не менее 3 тестов',
       descEn: 'Awarded for taking at least 3 quiz evaluations',
-      earned: quizHistory.length >= 3,
+      earned: quizHistory.length >= 3 || !!firestoreBadges['quiz_master'],
       color: 'from-amber-400 to-orange-500',
     },
     {
       id: 'perfect',
+      icon: '💎',
       nameUz: 'Mukammal Bilim (100%)',
       nameRu: 'Абсолютная точность (100%)',
       nameEn: 'Perfect 100% Score',
       descUz: "Testlarda kamida 1 marta 100% lik natija qayd etganingiz uchun",
       descRu: 'За получение 100% баллов в любом тесте',
       descEn: 'Awarded for achieving a flawless 100% in a quiz session',
-      earned: quizHistory.some(item => (item.percentageVal || Math.round(item.score / item.total * 100)) === 100),
+      earned: quizHistory.some(item => (item.percentageVal || Math.round(item.score / item.total * 100)) === 100) || !!firestoreBadges['perfect'],
       color: 'from-purple-500 to-pink-500',
     }
   ];
+
+  // Auto sync newly earned badges to Firestore
+  useEffect(() => {
+    if (user?.uid && isProfileOpen) {
+      badgesList.forEach((badge) => {
+        if (badge.earned && !firestoreBadges[badge.id]) {
+          dbService.saveUserBadge(user.uid, {
+            id: badge.id,
+            nameUz: badge.nameUz,
+            nameRu: badge.nameRu,
+            nameEn: badge.nameEn,
+            descUz: badge.descUz,
+            descRu: badge.descRu,
+            descEn: badge.descEn,
+            icon: badge.icon
+          });
+        }
+      });
+    }
+  }, [user, isProfileOpen, completedTopics, quizHistory]);
+
   const earnedBadgesCount = badgesList.filter(b => b.earned).length;
 
   const handleClearHistory = () => {
@@ -165,8 +235,8 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
       console.error(e);
     }
     
-    completedList.sort((a: any, b: any) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
-    quizList.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    completedList.sort((a: any, b: any) => parseDate(b.completedAt).getTime() - parseDate(a.completedAt).getTime());
+    quizList.sort((a: any, b: any) => parseDate(b.date).getTime() - parseDate(a.date).getTime());
 
     const totalChaptersCompleted = completedList.length;
     const averageQuizPercentage = quizList.length > 0 
@@ -666,15 +736,94 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
             </div>
           </div>
 
-          <div className="hidden lg:flex items-center gap-5 xl:gap-8">
-            <Link to="/semester/1" className="text-xs xl:text-sm font-black text-brand-muted hover:text-brand-accent transition-colors tracking-tight whitespace-nowrap">{t('nav.semester1')}</Link>
-            <Link to="/semester/2" className="text-xs xl:text-sm font-black text-brand-muted hover:text-brand-accent transition-colors tracking-tight whitespace-nowrap">{t('nav.semester2')}</Link>
+          <div className="hidden lg:flex items-center gap-2.5 xl:gap-4">
+            {/* Combined Semesters Dropdown */}
+            <div className="relative text-left" id="semesters-dropdown-menu">
+              <button
+                onClick={() => setIsSemestersOpen(!isSemestersOpen)}
+                className={`text-xs xl:text-sm font-black transition-all tracking-tight flex items-center gap-1.5 px-3 py-2 rounded-xl border ${
+                  location.pathname.startsWith('/semester/') 
+                    ? 'text-brand-primary bg-brand-accent/15 border-brand-accent shadow-sm' 
+                    : 'text-brand-primary hover:text-brand-accent bg-slate-50 hover:bg-slate-100 border-slate-200'
+                }`}
+                title="Semestrlarni tanlash"
+              >
+                <Layers className="w-3.5 h-3.5 text-brand-accent" />
+                <span>{t('nav.semesters')}</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isSemestersOpen ? 'rotate-180 text-brand-accent' : ''}`} />
+              </button>
+
+              {isSemestersOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setIsSemestersOpen(false)} 
+                  />
+                  <div className="absolute left-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-2xl shadow-slate-300/50 p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200 divide-y divide-slate-100">
+                    <Link
+                      to="/semester/1"
+                      onClick={() => setIsSemestersOpen(false)}
+                      className={`flex items-start gap-3 p-3 rounded-xl transition-all group ${
+                        location.pathname === '/semester/1' ? 'bg-indigo-50/80 border border-indigo-100' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-indigo-100/70 border border-indigo-200 flex items-center justify-center text-indigo-700 font-black text-sm shrink-0 group-hover:scale-105 transition-transform">
+                        1
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-black text-xs uppercase tracking-tight text-brand-primary group-hover:text-indigo-600 transition-colors">1-Semestr</span>
+                          <span className="text-[9px] font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">13 Mavzu</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium leading-tight mt-0.5 line-clamp-1">Tayanch-harakat tizimi (Suyak, Bo'g'im, Mushak)</p>
+                      </div>
+                    </Link>
+
+                    <Link
+                      to="/semester/2"
+                      onClick={() => setIsSemestersOpen(false)}
+                      className={`flex items-start gap-3 p-3 rounded-xl transition-all group ${
+                        location.pathname === '/semester/2' ? 'bg-teal-50/80 border border-teal-100' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-teal-100/70 border border-teal-200 flex items-center justify-center text-teal-700 font-black text-sm shrink-0 group-hover:scale-105 transition-transform">
+                        2
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-black text-xs uppercase tracking-tight text-brand-primary group-hover:text-teal-600 transition-colors">2-Semestr</span>
+                          <span className="text-[9px] font-black text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded">13 Mavzu</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium leading-tight mt-0.5 line-clamp-1">Ichki a’zolar, qon aylanish & endokrin tizimi</p>
+                      </div>
+                    </Link>
+
+                    <Link
+                      to="/semester/3"
+                      onClick={() => setIsSemestersOpen(false)}
+                      className={`flex items-start gap-3 p-3 rounded-xl transition-all group ${
+                        location.pathname === '/semester/3' ? 'bg-pink-50/80 border border-pink-100' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-pink-100/70 border border-pink-200 flex items-center justify-center text-pink-700 font-black text-sm shrink-0 group-hover:scale-105 transition-transform">
+                        3
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-black text-xs uppercase tracking-tight text-brand-primary group-hover:text-pink-600 transition-colors">3-Semestr</span>
+                          <span className="text-[9px] font-black text-pink-600 bg-pink-50 px-1.5 py-0.5 rounded">13 Mavzu</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium leading-tight mt-0.5 line-clamp-1">Markaziy asab tizimi & sezgi a’zolari (CNS)</p>
+                      </div>
+                    </Link>
+                  </div>
+                </>
+              )}
+            </div>
+
             <Link to="/latin-glossary" className="text-xs xl:text-sm font-black text-brand-muted hover:text-brand-accent transition-colors tracking-tight whitespace-nowrap">{t('nav.glossary')}</Link>
             <Link to="/ai-assistant" className="text-xs xl:text-sm font-black text-amber-600 hover:text-amber-700 transition-colors flex items-center gap-1.5 px-2.5 py-1.5 xl:px-3 xl:py-2 bg-amber-50/70 border border-amber-100 rounded-lg tracking-tight whitespace-nowrap">
               <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" /> {t('nav.ai_assistant')}
-            </Link>
-            <Link to="/models" className="text-xs xl:text-sm font-black text-violet-600 hover:text-violet-700 transition-colors flex items-center gap-1.5 px-2.5 py-1.5 xl:px-3 xl:py-2 bg-violet-50/70 border border-violet-100/50 rounded-lg tracking-tight whitespace-nowrap">
-              <Box className="w-4 h-4 text-violet-500" /> {t('nav.models')}
             </Link>
             <Link to="/presentation" className="text-xs xl:text-sm font-black text-rose-600 hover:text-rose-700 transition-colors flex items-center gap-1.5 px-2.5 py-1.5 xl:px-3 xl:py-2 bg-rose-50 border border-rose-100 rounded-lg tracking-tight whitespace-nowrap">
               <Video className="w-3.5 h-3.5 text-rose-500" /> {language === 'uz' ? 'TAQDIMOT' : language === 'ru' ? 'ПРЕЗЕНТАЦИЯ' : 'PRESENTATION'}
@@ -818,14 +967,57 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
             </div>
           ) : null}
 
-          <Link to="/semester/1" onClick={() => setIsOpen(false)} className="block text-base font-bold text-slate-600">{t('nav.semester1')}</Link>
-          <Link to="/semester/2" onClick={() => setIsOpen(false)} className="block text-base font-bold text-slate-600">{t('nav.semester2')}</Link>
+          {/* Mobile Semesters Group */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between text-xs font-black text-slate-500 uppercase tracking-wider px-1">
+              <span className="flex items-center gap-1.5 text-brand-primary">
+                <Layers className="w-4 h-4 text-brand-accent" />
+                {t('nav.semesters')}
+              </span>
+              <span className="text-[10px] text-slate-400 font-bold">3 ta semestr</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Link 
+                to="/semester/1" 
+                onClick={() => setIsOpen(false)} 
+                className={`flex flex-col items-center justify-center p-2.5 rounded-xl text-center transition-all ${
+                  location.pathname === '/semester/1' 
+                    ? 'bg-indigo-600 text-white font-black shadow-md' 
+                    : 'bg-white border border-slate-200 text-slate-700 hover:border-indigo-300 font-bold'
+                }`}
+              >
+                <span className="text-xs font-black">1-Semestr</span>
+                <span className="text-[9px] opacity-75 mt-0.5">Tayanch</span>
+              </Link>
+              <Link 
+                to="/semester/2" 
+                onClick={() => setIsOpen(false)} 
+                className={`flex flex-col items-center justify-center p-2.5 rounded-xl text-center transition-all ${
+                  location.pathname === '/semester/2' 
+                    ? 'bg-teal-600 text-white font-black shadow-md' 
+                    : 'bg-white border border-slate-200 text-slate-700 hover:border-teal-300 font-bold'
+                }`}
+              >
+                <span className="text-xs font-black">2-Semestr</span>
+                <span className="text-[9px] opacity-75 mt-0.5">A'zolar</span>
+              </Link>
+              <Link 
+                to="/semester/3" 
+                onClick={() => setIsOpen(false)} 
+                className={`flex flex-col items-center justify-center p-2.5 rounded-xl text-center transition-all ${
+                  location.pathname === '/semester/3' 
+                    ? 'bg-pink-600 text-white font-black shadow-md' 
+                    : 'bg-white border border-slate-200 text-slate-700 hover:border-pink-300 font-bold'
+                }`}
+              >
+                <span className="text-xs font-black">3-Semestr</span>
+                <span className="text-[9px] opacity-75 mt-0.5">Asab / CNS</span>
+              </Link>
+            </div>
+          </div>
           <Link to="/latin-glossary" onClick={() => setIsOpen(false)} className="block text-base font-bold text-slate-600">{t('nav.glossary')}</Link>
           <Link to="/ai-assistant" onClick={() => setIsOpen(false)} className="flex items-center gap-2 text-base font-bold text-amber-600 bg-amber-50 px-3 py-2 rounded-xl">
             <Sparkles className="w-4 h-4 text-amber-500" /> {t('nav.ai_assistant')}
-          </Link>
-          <Link to="/models" onClick={() => setIsOpen(false)} className="flex items-center gap-2 text-base font-bold text-violet-600 bg-violet-50 px-3 py-2 rounded-xl">
-            <Box className="w-4 h-4 text-violet-500" /> {t('nav.models')}
           </Link>
           <Link to="/presentation" onClick={() => setIsOpen(false)} className="flex items-center gap-2 text-base font-bold text-rose-600 bg-rose-50 px-3 py-2 rounded-xl">
             <Video className="w-4 h-4 text-rose-500" /> {language === 'uz' ? 'Taqdimot Rejimi' : language === 'ru' ? 'Режим Презентации' : 'Presentation Mode'}
@@ -1034,30 +1226,36 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
             </div>
 
             {/* TAB Navigation */}
-            <div className="flex gap-2 border-b border-slate-100 mb-4 pb-2">
+            <div className="flex flex-wrap gap-2 border-b border-slate-100 mb-4 pb-2">
+              <button
+                onClick={() => setProfTab('goals')}
+                className={`px-3 py-1.5 text-xs font-black uppercase tracking-wider rounded-lg transition-colors ${profTab === 'goals' ? 'bg-indigo-500/10 text-indigo-600 dark:text-cyan-400 font-bold border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                🎯 Haftalik Maqsad
+              </button>
               <button
                 onClick={() => setProfTab('topics')}
-                className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-colors ${profTab === 'topics' ? 'bg-[#0ea5e9]/10 text-[#0ea5e9]' : 'text-slate-400 hover:text-slate-600'}`}
+                className={`px-3 py-1.5 text-xs font-black uppercase tracking-wider rounded-lg transition-colors ${profTab === 'topics' ? 'bg-[#0ea5e9]/10 text-[#0ea5e9]' : 'text-slate-400 hover:text-slate-600'}`}
               >
                 Topics ({completedTopics.length})
               </button>
               <button
                 onClick={() => setProfTab('quizzes')}
-                className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-colors ${profTab === 'quizzes' ? 'bg-[#0ea5e9]/10 text-[#0ea5e9]' : 'text-slate-400 hover:text-slate-600'}`}
+                className={`px-3 py-1.5 text-xs font-black uppercase tracking-wider rounded-lg transition-colors ${profTab === 'quizzes' ? 'bg-[#0ea5e9]/10 text-[#0ea5e9]' : 'text-slate-400 hover:text-slate-600'}`}
               >
                 Quizzes ({quizHistory.length})
               </button>
               <button
                 onClick={() => setProfTab('badges')}
-                className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-colors ${profTab === 'badges' ? 'bg-amber-500/10 text-amber-600 font-bold border-b-2 border-amber-500' : 'text-slate-400 hover:text-slate-600'}`}
+                className={`px-3 py-1.5 text-xs font-black uppercase tracking-wider rounded-lg transition-colors ${profTab === 'badges' ? 'bg-amber-500/10 text-amber-600 font-bold border-b-2 border-amber-500' : 'text-slate-400 hover:text-slate-600'}`}
               >
-                Badges ({earnedBadgesCount}/4)
+                Badges ({earnedBadgesCount}/{badgesList.length})
               </button>
               <div className="flex-grow" />
               {(completedTopics.length > 0 || quizHistory.length > 0) && (
                 <button
                   onClick={handleClearHistory}
-                  className="px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="px-3 py-1.5 text-red-500 hover:bg-red-50 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Reset
@@ -1066,8 +1264,10 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
             </div>
 
             {/* List Details */}
-            <div className="max-h-[250px] overflow-y-auto space-y-2 pr-2">
-              {profTab === 'topics' ? (
+            <div className="max-h-[350px] overflow-y-auto space-y-2 pr-1">
+              {profTab === 'goals' ? (
+                <WeeklyStudyGoals user={user} compact />
+              ) : profTab === 'topics' ? (
                 <>
                   {completedTopics.length === 0 ? (
                     <div className="text-center py-8 text-xs text-slate-400 font-semibold italic">
@@ -1134,7 +1334,7 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
                       }`}
                     >
                       <div className={`w-12 h-12 rounded-full shrink-0 bg-gradient-to-br ${badge.earned ? badge.color : 'from-slate-200 to-slate-200'} flex items-center justify-center text-white text-lg font-black shadow-inner`}>
-                        {badge.earned ? '🏅' : '🔒'}
+                        {badge.earned ? (badge.icon || '🏅') : '🔒'}
                       </div>
                       <div className="min-w-0 flex-grow">
                         <h5 className="text-xxs font-black uppercase tracking-tight text-slate-800 leading-tight truncate">

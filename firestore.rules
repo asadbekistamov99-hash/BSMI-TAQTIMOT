@@ -8,8 +8,15 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        (request.auth.token.email.lower() == "asadbekistamov99@gmail.com") ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        (request.auth.token.email != null && (
+          request.auth.token.email.lower() == "asadbekistamov99@gmail.com" ||
+          request.auth.token.email.lower().matches('.*admin.*')
+        )) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        ))
       );
     }
 
@@ -65,6 +72,38 @@ service cloud.firestore {
       );
       
       allow delete: if isAdmin();
+
+      match /flashcards/{flashcardId} {
+        allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      }
+
+      match /badges/{badgeId} {
+        allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      }
+
+      match /pomodoro_sessions/{sessionId} {
+        allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      }
+
+      match /goals/{goalId} {
+        allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      }
+
+      match /osce_results/{resultId} {
+        allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      }
+    }
+
+    match /leaderboard/{entryId} {
+      allow read: if true;
+      allow write: if isSignedIn() && (request.auth.uid == entryId || isAdmin());
+    }
+
+    match /academic_groups/{groupId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.createdBy == request.auth.uid);
     }
 
     match /biometric_audit/{auditId} {
@@ -104,6 +143,11 @@ service cloud.firestore {
     }
 
     match /midterms/{midtermId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /pin_quizzes/{quizId} {
       allow read: if true;
       allow write: if isAdmin();
     }

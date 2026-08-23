@@ -20,7 +20,7 @@ export interface Topic {
   theory: Record<string, string>;
   latinTerms: string[];
   image?: string;
-  videos: string[];
+  videos: string[] | Record<string, string[]>;
 }
 
 export interface Semester {
@@ -30,6 +30,8 @@ export interface Semester {
   description: Record<string, string>;
   isActive: boolean;
   order: number;
+  price?: number;
+  duration?: string;
 }
 
 export interface MidtermFile {

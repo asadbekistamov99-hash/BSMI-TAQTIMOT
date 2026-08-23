@@ -29,3 +29,20 @@ export const SEMESTER_2_TOPICS = [
   "Yuqori kovak vena. Pastki kovak vena. Darvoza venasi",
   "Limfa tizimi. Limfa yo‘llari. Anastomozlar"
 ];
+
+export const SEMESTER_3_TOPICS: string[] = [
+  "Orqa miya. Orqa miya pardalari. Bosh miyaning umumiy tuzilishi. Bosh miya asosi. 12 juft bosh miya nervlarining chiqishi. Uzunchoq miya. Voroliy ko‘prigi. Miyacha. Bosh miyaning IV qorinchasi",
+  "O‘rta miya. Oraliq miya. Bosh miyaning III qorinchasi",
+  "Bosh miya po‘stlog‘i. Gumbaz, qadoqsimon tana. Bosh miyaning bazal o‘zaklari. Bosh miyaning yon qorinchalari. Bosh miyani o‘raydigan pardalar",
+  "Bosh miya va orqa miyaning o‘tkazuv yo‘llari. Oddiy refleks yoyi. Sezuvchi va harakatlantiruvchi o‘tkazuv yo‘llari",
+  "Orqa miya nervlarining hosil bo‘lishi. Orqa tarmoqlari. Oldingi tarmoqlari. Qovurg‘alararo nervlar. Bo‘yin chigali",
+  "Yelka chigalining uzun va kalta tarmoqlari",
+  "Bel chigali. Dumg‘aza chigali",
+  "I, II, VIII juft bosh miya nervlari",
+  "III, IV, VI, XI, XII juft bosh miya nervlari",
+  "V juft bosh miya nervi. Uch shoxli nerv yo‘nalishi bo‘yicha parasimpatik tugunlar",
+  "VII va IX juft bosh miya nervlari. X juft bosh miya nervi",
+  "Vegetativ nerv tizimining simpatik va parasimpatik bo‘limlari",
+  "Eshituv va muvozanat a’zosi"
+];
+

@@ -24,6 +24,18 @@ export default function CreativeAnatomyDiagram({ value }: CreativeAnatomyDiagram
   const diagramType = useMemo(() => {
     const text = normalizedValue.toLowerCase();
     
+    if (text.includes('spinal_cord') || text.includes('medulla spinalis') || text.includes('orqa miya') || text.includes('orqa_miya') || text.includes('funiculus') || text.includes('cornu anterius') || text.includes('substantia grisea')) {
+      return 'spinal_cord';
+    }
+    if (text.includes('cranial_nerves') || text.includes('12 juft') || text.includes('12_juft') || text.includes('bosh miya nerv') || text.includes('nervi craniales') || text.includes('trigeminus') || text.includes('oculomotorius') || text.includes('facialis')) {
+      return 'cranial_nerves';
+    }
+    if (text.includes('fossa rhomboidea') || text.includes('fossa_rhomboidea') || text.includes('rombsimon chuqurcha') || text.includes('iv qorincha') || text.includes('ventriculus quartus') || text.includes('uzunchoq miya') || text.includes('medulla oblongata') || text.includes('pons') || text.includes('voroliy')) {
+      return 'brainstem';
+    }
+    if (text.includes('cerebellum') || text.includes('miyacha') || text.includes('vermis') || text.includes('nucleus dentatus') || text.includes('pedunculus cerebellaris')) {
+      return 'cerebellum';
+    }
     if (text.includes('vertebra') || text.includes('umurtqa') || text.includes('spinous') || text.includes('spinosus')) {
       return 'vertebra';
     }
@@ -186,8 +198,227 @@ export default function CreativeAnatomyDiagram({ value }: CreativeAnatomyDiagram
     }
   }), []);
 
+  const spinalCordParts = useMemo<Record<string, DiagramPart>>(() => ({
+    cornu_anterius: {
+      id: 'cornu_anterius',
+      nameUz: 'Oldingi shox (Harakatlantiruvchi)',
+      nameLat: 'Cornu anterius (ventrale)',
+      description: 'Kulrang moddaning oldingi massiv qismi. Tarkibida yirik multipolyar alfa va gamma motoneyronlar joylashgan bo‘lib, ularning aksonlari oldingi ildizcha (radix anterior) tarkibida skelet muskullariga boradi.',
+      clinical: 'Poliomielit (infektsion falajlik) va amiotrofik lateral skleroz (ALS / Sharko kasalligi)da aynan oldingi shox motoneyronlari zararlanadi, bu periferik falajlik, atrofiyalar va arefleksiyaga sabab bo‘ladi.'
+    },
+    cornu_posterius: {
+      id: 'cornu_posterius',
+      nameUz: 'Orqa shox (Sezuvchi)',
+      nameLat: 'Cornu posterius (dorsale)',
+      description: 'Kulrang moddaning orqa tomonidagi tor qismi. Tarkibida orqa ildizchalardan kelgan sezuvchi impulslarni qabul qiluvchi oraliq neyronlar, xususiy o‘zak (nucleus proprius) va rolandiy moddasi (substantia gelatinosa) joylashgan.',
+      clinical: 'Orqa shox zararlanganda tegishli segmentlar sohasida og‘riq va harorat sezgisining dissotsiyalangan yo‘qolishi (masalan, siringomiyeliya kasalligida) kuzatiladi.'
+    },
+    cornu_laterale: {
+      id: 'cornu_laterale',
+      nameUz: 'Yon shox (Vegetativ / Simpatik)',
+      nameLat: 'Cornu laterale (C8 - L2/L3)',
+      description: 'Orqa miyaning C8-L2/L3 segmentlarida joylashgan bo‘lib, simpatik vegetativ nerv tizimining intermediolateral o‘zagini (nucleus intermediolateralis) o‘z ichiga oladi. S2-S4 segmentlarida esa chanoq a’zolari parasimpatik o‘zaklari bor.',
+      clinical: 'C8-Th1 segmentlari yon shoxi zararlanganda Gorner (Bernard-Horner) sindromi: ptoz (qovoq tushishi), mioz (qorachiq torayishi) va angidroz (ter ajralmasligi) yuzaga keladi.'
+    },
+    funiculus_posterior: {
+      id: 'funiculus_posterior',
+      nameUz: 'Orqa tizimcha (Goll va Burdax yo‘llari)',
+      nameLat: 'Funiculus posterior (Fasciculus gracilis et cuneatus)',
+      description: 'Oq moddaning orqa qismi. Fasciculus gracilis (Goll — tana pastki qismi va oyoqlardan) va Fasciculus cuneatus (Burdax — tana yuqori qismi va qo‘llardan) ongli proprioseptiv (mushak-bo‘g‘im), tebranish va taktil sezgilarini bosh miya yarim sharlari po‘stlog‘iga eltadi.',
+      clinical: 'Tabes dorsalis (orqa miya qurishi / kechki zaxm) va B12 vitamini yetishmovchiligida orqa tizimcha zararlanadi: bemor ko‘zini yumganda muvozanatni yo‘qotadi (Romberg musbat) va sezuvchi ataksiya rivojlanadi.'
+    },
+    funiculus_lateralis: {
+      id: 'funiculus_lateralis',
+      nameUz: 'Yon tizimcha (Piramida va Spinotalamik yo‘llar)',
+      nameLat: 'Funiculus lateralis',
+      description: 'Tarkibida harakatlantiruvchi asosiy piramida yo‘li (tr. corticospinalis lateralis), og‘riq va harorat sezgisi yo‘li (tr. spinothalamicus lateralis) hamda miyachaning orqa va oldingi yo‘llari (tr. spinocerebellaris posterior - Flechsig, tr. spinocerebellaris anterior - Gowers) o‘tadi.',
+      clinical: 'Orqa miya yarmining kesilishi (Braun-Sekar sindromi)da zararlangan tomonda markaziy falajlik va propriosepsiya yo‘qolishi, qarama-qarshi tomonda esa og‘riq-harorat sezgisining yo‘qolishi kuzatiladi.'
+    },
+    funiculus_anterior: {
+      id: 'funiculus_anterior',
+      nameUz: 'Oldingi tizimcha (Oldingi piramida va vestibular yo‘llar)',
+      nameLat: 'Funiculus anterior',
+      description: 'Tarkibida oldingi piramida yo‘li (tr. corticospinalis anterior), tr. spinothalamicus anterior (qo‘pol taktil sezgi), tr. vestibulospinalis va tr. tectospinalis (ko‘rish va eshitishga javoban himoya reflekslari) o‘tadi.',
+      clinical: 'Oldingi orqa miya arteriyasi (a. spinalis anterior) trombozida orqa tizimchadan tashqari barcha tizimchalar ishemiyaga uchrab, falajlik va og‘riq sezgisining yo‘qolishi yuzaga keladi.'
+    },
+    canalis_centralis: {
+      id: 'canalis_centralis',
+      nameUz: 'Markaziy kanal',
+      nameLat: 'Canalis centralis',
+      description: 'Orqa miyaning o‘rtasidan o‘tuvchi tor kanal bo‘lib, ependimotsitlar bilan qoplangan va miya-orqa miya suyuqligi (likvor) bilan to‘la. Yuqorida IV qorincha bilan, pastda esa ventriculus terminalis bilan tutashadi.',
+      clinical: 'Siringomiyeliya kasalligida markaziy kanal kengayib bo‘shliqlar (kistalar) hosil qiladi va orqa miyaning oldingi oq birikmasini (commissura alba) ezib, "kurtka" shaklida dissotsiyalangan og‘riq-harorat anesteziyasini chaqiradi.'
+    },
+    radix_posterior: {
+      id: 'radix_posterior',
+      nameUz: 'Orqa sezuvchi ildiz va Ganglion spinale',
+      nameLat: 'Radix posterior (sensoria) & Ganglion spinale',
+      description: 'Ganglion spinale tarkibidagi soxta bir qutbli (psevdounipolyar) sezuvchi neyronlarning markaziy o‘simtalari orqa miyaga kirishidan hosil bo‘ladi. Bell-Majandi qonuniga ko‘ra: orqa ildizlar — sof sezuvchi, oldingi ildizlar — sof harakatlantiruvchidir.',
+      clinical: 'Radikulit (radikulopatiya) va bel umurtqalari disk churralarida orqa ildizchalar qisilib, o‘ta kuchli o‘tkir ildizcha og‘riqlari (lyumbago, ishias) paydo bo‘ladi.'
+    }
+  }), []);
+
+  const cranialNervesParts = useMemo<Record<string, DiagramPart>>(() => ({
+    cn1_olfactorius: {
+      id: 'cn1_olfactorius',
+      nameUz: 'I juft — Hid biluvchi nerv',
+      nameLat: 'Nervi olfactorii (CN I)',
+      description: 'Sof sezuvchi nerv. Burun bo‘shlig‘ining hid biluvchi sohasidan boshlanib, lamina cribrosa (g‘alvirsimon plastinka) teshiklari orqali kalla bo‘shlig‘iga kiradi va bulbus olfactoriusga tutashadi.',
+      clinical: 'Kalla suyagi oldingi chuqurchasi sinishi yoki o‘smalarida anosmiya (hid bilishning butunlay yo‘qolishi) yuzaga keladi.'
+    },
+    cn2_opticus: {
+      id: 'cn2_opticus',
+      nameUz: 'II juft — Ko‘ruv nervi',
+      nameLat: 'Nervus opticus (CN II)',
+      description: 'Sof sezuvchi nerv. Ko‘z to‘r pardasi (retina) ganglioz hujayralarining aksonlaridan hosil bo‘lib, canalis opticus orqali kalla bo‘shlig‘iga o‘tadi va chiasma opticum (ko‘ruv kesishuvi)ni hosil qiladi.',
+      clinical: 'Chiasma opticum o‘rtasi gipofiz o‘smasi bilan ezilganda bitemporal gemianopsiya (ikki chetdan ko‘rishning yo‘qolishi) rivojlanadi.'
+    },
+    cn3_oculomotorius: {
+      id: 'cn3_oculomotorius',
+      nameUz: 'III juft — Ko‘z harakatlantiruvchi nerv',
+      nameLat: 'Nervus oculomotorius (CN III)',
+      description: 'Aralash (harakatlantiruvchi va parasimpatik) nerv. O‘rta miya oyoqchalari orasidagi chuqurchadan (fossa interpeduncularis) chiqib, fissura orbitalis superior orqali ko‘z kosasiga kiradi.',
+      clinical: 'Zararlanganda: ptoz (yuqori qovoq osilishi), midriaz (kengaygan qorachiq), tashqariga-pastga g‘ilaylik va fotorefleksning yo‘qolishi kuzatiladi.'
+    },
+    cn4_trochlearis: {
+      id: 'cn4_trochlearis',
+      nameUz: 'IV juft — G‘altaksimon nerv',
+      nameLat: 'Nervus trochlearis (CN IV)',
+      description: 'Sof harakatlantiruvchi nerv. Miya poyasining ORQA yuzasidan chiquvchi yagona kranial nerv! Yuqori qiyshiq mushakni (m. obliquus superior) innervatsiya qiladi.',
+      clinical: 'Zararlanganda bemor zinadan pastga tushayotganda diplopiya (narsalarning ikkita ko‘rinishi)dan shikoyat qiladi va boshini shikastlangan tomonga qarama-qarshi egadi.'
+    },
+    cn5_trigeminus: {
+      id: 'cn5_trigeminus',
+      nameUz: 'V juft — Uch shoxli nerv',
+      nameLat: 'Nervus trigeminus (CN V: V1, V2, V3)',
+      description: 'Aralash nerv. Voroliy ko‘prigi bilan o‘rta miyacha oyoqchasi chegarasidan chiqadi. 3 ta yirik shoxi bor: V1 n. ophthalmicus (fissura orbitalis superior), V2 n. maxillaris (foramen rotundum), V3 n. mandibularis (foramen ovale).',
+      clinical: 'Trigeminal nevralgiya (Foterjil kasalligi)da yuz sohasida qisqa muddatli "elektr toki urgandek" chidab bo‘lmas kuchli xurujli og‘riqlar paydo bo‘ladi.'
+    },
+    cn6_abducens: {
+      id: 'cn6_abducens',
+      nameUz: 'VI juft — Uzoqlashtiruvchi nerv',
+      nameLat: 'Nervus abducens (CN VI)',
+      description: 'Harakatlantiruvchi nerv. Ko‘prik bilan uzunchoq miya piramidasi orasidagi egatdan chiqib, fissura orbitalis superior orqali ko‘zning tashqi to‘g‘ri mushagiga (m. rectus lateralis) boradi.',
+      clinical: 'Zararlanganda ko‘z olmasi tashqariga burilmaydi va ichkariga g‘ilaylik (strabismus convergens) yuzaga keladi.'
+    },
+    cn7_facialis: {
+      id: 'cn7_facialis',
+      nameUz: 'VII juft — Yuz nervi (va oraliq nerv)',
+      nameLat: 'Nervus facialis et intermedius (CN VII)',
+      description: 'Aralash nerv. Ko‘prik-miyacha burchagidan (angulus pontocerebellaris) chiqadi, porus acusticus internusga kirib, canalis facialis orqali foramen stylomastoideumdan bosh suyagidan chiqadi.',
+      clinical: 'Bell falaji (yuz nervining periferik nevriti)da yuzning bir yarmi qimirlamay qoladi: ko‘z yumilmaydi (lagoftalm), peshona burishmaydi, og‘iz burchagi osilib qoladi va tilning oldingi 2/3 qismida ta’m bilish yo‘qoladi.'
+    },
+    cn8_vestibulocochlearis: {
+      id: 'cn8_vestibulocochlearis',
+      nameUz: 'VIII juft — Dahliz-chig‘anoq nervi',
+      nameLat: 'Nervus vestibulocochlearis (CN VIII)',
+      description: 'Sof sezuvchi nerv (muvozanat va eshitish). Ko‘prik-miyacha burchagidan chiqadi va porus acusticus internus orqali ichki quloq labirintiga boradi.',
+      clinical: 'Akustik nevrinoma (vestibulyar shvannoma)da bir tomonlama quloq shang‘illashi, eshitish pasayishi va bosh aylanishi (vertigo) kuzatiladi.'
+    },
+    cn9_glossopharyngeus: {
+      id: 'cn9_glossopharyngeus',
+      nameUz: 'IX juft — Til-yutqin nervi',
+      nameLat: 'Nervus glossopharyngeus (CN IX)',
+      description: 'Aralash nerv. Uzunchoq miya zaytuni orqasidagi egatdan (sulcus retroolivaris) chiqib, foramen jugulare orqali bosh suyagidan chiqadi. Yutqin mushaklarini, parotid so‘lak bezini va tilning orqa 1/3 qismi ta’m sezgisini ta’minlaydi.',
+      clinical: 'Zararlanganda yutish buziladi (disfagiya), yutqin refleksi yo‘qoladi va tilning orqa 1/3 qismida achchiq ta’m sezilmaydi.'
+    },
+    cn10_vagus: {
+      id: 'cn10_vagus',
+      nameUz: 'X juft — Sayyor nerv',
+      nameLat: 'Nervus vagus (CN X)',
+      description: 'Eng uzun kranial nerv. Sulcus retroolivarisdan chiqib, foramen jugulare orqali bo‘yin, ko‘krak va qorin bo‘shlig‘i a’zolariga (ko‘ndalang chambar ichakning chap burchagigacha) parasimpatik va sezuvchi tolalarni yetkazadi.',
+      clinical: 'Ikki tomonlama zararlanishi o‘limga olib keladi (yurak to‘xtashi, nafas falaji). Bir tomonlama jarohatda ovoz bo‘g‘ilishi (n. laryngeus recurrens falaji), disfagiya va yumshoq tanglayning sog‘lom tomonga og‘ishi kuzatiladi.'
+    },
+    cn11_accessorius: {
+      id: 'cn11_accessorius',
+      nameUz: 'XI juft — Qo‘shimcha nerv',
+      nameLat: 'Nervus accessorius (CN XI)',
+      description: 'Sof harakatlantiruvchi nerv. Uzunchoq miya va C1-C5 orqa miya segmentlaridan boshlanib, foramen jugulare orqali chiqadi. To‘sh-o‘mrov-so‘rg‘ichsimon mushak (m. sternocleidomastoideus) va trapetsiyasimon mushakni (m. trapezius) innervatsiya qiladi.',
+      clinical: 'Zararlanganda yelkani ko‘tarish (yelka qisish) qiyinlashadi va boshni qarama-qarshi tomonga burish falajlanadi.'
+    },
+    cn12_hypoglossus: {
+      id: 'cn12_hypoglossus',
+      nameUz: 'XII juft — Tilosti nervi',
+      nameLat: 'Nervus hypoglossus (CN XII)',
+      description: 'Sof harakatlantiruvchi nerv. Uzunchoq miyaning piramida va zaytuni orasidagi oldingi yon egatdan (sulcus anterolateralis) chiqadi va canalis nervi hypoglossi orqali kalla suyagidan chiqadi.',
+      clinical: 'Bir tomonlama zararlanganda bemor tilini tashqariga chiqarganda til uchining shikastlangan tomonga og‘ishi (deviatsiya) va til yarmining atrofiyasi kuzatiladi.'
+    }
+  }), []);
+
+  const brainstemParts = useMemo<Record<string, DiagramPart>>(() => ({
+    pyramides: {
+      id: 'pyramides',
+      nameUz: 'Uzunchoq miya piramidalari va kesishuvi',
+      nameLat: 'Pyramides medullae oblongatae & Decussatio pyramidum',
+      description: 'Uzunchoq miyaning old yuzasidagi ikkita bo‘ylama bo‘rtma. Ularning ichidan bosh miya po‘stlog‘idan kelayotgan bosh harakat yo‘li (tr. corticospinalis) o‘tadi. Pastki qismida tolalarning 80-85% kesishib (decussatio pyramidum) orqa miyaning yon tizimchasiga o‘tadi.',
+      clinical: 'Piramidalar sohasidagi insult yoki shikastlanish qarama-qarshi tana yarmida markaziy gemiparez (falajlik) va Babinskiy kabi patologik reflekslarning paydo bo‘lishiga olib keladi.'
+    },
+    olivae: {
+      id: 'olivae',
+      nameUz: 'Zaytunlar va pastki zaytun o‘zagi',
+      nameLat: 'Olivae & Nucleus olivaris inferior',
+      description: 'Piramidalarning ikki yonida joylashgan oval shakldagi bo‘rtiqlar. Ichida tishsimon buralgan nucleus olivaris inferior joylashgan bo‘lib, u miyacha bilan uzviy bog‘lanib (tr. olivocerebellaris), harakatlar koordinatsiyasida ishtirok etadi.',
+      clinical: 'Zaytun orqasidagi egatdan (sulcus retroolivaris) IX, X, XI nervlar chiqadi. PICA (orqa pastki miyacha arteriyasi) trombozida Vallenberg-Zaxarchenko sindromi yuzaga keladi.'
+    },
+    fossa_rhomboidea: {
+      id: 'fossa_rhomboidea',
+      nameUz: 'Rombsimon chuqurcha (IV qorincha tubi)',
+      nameLat: 'Fossa rhomboidea (Fundus ventriculi quarti)',
+      description: 'Uzunchoq miya va ko‘prikning orqa yuzasi hosil qilgan romb shaklidagi maydon. Unda V, VI, VII, VIII, IX, X, XI, XII juft kranial nervlarning barcha o‘zaklari qat’iy topografik tartibda joylashgan.',
+      clinical: 'Rombsimon chuqurcha markazida hayotiy muhim nafas va qon aylanish markazlari joylashgan. Uning siqilishi zudlik bilan asfiksiya va o‘limga olib keladi.'
+    },
+    sulcus_basilaris: {
+      id: 'sulcus_basilaris',
+      nameUz: 'Ko‘prikning asosiy egati (Sulcus basilaris)',
+      nameLat: 'Sulcus basilaris pontis',
+      description: 'Voroliy ko‘prigining oldingi qavariq yuzasining o‘rtasidagi bo‘ylama egat. Undan bosh miyani qon bilan ta’minlovchi eng yirik tomirlardan biri — a. basilaris (asosiy arteriya) o‘tadi.',
+      clinical: 'Basilar arteriya trombozi (Locked-in sindromi / "qamalgan odam" sindromi)ga sabab bo‘ladi: bemor hamma narsani tushunadi va eshitadi, lekin ko‘zning vertikal harakatidan boshqa barcha tana muskullari to‘liq falajlanadi.'
+    },
+    ventriculus_quartus: {
+      id: 'ventriculus_quartus',
+      nameUz: 'IV Qorincha va teshiklari (Majandi va Lyushka)',
+      nameLat: 'Ventriculus quartus & Apertura mediana / laterales',
+      description: 'Miya poyasi va miyacha orasidagi chodirsimon bo‘shliq. Silviy suv yo‘li orqali III qorinchadan likvorni qabul qiladi va Apertura mediana (Majandi) hamda Aperturae laterales (Lyushka) teshiklari orqali subaraxnoid bo‘shliqqa o‘tkazadi.',
+      clinical: 'Ushbu teshiklar yopilib qolsa (masalan, Dandi-Uolker anomaliyasi yoki o‘smalarda) okklyuzion (tutashmagan) gidrosefaliya — bosh miya ichki bosimining keskin oshishi rivojlanadi.'
+    }
+  }), []);
+
+  const cerebellumParts = useMemo<Record<string, DiagramPart>>(() => ({
+    hemispherium: {
+      id: 'hemispherium',
+      nameUz: 'Miyacha yarim sharlari (Neocerebellum)',
+      nameLat: 'Hemispheria cerebelli',
+      description: 'Miyachaning ikki chetidagi yirik qismlari. Po‘stlog‘i va tishsimon o‘zagi (nucleus dentatus) orqali bosh miya po‘stlog‘idan keluvchi buyruqlarni qayta ishlab, nozik, murakkab va maqsadli ixtiyoriy harakatlarni muvofiqlashtiradi.',
+      clinical: 'Miyacha yarim sharlari zararlanganda zararlangan tomonda ataksiya, dismetriya (mo‘ljalga tegmaslik), intension qaltirash (harakat oxirida titrash) va adiadoxokinez kuzatiladi.'
+    },
+    vermis: {
+      id: 'vermis',
+      nameUz: 'Miyacha chuvalchangi (Paleocerebellum / Archicerebellum)',
+      nameLat: 'Vermis cerebelli',
+      description: 'Ikki yarim sharni o‘rtada tutashtiruvchi toq qism. Tana o‘qining (gavda) muvozanatini, qomatni tik tutishni va yurishdagi sinergik harakatlarni boshqaradi.',
+      clinical: 'Chuvalchang o‘smalari (bolalarda medulloblastoma)da "mast odamdek chayqalib yurish" (gavda ataksiyasi) va orqaga qarab yiqilish xarakterlidir.'
+    },
+    deep_nuclei: {
+      id: 'deep_nuclei',
+      nameUz: 'Miyachaning 4 juft chuqur o‘zaklari',
+      nameLat: 'Nuclei cerebelli (Dentatus, Emboliformis, Globosus, Fastigii)',
+      description: 'Miyacha oq moddasi ichidagi o‘zaklar (Yodlash mnemonikasi: Don\'t Eat Greasy Food). 1. Nucleus dentatus (eng kattasi), 2. Nucleus emboliformis, 3. Nucleus globosus, 4. Nucleus fastigii (tom o‘zagi).',
+      clinical: 'Ushbu o‘zaklar miyacha po‘stlog‘ining Purkinye hujayralaridan tormozlovchi signallarni qabul qilib, talamus va qizil o‘zakka efferent signallar yuboradi.'
+    },
+    pedunculi: {
+      id: 'pedunculi',
+      nameUz: 'Miyachaning 3 juft oyoqchalari',
+      nameLat: 'Pedunculi cerebellaris (Superior, Medius, Inferior)',
+      description: '1. Yuqori oyoqcha (o‘rta miyaga — asosan efferent tr. cerebellorubralis/thalamicus), 2. O‘rta oyoqcha (eng yo‘g‘oni, ko‘prikdan tr. pontocerebellaris), 3. Pastki oyoqcha (uzunchoq miyadan — tr. spinocerebellaris posterior va tr. olivocerebellaris).',
+      clinical: 'Oyoqchalar insulti miyacha ataksiyasi va miya poyasi kranial nervlari zararlanishi bilan birga kechuvchi alternatsiyalovchi sindromlarni beradi.'
+    }
+  }), []);
+
   // Set default initial screen if needed
   const activePartObj = selectedPart ? (
+    diagramType === 'spinal_cord' ? spinalCordParts[selectedPart] :
+    diagramType === 'cranial_nerves' ? cranialNervesParts[selectedPart] :
+    diagramType === 'brainstem' ? brainstemParts[selectedPart] :
+    diagramType === 'cerebellum' ? cerebellumParts[selectedPart] :
     diagramType === 'vertebra' ? vertebraParts[selectedPart] :
     diagramType === 'sternum' ? sternumParts[selectedPart] :
     diagramType === 'clavicula' ? claviculaParts[selectedPart] :
@@ -329,6 +560,345 @@ export default function CreativeAnatomyDiagram({ value }: CreativeAnatomyDiagram
               <span className="absolute top-4 left-4 inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[9px] font-black text-slate-500 shadow-sm uppercase tracking-widest">
                 <Info className="w-3 h-3 text-brand-accent" /> Interaktiv model
               </span>
+
+              {diagramType === 'spinal_cord' && (
+                <svg viewBox="0 0 360 320" className="w-full max-w-[320px] h-auto drop-shadow-xl select-none">
+                  <defs>
+                    <linearGradient id="sc-white" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#F8FAFC" />
+                      <stop offset="100%" stopColor="#E2E8F0" />
+                    </linearGradient>
+                    <linearGradient id="sc-gray" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#CBD5E1" />
+                      <stop offset="100%" stopColor="#94A3B8" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* Spinal Cord Contour (White Matter outer circle/oval) */}
+                  <path
+                    d="M 180 45 C 265 45, 320 100, 320 170 C 320 240, 260 285, 185 285 L 180 250 L 175 285 C 100 285, 40 240, 40 170 C 40 100, 95 45, 180 45 Z"
+                    fill="url(#sc-white)"
+                    stroke="#475569"
+                    strokeWidth="3.5"
+                  />
+
+                  {/* Fissura mediana anterior (Anterior median fissure - bottom) */}
+                  <path d="M 180 285 L 180 215" stroke="#334155" strokeWidth="3.5" strokeLinecap="round" />
+
+                  {/* Sulcus medianus posterior (Posterior median sulcus - top) */}
+                  <path d="M 180 45 L 180 120" stroke="#64748B" strokeWidth="2" strokeDasharray="3 3" />
+
+                  {/* Funiculus Posterior (Top White Matter) */}
+                  <path
+                    d="M 180 46 C 225 46, 265 75, 275 115 L 220 125 L 180 120 L 140 125 L 85 115 C 95 75, 135 46, 180 46 Z"
+                    fill={selectedPart === 'funiculus_posterior' ? '#BAE6FD' : 'transparent'}
+                    stroke={selectedPart === 'funiculus_posterior' ? '#0284C7' : 'transparent'}
+                    strokeWidth="2.5"
+                    className="cursor-pointer transition-all hover:fill-sky-100/60"
+                    onClick={() => setSelectedPart('funiculus_posterior')}
+                  />
+
+                  {/* Funiculus Lateralis (Left & Right Lateral White Matter) */}
+                  <path
+                    d="M 275 115 C 315 145, 315 205, 275 245 L 235 200 L 220 125 Z"
+                    fill={selectedPart === 'funiculus_lateralis' ? '#BAE6FD' : 'transparent'}
+                    stroke={selectedPart === 'funiculus_lateralis' ? '#0284C7' : 'transparent'}
+                    strokeWidth="2.5"
+                    className="cursor-pointer transition-all hover:fill-sky-100/60"
+                    onClick={() => setSelectedPart('funiculus_lateralis')}
+                  />
+                  <path
+                    d="M 85 115 C 45 145, 45 205, 85 245 L 125 200 L 140 125 Z"
+                    fill={selectedPart === 'funiculus_lateralis' ? '#BAE6FD' : 'transparent'}
+                    stroke={selectedPart === 'funiculus_lateralis' ? '#0284C7' : 'transparent'}
+                    strokeWidth="2.5"
+                    className="cursor-pointer transition-all hover:fill-sky-100/60"
+                    onClick={() => setSelectedPart('funiculus_lateralis')}
+                  />
+
+                  {/* Funiculus Anterior (Bottom White Matter) */}
+                  <path
+                    d="M 185 284 C 235 284, 275 255, 275 245 L 215 205 L 185 215 Z"
+                    fill={selectedPart === 'funiculus_anterior' ? '#BAE6FD' : 'transparent'}
+                    stroke={selectedPart === 'funiculus_anterior' ? '#0284C7' : 'transparent'}
+                    strokeWidth="2.5"
+                    className="cursor-pointer transition-all hover:fill-sky-100/60"
+                    onClick={() => setSelectedPart('funiculus_anterior')}
+                  />
+                  <path
+                    d="M 175 284 C 125 284, 85 255, 85 245 L 145 205 L 175 215 Z"
+                    fill={selectedPart === 'funiculus_anterior' ? '#BAE6FD' : 'transparent'}
+                    stroke={selectedPart === 'funiculus_anterior' ? '#0284C7' : 'transparent'}
+                    strokeWidth="2.5"
+                    className="cursor-pointer transition-all hover:fill-sky-100/60"
+                    onClick={() => setSelectedPart('funiculus_anterior')}
+                  />
+
+                  {/* Gray Matter - Butterfly Wings (Substantia Grisea) */}
+                  {/* Left Posterior Horn */}
+                  <path
+                    d="M 170 155 C 160 145, 140 100, 130 90 C 120 95, 125 125, 140 145 Z"
+                    fill={selectedPart === 'cornu_posterius' ? '#38BDF8' : '#64748B'}
+                    stroke="#334155"
+                    strokeWidth="2"
+                    className="cursor-pointer transition-all hover:fill-sky-400"
+                    onClick={() => setSelectedPart('cornu_posterius')}
+                  />
+                  {/* Right Posterior Horn */}
+                  <path
+                    d="M 190 155 C 200 145, 220 100, 230 90 C 240 95, 235 125, 220 145 Z"
+                    fill={selectedPart === 'cornu_posterius' ? '#38BDF8' : '#64748B'}
+                    stroke="#334155"
+                    strokeWidth="2"
+                    className="cursor-pointer transition-all hover:fill-sky-400"
+                    onClick={() => setSelectedPart('cornu_posterius')}
+                  />
+
+                  {/* Left Lateral Horn */}
+                  <path
+                    d="M 155 160 C 140 155, 120 160, 115 170 C 120 180, 140 180, 155 175 Z"
+                    fill={selectedPart === 'cornu_laterale' ? '#F43F5E' : '#94A3B8'}
+                    stroke="#334155"
+                    strokeWidth="2"
+                    className="cursor-pointer transition-all hover:fill-rose-400"
+                    onClick={() => setSelectedPart('cornu_laterale')}
+                  />
+                  {/* Right Lateral Horn */}
+                  <path
+                    d="M 205 160 C 220 155, 240 160, 245 170 C 240 180, 220 180, 205 175 Z"
+                    fill={selectedPart === 'cornu_laterale' ? '#F43F5E' : '#94A3B8'}
+                    stroke="#334155"
+                    strokeWidth="2"
+                    className="cursor-pointer transition-all hover:fill-rose-400"
+                    onClick={() => setSelectedPart('cornu_laterale')}
+                  />
+
+                  {/* Left Anterior Horn (Big Motor) */}
+                  <path
+                    d="M 165 175 C 150 185, 130 195, 135 220 C 155 225, 170 205, 175 185 Z"
+                    fill={selectedPart === 'cornu_anterius' ? '#10B981' : '#475569'}
+                    stroke="#1E293B"
+                    strokeWidth="2"
+                    className="cursor-pointer transition-all hover:fill-emerald-400"
+                    onClick={() => setSelectedPart('cornu_anterius')}
+                  />
+                  {/* Right Anterior Horn (Big Motor) */}
+                  <path
+                    d="M 195 175 C 210 185, 230 195, 225 220 C 205 225, 190 205, 185 185 Z"
+                    fill={selectedPart === 'cornu_anterius' ? '#10B981' : '#475569'}
+                    stroke="#1E293B"
+                    strokeWidth="2"
+                    className="cursor-pointer transition-all hover:fill-emerald-400"
+                    onClick={() => setSelectedPart('cornu_anterius')}
+                  />
+
+                  {/* Central Commisura & Canalis centralis */}
+                  <rect x="165" y="160" width="30" height="20" rx="6" fill="#64748B" />
+                  <circle
+                    cx="180" cy="170" r="5"
+                    fill={selectedPart === 'canalis_centralis' ? '#38BDF8' : '#0284C7'}
+                    stroke="#FFFFFF"
+                    strokeWidth="2"
+                    className="cursor-pointer animate-pulse"
+                    onClick={() => setSelectedPart('canalis_centralis')}
+                  />
+
+                  {/* Posterior Roots & Ganglion (Top-right) */}
+                  <path d="M 230 90 Q 280 60, 310 75" fill="none" stroke="#F59E0B" strokeWidth="3" />
+                  <ellipse
+                    cx="315" cy="80" rx="14" ry="9"
+                    fill={selectedPart === 'radix_posterior' ? '#F59E0B' : '#FCD34D'}
+                    stroke="#D97706"
+                    strokeWidth="2"
+                    className="cursor-pointer"
+                    onClick={() => setSelectedPart('radix_posterior')}
+                  />
+
+                  {/* Hotspot buttons */}
+                  <circle cx="180" cy="75" r="5" fill="#0284c7" stroke="#fff" strokeWidth="1.5" className="cursor-pointer" onClick={() => setSelectedPart('funiculus_posterior')} />
+                  <circle cx="280" cy="180" r="5" fill="#0284c7" stroke="#fff" strokeWidth="1.5" className="cursor-pointer" onClick={() => setSelectedPart('funiculus_lateralis')} />
+                  <circle cx="215" cy="245" r="5" fill="#0284c7" stroke="#fff" strokeWidth="1.5" className="cursor-pointer" onClick={() => setSelectedPart('funiculus_anterior')} />
+                  <circle cx="225" cy="110" r="5" fill="#38bdf8" stroke="#fff" strokeWidth="1.5" className="cursor-pointer" onClick={() => setSelectedPart('cornu_posterius')} />
+                  <circle cx="215" cy="205" r="5" fill="#10b981" stroke="#fff" strokeWidth="1.5" className="cursor-pointer" onClick={() => setSelectedPart('cornu_anterius')} />
+                  <circle cx="230" cy="170" r="5" fill="#f43f5e" stroke="#fff" strokeWidth="1.5" className="cursor-pointer" onClick={() => setSelectedPart('cornu_laterale')} />
+                </svg>
+              )}
+
+              {diagramType === 'cranial_nerves' && (
+                <div className="w-full flex flex-col items-center justify-center p-2">
+                  <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
+                    Bosh miya asosi: 12 juft nervlar
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 w-full max-w-[290px]">
+                    {[
+                      { id: 'cn1_olfactorius', label: 'I Olfactorius', color: 'bg-amber-100 border-amber-300 text-amber-900' },
+                      { id: 'cn2_opticus', label: 'II Opticus', color: 'bg-amber-100 border-amber-300 text-amber-900' },
+                      { id: 'cn3_oculomotorius', label: 'III Oculomotor', color: 'bg-emerald-100 border-emerald-300 text-emerald-900' },
+                      { id: 'cn4_trochlearis', label: 'IV Trochlearis', color: 'bg-emerald-100 border-emerald-300 text-emerald-900' },
+                      { id: 'cn5_trigeminus', label: 'V Trigeminus', color: 'bg-purple-100 border-purple-300 text-purple-900' },
+                      { id: 'cn6_abducens', label: 'VI Abducens', color: 'bg-emerald-100 border-emerald-300 text-emerald-900' },
+                      { id: 'cn7_facialis', label: 'VII Facialis', color: 'bg-purple-100 border-purple-300 text-purple-900' },
+                      { id: 'cn8_vestibulocochlearis', label: 'VIII Vestibulo.', color: 'bg-amber-100 border-amber-300 text-amber-900' },
+                      { id: 'cn9_glossopharyngeus', label: 'IX Glossophar.', color: 'bg-purple-100 border-purple-300 text-purple-900' },
+                      { id: 'cn10_vagus', label: 'X Vagus', color: 'bg-purple-100 border-purple-300 text-purple-900' },
+                      { id: 'cn11_accessorius', label: 'XI Accessorius', color: 'bg-emerald-100 border-emerald-300 text-emerald-900' },
+                      { id: 'cn12_hypoglossus', label: 'XII Hypogloss.', color: 'bg-emerald-100 border-emerald-300 text-emerald-900' },
+                    ].map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => setSelectedPart(item.id)}
+                        className={`p-2 rounded-xl border text-[10px] font-black tracking-tight transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 ${
+                          selectedPart === item.id
+                            ? 'ring-2 ring-indigo-600 ring-offset-2 bg-indigo-600 text-white font-extrabold shadow-md'
+                            : item.color
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {diagramType === 'brainstem' && (
+                <svg viewBox="0 0 320 320" className="w-full max-w-[280px] h-auto drop-shadow-xl select-none">
+                  {/* Pons (Top bulging block) */}
+                  <rect
+                    x="80" y="50" width="160" height="90" rx="20"
+                    fill={selectedPart === 'sulcus_basilaris' ? '#E0F2FE' : '#CBD5E1'}
+                    stroke={selectedPart === 'sulcus_basilaris' ? '#0284C7' : '#475569'}
+                    strokeWidth="3.5"
+                    className="cursor-pointer transition-all"
+                    onClick={() => setSelectedPart('sulcus_basilaris')}
+                  />
+                  {/* Sulcus Basilaris (Center line in pons) */}
+                  <line x1="160" y1="50" x2="160" y2="140" stroke="#334155" strokeWidth="4" />
+
+                  {/* Medulla Oblongata (Bottom tapering cone) */}
+                  <path
+                    d="M 100 140 L 220 140 L 195 270 L 125 270 Z"
+                    fill="#F1F5F9"
+                    stroke="#475569"
+                    strokeWidth="3.5"
+                  />
+
+                  {/* Left Pyramid */}
+                  <path
+                    d="M 125 140 L 155 140 L 155 240 L 135 240 Z"
+                    fill={selectedPart === 'pyramides' ? '#BAE6FD' : '#94A3B8'}
+                    stroke={selectedPart === 'pyramides' ? '#0284C7' : '#64748B'}
+                    strokeWidth="2"
+                    className="cursor-pointer"
+                    onClick={() => setSelectedPart('pyramides')}
+                  />
+                  {/* Right Pyramid */}
+                  <path
+                    d="M 165 140 L 195 140 L 185 240 L 165 240 Z"
+                    fill={selectedPart === 'pyramides' ? '#BAE6FD' : '#94A3B8'}
+                    stroke={selectedPart === 'pyramides' ? '#0284C7' : '#64748B'}
+                    strokeWidth="2"
+                    className="cursor-pointer"
+                    onClick={() => setSelectedPart('pyramides')}
+                  />
+
+                  {/* Decussatio pyramidum (X crossing at bottom of pyramids) */}
+                  <line x1="150" y1="235" x2="170" y2="255" stroke="#0F172A" strokeWidth="3" />
+                  <line x1="170" y1="235" x2="150" y2="255" stroke="#0F172A" strokeWidth="3" />
+
+                  {/* Left Olive */}
+                  <ellipse
+                    cx="110" cy="180" rx="9" ry="18"
+                    fill={selectedPart === 'olivae' ? '#F43F5E' : '#64748B'}
+                    stroke="#334155"
+                    strokeWidth="2"
+                    className="cursor-pointer"
+                    onClick={() => setSelectedPart('olivae')}
+                  />
+                  {/* Right Olive */}
+                  <ellipse
+                    cx="210" cy="180" rx="9" ry="18"
+                    fill={selectedPart === 'olivae' ? '#F43F5E' : '#64748B'}
+                    stroke="#334155"
+                    strokeWidth="2"
+                    className="cursor-pointer"
+                    onClick={() => setSelectedPart('olivae')}
+                  />
+
+                  {/* IV Ventricle & Rhomboid Fossa overlay button */}
+                  <polygon
+                    points="160,75 200,120 160,165 120,120"
+                    fill={selectedPart === 'fossa_rhomboidea' ? '#38BDF8' : 'rgba(56, 189, 248, 0.25)'}
+                    stroke="#0284C7"
+                    strokeWidth="2"
+                    strokeDasharray="4 4"
+                    className="cursor-pointer hover:fill-sky-300"
+                    onClick={() => setSelectedPart('fossa_rhomboidea')}
+                  />
+
+                  {/* Hotspots */}
+                  <circle cx="160" cy="90" r="5" fill="#0284c7" stroke="#fff" strokeWidth="1.5" className="cursor-pointer" onClick={() => setSelectedPart('sulcus_basilaris')} />
+                  <circle cx="140" cy="180" r="5" fill="#0284c7" stroke="#fff" strokeWidth="1.5" className="cursor-pointer" onClick={() => setSelectedPart('pyramides')} />
+                  <circle cx="110" cy="180" r="5" fill="#f43f5e" stroke="#fff" strokeWidth="1.5" className="cursor-pointer" onClick={() => setSelectedPart('olivae')} />
+                  <circle cx="160" cy="120" r="5" fill="#38bdf8" stroke="#fff" strokeWidth="1.5" className="cursor-pointer" onClick={() => setSelectedPart('fossa_rhomboidea')} />
+                </svg>
+              )}
+
+              {diagramType === 'cerebellum' && (
+                <svg viewBox="0 0 320 320" className="w-full max-w-[280px] h-auto drop-shadow-xl select-none">
+                  {/* Left Hemisphere */}
+                  <ellipse
+                    cx="100" cy="160" rx="65" ry="75"
+                    fill={selectedPart === 'hemispherium' ? '#BAE6FD' : '#CBD5E1'}
+                    stroke={selectedPart === 'hemispherium' ? '#0284C7' : '#475569'}
+                    strokeWidth="3.5"
+                    className="cursor-pointer transition-all hover:fill-sky-100"
+                    onClick={() => setSelectedPart('hemispherium')}
+                  />
+                  {/* Right Hemisphere */}
+                  <ellipse
+                    cx="220" cy="160" rx="65" ry="75"
+                    fill={selectedPart === 'hemispherium' ? '#BAE6FD' : '#CBD5E1'}
+                    stroke={selectedPart === 'hemispherium' ? '#0284C7' : '#475569'}
+                    strokeWidth="3.5"
+                    className="cursor-pointer transition-all hover:fill-sky-100"
+                    onClick={() => setSelectedPart('hemispherium')}
+                  />
+
+                  {/* Vermis (Center worm) */}
+                  <rect
+                    x="140" y="90" width="40" height="140" rx="20"
+                    fill={selectedPart === 'vermis' ? '#F43F5E' : '#94A3B8'}
+                    stroke={selectedPart === 'vermis' ? '#BE123C' : '#334155'}
+                    strokeWidth="3"
+                    className="cursor-pointer transition-all hover:fill-rose-200"
+                    onClick={() => setSelectedPart('vermis')}
+                  />
+                  {/* Vermis Segments */}
+                  <line x1="140" y1="120" x2="180" y2="120" stroke="#475569" strokeWidth="2" />
+                  <line x1="140" y1="150" x2="180" y2="150" stroke="#475569" strokeWidth="2" />
+                  <line x1="140" y1="180" x2="180" y2="180" stroke="#475569" strokeWidth="2" />
+                  <line x1="140" y1="205" x2="180" y2="205" stroke="#475569" strokeWidth="2" />
+
+                  {/* Deep Nuclei (Dentate, Emboliform, Globose, Fastigii) */}
+                  <path
+                    d="M 85 140 Q 95 130, 105 140 Q 115 150, 105 160 Q 95 170, 85 160 Z"
+                    fill={selectedPart === 'deep_nuclei' ? '#10B981' : '#334155'}
+                    className="cursor-pointer"
+                    onClick={() => setSelectedPart('deep_nuclei')}
+                  />
+                  <path
+                    d="M 235 140 Q 225 130, 215 140 Q 205 150, 215 160 Q 225 170, 235 160 Z"
+                    fill={selectedPart === 'deep_nuclei' ? '#10B981' : '#334155'}
+                    className="cursor-pointer"
+                    onClick={() => setSelectedPart('deep_nuclei')}
+                  />
+
+                  {/* Hotspots */}
+                  <circle cx="75" cy="160" r="5" fill="#0284c7" stroke="#fff" strokeWidth="1.5" className="cursor-pointer" onClick={() => setSelectedPart('hemispherium')} />
+                  <circle cx="160" cy="150" r="5" fill="#f43f5e" stroke="#fff" strokeWidth="1.5" className="cursor-pointer" onClick={() => setSelectedPart('vermis')} />
+                  <circle cx="100" cy="150" r="5" fill="#10b981" stroke="#fff" strokeWidth="1.5" className="cursor-pointer" onClick={() => setSelectedPart('deep_nuclei')} />
+                </svg>
+              )}
 
               {diagramType === 'vertebra' && (
                 <svg viewBox="0 0 320 320" className="w-full max-w-[280px] h-auto drop-shadow-xl">
@@ -636,6 +1206,42 @@ export default function CreativeAnatomyDiagram({ value }: CreativeAnatomyDiagram
                   
                   {/* Quick-list helper buttons */}
                   <div className="flex flex-wrap gap-2 justify-center mt-5">
+                    {diagramType === 'spinal_cord' && Object.keys(spinalCordParts).map(key => (
+                      <button 
+                        key={key} 
+                        onClick={() => setSelectedPart(key)}
+                        className="px-2.5 py-1.5 bg-white hover:bg-sky-50 border border-slate-200 text-[10px] font-bold rounded-lg text-slate-700 hover:text-sky-700 transition-all shadow-sm cursor-pointer"
+                      >
+                        {spinalCordParts[key].nameUz}
+                      </button>
+                    ))}
+                    {diagramType === 'cranial_nerves' && Object.keys(cranialNervesParts).map(key => (
+                      <button 
+                        key={key} 
+                        onClick={() => setSelectedPart(key)}
+                        className="px-2.5 py-1.5 bg-white hover:bg-purple-50 border border-slate-200 text-[10px] font-bold rounded-lg text-slate-700 hover:text-purple-700 transition-all shadow-sm cursor-pointer"
+                      >
+                        {cranialNervesParts[key].nameUz}
+                      </button>
+                    ))}
+                    {diagramType === 'brainstem' && Object.keys(brainstemParts).map(key => (
+                      <button 
+                        key={key} 
+                        onClick={() => setSelectedPart(key)}
+                        className="px-2.5 py-1.5 bg-white hover:bg-indigo-50 border border-slate-200 text-[10px] font-bold rounded-lg text-slate-700 hover:text-indigo-700 transition-all shadow-sm cursor-pointer"
+                      >
+                        {brainstemParts[key].nameUz}
+                      </button>
+                    ))}
+                    {diagramType === 'cerebellum' && Object.keys(cerebellumParts).map(key => (
+                      <button 
+                        key={key} 
+                        onClick={() => setSelectedPart(key)}
+                        className="px-2.5 py-1.5 bg-white hover:bg-emerald-50 border border-slate-200 text-[10px] font-bold rounded-lg text-slate-700 hover:text-emerald-700 transition-all shadow-sm cursor-pointer"
+                      >
+                        {cerebellumParts[key].nameUz}
+                      </button>
+                    ))}
                     {diagramType === 'vertebra' && Object.keys(vertebraParts).map(key => (
                       <button 
                         key={key} 

@@ -33,6 +33,7 @@ export default function Footer() {
             <ul className="space-y-2 text-sm">
               <li><a href="/semester/1" className="hover:text-indigo-400 transition-colors">{t('footer.semester1')}</a></li>
               <li><a href="/semester/2" className="hover:text-indigo-400 transition-colors">{t('footer.semester2')}</a></li>
+              <li><a href="/semester/3" className="hover:text-indigo-400 transition-colors">{t('footer.semester3')}</a></li>
               <li><a href="/atlas" className="hover:text-indigo-400 transition-colors">{t('footer.3d_atlas')}</a></li>
             </ul>
           </div>

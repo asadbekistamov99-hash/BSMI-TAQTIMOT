@@ -6,7 +6,9 @@ import { supabase, isSupabaseConfigured, supabaseUrl, supabaseAnonKey } from '..
 import { isAppwriteConfigured, appwriteDatabaseId } from '../lib/appwrite';
 import { onAuthStateChanged, signOut, signInWithPopup } from 'firebase/auth';
 import { Topic, Quiz, AtlasEntry, UserPayment, Announcement, MidtermFile, Semester } from '../types';
-import { SEMESTER_1_TOPICS, SEMESTER_2_TOPICS } from '../constants';
+import { SEMESTER_1_TOPICS, SEMESTER_2_TOPICS, SEMESTER_3_TOPICS } from '../constants';
+import { SEMESTER_3_DETAILED_TOPICS } from '../data/semester3TopicsData';
+import { deduplicateAndMergeTopics, cleanupFirestoreDuplicateTopics } from '../lib/topicDeduplication';
 import bsmiLogo from '../assets/images/bsmi.jpg';
 import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import mammoth from 'mammoth';
@@ -185,6 +187,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useSettings } from '../hooks/useSettings';
+
+const getSafeAdminTitle = (title: any): string => {
+  if (!title) return '';
+  if (typeof title === 'string') return title;
+  if (typeof title === 'object') {
+    return title.uz || title.en || title.ru || '';
+  }
+  return String(title);
+};
 
 type Tab = 'dashboard' | 'users' | 'payments' | 'topics' | 'semesters' | 'content' | 'latin' | 'atlas' | 'models' | 'videos' | 'quizzes' | 'midterm' | 'ai' | 'languages' | 'notifications' | 'settings' | 'design' | 'logs' | 'backup' | 'analytics' | 'support' | 'help' | 'biometric_audit';
 
@@ -799,7 +810,7 @@ export default function AdminDashboard({ onLogout }: { onLogout?: () => void }) 
     isOpen: boolean;
     title: string;
     message: string;
-    onConfirm: () => void;
+    onConfirm: () => void | Promise<void>;
     confirmText?: string;
     cancelText?: string;
   }>({
@@ -808,8 +819,9 @@ export default function AdminDashboard({ onLogout }: { onLogout?: () => void }) 
     message: '',
     onConfirm: () => {},
   });
+  const [isDeletingModal, setIsDeletingModal] = useState(false);
 
-  const requestConfirm = (title: string, message: string, onConfirm: () => void, confirmText = "Ha (O'chirish)", cancelText = "Yo'q (Qolsin)") => {
+  const requestConfirm = (title: string, message: string, onConfirm: () => void | Promise<void>, confirmText = "Ha (O'chirish)", cancelText = "Yo'q (Qolsin)") => {
     setConfirmModal({
       isOpen: true,
       title,
@@ -828,24 +840,33 @@ export default function AdminDashboard({ onLogout }: { onLogout?: () => void }) 
     );
   }
 
-  // Allow either Firebase Auth OR Legacy Password Auth
-  if (!authUser && !isLegacyAdmin) {
+  // Allow either Primary Admin Google Email OR Legacy Password Auth
+  const isPrimaryAdmin = authUser?.email?.toLowerCase() === "asadbekistamov99@gmail.com";
+  const isAuthorized = isPrimaryAdmin || isLegacyAdmin;
+
+  if (!isAuthorized) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#F4F7FE] p-10 text-center">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#F4F7FE] p-6 sm:p-10 text-center">
         <ShieldAlert size={64} className="text-red-500 mb-6" />
         <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tighter mb-4">Kirish ruxsat etilmagan</h2>
-        <p className="text-slate-500 font-bold mb-8">Admin panelga kirish uchun tizim ruxsati talab qilinadi.</p>
+        <p className="text-slate-500 font-bold mb-8 max-w-md">
+          {authUser 
+            ? `Sizning Google hisobingiz (${authUser.email}) administrator hisobi emas. Iltimos, asadbekistamov99@gmail.com orqali kiring yoki admin parolini kiriting.`
+            : 'Admin panelga kirish uchun administrator ruxsati talab qilinadi.'}
+        </p>
         <div className="flex flex-col sm:flex-row gap-4">
           <button onClick={async () => {
             try {
+              await signOut(auth);
               await signInWithPopup(auth, googleProvider);
             } catch (error) {
               console.error("Auth error:", error);
             }
-          }} className="px-10 py-4 bg-[#4285F4] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-blue-600 transition-all flex items-center gap-3">
-            <Globe size={18} /> Google orqali kirish
+          }} className="px-8 py-4 bg-[#4285F4] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-blue-600 transition-all flex items-center justify-center gap-3">
+            <Globe size={18} /> {authUser ? "Boshqa Google hisob bilan kirish" : "Google orqali kirish"}
           </button>
-          <button onClick={() => window.location.href = '/admin/login'} className="px-10 py-4 bg-[#0E1624] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-slate-800 transition-all">Parol orqali kirish</button>
+          <button onClick={() => window.location.href = '/admin/login'} className="px-8 py-4 bg-[#0E1624] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-slate-800 transition-all">Parol orqali kirish</button>
+          <button onClick={() => window.location.href = '/'} className="px-8 py-4 bg-slate-200 text-slate-700 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-300 transition-all">Bosh sahifa</button>
         </div>
       </div>
     );
@@ -884,16 +905,30 @@ export default function AdminDashboard({ onLogout }: { onLogout?: () => void }) 
               <p className="text-slate-500 font-bold text-center text-sm leading-relaxed mb-10">{confirmModal.message}</p>
               <div className="grid grid-cols-2 gap-4">
                 <button 
+                  disabled={isDeletingModal}
                   onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-                  className="py-5 bg-slate-100 text-slate-400 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all"
+                  className="py-5 bg-slate-100 text-slate-400 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {confirmModal.cancelText}
                 </button>
                 <button 
-                   onClick={() => { confirmModal.onConfirm(); setConfirmModal(prev => ({ ...prev, isOpen: false })); }}
-                   className="py-5 bg-red-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-700 shadow-xl shadow-red-600/20 transition-all"
+                   disabled={isDeletingModal}
+                   onClick={async () => {
+                     try {
+                       setIsDeletingModal(true);
+                       await confirmModal.onConfirm();
+                     } catch (err: any) {
+                       console.error("Delete operation failed:", err);
+                       alert("O'chirishda xatolik: " + (err?.message || String(err)));
+                     } finally {
+                       setIsDeletingModal(false);
+                       setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                     }
+                   }}
+                   className="py-5 bg-red-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-700 shadow-xl shadow-red-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
                 >
-                  {confirmModal.confirmText}
+                  {isDeletingModal ? <RefreshCw className="animate-spin w-4 h-4" /> : null}
+                  {isDeletingModal ? "O'chirilmoqda..." : confirmModal.confirmText}
                 </button>
               </div>
             </motion.div>
@@ -1003,7 +1038,7 @@ export default function AdminDashboard({ onLogout }: { onLogout?: () => void }) 
             </div>
           </div>
 
-          <div className="flex items-center gap-4 sm:gap-8">
+          <div className="flex items-center gap-4 sm:gap-6">
             <button 
               onClick={() => navigate('/')} 
               className="flex items-center gap-3 px-6 py-3 bg-brand-primary text-brand-accent rounded-2xl font-black text-[10px] uppercase tracking-widest border border-slate-800 hover:bg-[#0E1624] hover:text-white transition-all shadow-md active:scale-95 duration-200"
@@ -1739,26 +1774,34 @@ function UserManager({ searchQuery, requestConfirm }: { searchQuery: string, req
   };
 
   const fetchSemestersList = async () => {
+    const defaultList = [
+      { id: 'sem_1', number: 1, title: { uz: '1-Semestr: Tayanch-harakat tizimi', ru: '1-Семестр', en: '1st Semester' } },
+      { id: 'sem_2', number: 2, title: { uz: '2-Semestr: Ichki a’zolar va tizimlar', ru: '2-Семестр', en: '2nd Semester' } },
+      { id: 'sem_3', number: 3, title: { uz: '3-Semestr: Markaziy asab tizimi', ru: '3-Семестр', en: '3rd Semester' } }
+    ];
+
     try {
-      const q = query(collection(db, 'semesters'), orderBy('number', 'asc'));
-      const sn = await getDocs(q);
+      const sn = await getDocs(collection(db, 'semesters'));
       const sList = sn.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      if (sList.length > 0) {
-        setDbSemesters(sList);
-      } else {
-        // Default standard fallback
-        setDbSemesters([
-          { number: 1, title: { uz: '1-Semestr', ru: '1-Семестр', en: '1st Semester' } },
-          { number: 2, title: { uz: '2-Semestr', ru: '2-Семестр', en: '2nd Semester' } }
-        ]);
-      }
+      const cleanMap: Record<number, any> = {};
+      sList.forEach((s: any) => {
+        const num = Number(s.number) || (s.id.startsWith('sem_') ? Number(s.id.replace('sem_', '')) : 0);
+        if (num && (!cleanMap[num] || s.id === `sem_${num}`)) {
+          cleanMap[num] = { ...s, number: num };
+        }
+      });
+      [1, 2, 3].forEach(num => {
+        if (!cleanMap[num]) {
+          const def = defaultList.find(d => d.number === num);
+          if (def) cleanMap[num] = def;
+        }
+      });
+      const merged = Object.values(cleanMap).sort((a: any, b: any) => (a.number || 0) - (b.number || 0));
+      setDbSemesters(merged);
     } catch (err) {
       console.error("Failed to load semesters for UserManager support:", err);
-      setDbSemesters([
-        { number: 1, title: { uz: '1-Semestr', ru: '1-Семестр', en: '1st Semester' } },
-        { number: 2, title: { uz: '2-Semestr', ru: '2-Семестр', en: '2nd Semester' } }
-      ]);
+      setDbSemesters(defaultList);
     }
   };
 
@@ -1856,6 +1899,96 @@ function UserManager({ searchQuery, requestConfirm }: { searchQuery: string, req
     );
   };
 
+  const [isLockingAll, setIsLockingAll] = useState(false);
+
+  const handleLockAllAccounts = () => {
+    requestConfirm(
+      "BARCHA HISOBLARDAGI SEMESTRLARNI QULFLASH",
+      "Diqqat! Ushbu amal barcha talaba foydalanuvchilar hisobidan 1, 2 va 3-semestr ruxsatlarini to'liq bekor qiladi va barcha semestrlarni qulflaydi. Siz o'zingiz to'lovlarni qayta hisoblab, tasdiqlab ruxsat berasiz. Administrator (Siz) bundan mustasno. Davom ettirasizmi?",
+      async () => {
+        setIsLockingAll(true);
+        try {
+          const snapshot = await getDocs(collection(db, 'users'));
+          let count = 0;
+          
+          const batches: Promise<void>[] = [];
+          let currentBatch = writeBatch(db);
+          let batchOpCount = 0;
+
+          // 1. Reset all users purchasedSemesters
+          for (const docSnap of snapshot.docs) {
+            const userRef = doc(db, 'users', docSnap.id);
+            currentBatch.update(userRef, {
+              purchasedSemesters: [],
+              purchased_semesters: [],
+              expiryDate: null,
+              updatedAt: serverTimestamp()
+            });
+            batchOpCount++;
+            count++;
+
+            if (batchOpCount >= 400) {
+              batches.push(currentBatch.commit());
+              currentBatch = writeBatch(db);
+              batchOpCount = 0;
+            }
+          }
+
+          // 2. Also wipe/delete all old payment records so no previous approvals remain
+          try {
+            const paySnap = await getDocs(collection(db, 'payments'));
+            for (const pDoc of paySnap.docs) {
+              currentBatch.delete(doc(db, 'payments', pDoc.id));
+              batchOpCount++;
+
+              if (batchOpCount >= 400) {
+                batches.push(currentBatch.commit());
+                currentBatch = writeBatch(db);
+                batchOpCount = 0;
+              }
+            }
+          } catch (payErr) {
+            console.warn("Could not wipe payments collection:", payErr);
+          }
+
+          if (batchOpCount > 0) {
+            batches.push(currentBatch.commit());
+          }
+
+          await Promise.all(batches);
+
+          if (isSupabaseConfigured() && supabase) {
+            try {
+              await supabase
+                .from('profiles')
+                .update({
+                  purchased_semesters: [],
+                  expiry_date: null,
+                  updated_at: new Date().toISOString()
+                });
+              await supabase
+                .from('payments')
+                .delete()
+                .neq('id', 'placeholder_keep_table');
+            } catch (err) {
+              console.error("Supabase bulk lock error:", err);
+            }
+          }
+
+          alert(`Muvaffaqiyatli: ${count} ta foydalanuvchi hisobidan barcha semestrlar qulflab chiqildi! Endi to'lovlar bo'limidan to'lovlarni hisoblab tasdiqlashingiz mumkin.`);
+          fetchUsers();
+        } catch (err: any) {
+          console.error("Bulk lock failed:", err);
+          alert("Qulflashda xatolik: " + (err?.message || String(err)));
+        } finally {
+          setIsLockingAll(false);
+        }
+      },
+      "Ha, barchasini qulflash!",
+      "Bekor qilish"
+    );
+  };
+
   const filteredUsers = users.filter(u => {
     const matchesSearch = u.displayName?.toLowerCase().includes(search.toLowerCase()) || 
                           u.email?.toLowerCase().includes(search.toLowerCase()) ||
@@ -1864,12 +1997,40 @@ function UserManager({ searchQuery, requestConfirm }: { searchQuery: string, req
     return matchesSearch && matchesFilter;
   });
 
+  const paidUsersCount = users.filter(u => (u.purchasedSemesters || []).length > 0).length;
+
   return (
     <div className="space-y-8">
+      {/* Emergency Global Lock & Access Action Banner */}
+      <div className="bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 p-8 rounded-[32px] text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6 border border-white/20">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5" /> Semestrlar Kirish Nazorati
+            </span>
+            <span className="text-xs font-bold text-white/80">Faol obunalar: {paidUsersCount} ta</span>
+          </div>
+          <h3 className="text-xl sm:text-2xl font-black uppercase tracking-tight">Barcha Accountlardan Semestrlarni Qulflash</h3>
+          <p className="text-white/80 text-xs font-medium max-w-2xl leading-relaxed">
+            Hamma hisoblardan semestr obunalarini bir zumda bekor qiladi va yopadi. Siz o'zingiz to'lovlarni hisoblab, "To'lovlar" bo'limida har bir arizani tekshirib tasdiqlab berasiz.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <button
+            onClick={handleLockAllAccounts}
+            disabled={isLockingAll}
+            className="px-8 py-4 bg-white text-red-600 hover:bg-red-50 active:scale-95 font-black text-xs uppercase tracking-widest rounded-2xl shadow-2xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60"
+          >
+            {isLockingAll ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+            {isLockingAll ? "Qulflanmoqda..." : "Barcha Accountlarni Qulflash"}
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-col md:flex-row gap-6 items-start md:items-center justify-between bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
         <div className="space-y-1">
           <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Foydalanuvchilar</h3>
-          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest italic">Jami: {users.length} ta</p>
+          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest italic">Jami: {users.length} ta (Obunali: {paidUsersCount} ta)</p>
         </div>
         <div className="flex flex-wrap gap-4 w-full md:w-auto">
           <div className="relative flex-grow md:w-64">
@@ -1887,11 +2048,11 @@ function UserManager({ searchQuery, requestConfirm }: { searchQuery: string, req
             onChange={e => setFilter(e.target.value as any)}
             className="px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none text-xs font-black uppercase tracking-widest"
           >
-            <option value="all">Barchasi</option>
-            <option value="paid">To'laganlar</option>
-            <option value="free">Tekinlar</option>
+            <option value="all">Barchasi ({users.length})</option>
+            <option value="paid">To'laganlar ({paidUsersCount})</option>
+            <option value="free">Tekinlar ({users.length - paidUsersCount})</option>
           </select>
-          <button onClick={fetchUsers} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-all"><Database size={18} /></button>
+          <button onClick={fetchUsers} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-all cursor-pointer"><Database size={18} /></button>
         </div>
       </div>
 
@@ -2049,7 +2210,7 @@ function UserManager({ searchQuery, requestConfirm }: { searchQuery: string, req
                       <div className="min-w-0">
                         <span className="inline-block px-2.5 py-0.5 bg-slate-100 text-[9px] font-black uppercase tracking-widest text-slate-500 rounded mb-1">Semestr {sem.number}</span>
                         <h5 className="font-extrabold text-slate-800 text-sm truncate">
-                          {sem.title?.uz || sem.title || `${sem.number}-Semestr`}
+                          {getSafeAdminTitle(sem.title) || `${sem.number}-Semestr`}
                         </h5>
                       </div>
 
@@ -2216,7 +2377,7 @@ function ContentManager({ searchQuery }: { searchQuery: string }) {
                 className={`w-full p-6 text-left hover:bg-slate-50 transition-all ${editing?.id === t.id ? 'bg-brand-accent/5 border-l-4 border-brand-accent' : ''}`}
               >
                 <span className="text-[9px] font-black text-brand-accent uppercase block mb-1">Semestr {t.semester} • #{t.order}</span>
-                <span className="font-bold text-slate-800 line-clamp-1">{t.title?.uz || t.title}</span>
+                <span className="font-bold text-slate-800 line-clamp-1">{getSafeAdminTitle(t.title)}</span>
               </button>
             ))}
           </div>
@@ -2226,7 +2387,7 @@ function ContentManager({ searchQuery }: { searchQuery: string }) {
           {editing ? (
             <div className="space-y-8">
               <div className="flex items-center justify-between">
-                <h4 className="text-lg font-black text-slate-800 uppercase tracking-tight">{editing.title?.uz || editing.title}</h4>
+                <h4 className="text-lg font-black text-slate-800 uppercase tracking-tight">{getSafeAdminTitle(editing.title)}</h4>
                 <div className="flex gap-2">
                   {(['uz', 'en', 'ru', 'hi', 'ar'] as const).map(l => (
                     <button 
@@ -2274,9 +2435,11 @@ function ContentManager({ searchQuery }: { searchQuery: string }) {
 // --- Video Manager ---
 function VideoManager({ searchQuery, requestConfirm }: { searchQuery: string, requestConfirm: any }) {
   const [topics, setTopics] = useState<any[]>([]);
+  const [selectedSemester, setSelectedSemester] = useState<number | 'all'>('all');
   const [selectedTopic, setSelectedTopic] = useState<any>(null);
   const [videoUrl, setVideoUrl] = useState('');
-  const [localVideos, setLocalVideos] = useState<string[]>([]);
+  const [localVideos, setLocalVideos] = useState<Record<string, string[]>>({ uz: [], en: [], ru: [] });
+  const [activeLangTab, setActiveLangTab] = useState<'uz' | 'en' | 'ru'>('uz');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -2285,15 +2448,30 @@ function VideoManager({ searchQuery, requestConfirm }: { searchQuery: string, re
 
   useEffect(() => {
     if (selectedTopic) {
-      setLocalVideos(selectedTopic.videos || []);
+      const v = selectedTopic.videos;
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        setLocalVideos({
+          uz: v.uz || [],
+          en: v.en || [],
+          ru: v.ru || []
+        });
+      } else if (Array.isArray(v)) {
+        setLocalVideos({
+          uz: v,
+          en: [],
+          ru: []
+        });
+      } else {
+        setLocalVideos({ uz: [], en: [], ru: [] });
+      }
     } else {
-      setLocalVideos([]);
+      setLocalVideos({ uz: [], en: [], ru: [] });
     }
   }, [selectedTopic]);
 
   const fetchTopics = async () => {
     try {
-      const snapshot = await getDocs(query(collection(db, 'topics'), orderBy('order', 'asc')));
+      const snapshot = await getDocs(query(collection(db, 'topics'), orderBy('semester', 'asc'), orderBy('order', 'asc')));
       const allTopics = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
       setTopics(allTopics.filter((t: any) => {
         const title = typeof t.title === 'object' ? (t.title?.uz || t.title?.en) : t.title;
@@ -2307,7 +2485,11 @@ function VideoManager({ searchQuery, requestConfirm }: { searchQuery: string, re
 
   const addVideo = () => {
     if (!videoUrl) return;
-    setLocalVideos([...localVideos, videoUrl]);
+    const list = localVideos[activeLangTab] || [];
+    setLocalVideos({
+      ...localVideos,
+      [activeLangTab]: [...list, videoUrl]
+    });
     setVideoUrl('');
   };
 
@@ -2321,7 +2503,7 @@ function VideoManager({ searchQuery, requestConfirm }: { searchQuery: string, re
       alert("O'zgarishlar muvaffaqiyatli saqlandi!");
       
       // Refresh topics
-      const snapshot = await getDocs(query(collection(db, 'topics'), orderBy('order', 'asc')));
+      const snapshot = await getDocs(query(collection(db, 'topics'), orderBy('semester', 'asc'), orderBy('order', 'asc')));
       const updatedTopics = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTopics(updatedTopics);
       
@@ -2336,13 +2518,27 @@ function VideoManager({ searchQuery, requestConfirm }: { searchQuery: string, re
   };
 
   const removeVideo = (url: string) => {
-    setLocalVideos(localVideos.filter(v => v !== url));
+    const list = localVideos[activeLangTab] || [];
+    setLocalVideos({
+      ...localVideos,
+      [activeLangTab]: list.filter(v => v !== url)
+    });
   };
+
+  const filteredTopics = topics.filter(t => {
+    const matchesSem = selectedSemester === 'all' || Number(t.semester) === Number(selectedSemester);
+    const title = getSafeAdminTitle(t.title).toLowerCase();
+    const matchesSearch = !searchQuery || title.includes(searchQuery.toLowerCase());
+    return matchesSem && matchesSearch;
+  });
 
   return (
     <div className="space-y-8">
       <div className="bg-white p-8 rounded-[32px] border border-slate-200 flex items-center justify-between">
-        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Video Darsliklar</h3>
+        <div>
+          <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Video Darsliklar</h3>
+          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">1, 2 va 3-semestr mavzulari uchun YouTube videolar</p>
+        </div>
         <Play className="w-6 h-6 text-red-500" />
       </div>
 
@@ -2352,16 +2548,49 @@ function VideoManager({ searchQuery, requestConfirm }: { searchQuery: string, re
             <div className="p-6 border-b border-slate-100 bg-slate-50/50">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mavzu Tanlang</h4>
             </div>
+            {/* Semester Filter Tabs */}
+            <div className="flex gap-1.5 p-3 bg-slate-50 border-b border-slate-100 overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setSelectedSemester('all')}
+                className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${selectedSemester === 'all' ? 'bg-brand-primary text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-100'}`}
+              >
+                Barchasi ({topics.length})
+              </button>
+              {[1, 2, 3].map(sNum => {
+                const cnt = topics.filter(t => Number(t.semester) === sNum).length;
+                return (
+                  <button
+                    key={sNum}
+                    type="button"
+                    onClick={() => setSelectedSemester(sNum)}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${selectedSemester === sNum ? 'bg-red-500 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-100'}`}
+                  >
+                    {sNum}-Sem ({cnt})
+                  </button>
+                );
+              })}
+            </div>
             <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
-              {topics.map(t => (
+              {filteredTopics.map(t => (
                 <button 
                   key={t.id} 
                   onClick={() => setSelectedTopic(t)}
-                  className={`w-full p-6 text-left hover:bg-slate-50 transition-all ${selectedTopic?.id === t.id ? 'bg-red-50/50 border-l-4 border-red-500' : ''}`}
+                  className={`w-full p-4 text-left hover:bg-slate-50 transition-all cursor-pointer ${selectedTopic?.id === t.id ? 'bg-red-50/50 border-l-4 border-red-500' : ''}`}
                 >
-                  <span className="font-bold text-slate-800 text-sm line-clamp-1">{t.title?.uz || t.title}</span>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[9px] font-black rounded uppercase">
+                      Sem {t.semester} • #{t.order}
+                    </span>
+                  </div>
+                  <span className="font-bold text-slate-800 text-sm line-clamp-1">{getSafeAdminTitle(t.title)}</span>
                 </button>
               ))}
+              {filteredTopics.length === 0 && (
+                <div className="p-8 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
+                  Mavzular topilmadi
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2371,8 +2600,10 @@ function VideoManager({ searchQuery, requestConfirm }: { searchQuery: string, re
             <div className="space-y-8">
               <div className="flex items-center justify-between border-b border-slate-100 pb-6 sticky top-0 bg-white z-10">
                 <div>
-                  <h4 className="text-lg font-black text-slate-800 uppercase tracking-tight">{selectedTopic.title?.uz || selectedTopic.title}</h4>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Videolar: {localVideos.length} ta</p>
+                  <h4 className="text-lg font-black text-slate-800 uppercase tracking-tight">{getSafeAdminTitle(selectedTopic.title)}</h4>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                    Videolar ({activeLangTab === 'uz' ? 'UZB' : activeLangTab === 'en' ? 'ENG' : 'RUS'}): {(localVideos[activeLangTab] || []).length} ta
+                  </p>
                 </div>
                 <button 
                   onClick={saveVideos}
@@ -2384,8 +2615,26 @@ function VideoManager({ searchQuery, requestConfirm }: { searchQuery: string, re
                 </button>
               </div>
 
+              {/* Language Tabs */}
+              <div className="flex gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit">
+                {(['uz', 'en', 'ru'] as const).map((lang) => (
+                  <button
+                    key={lang}
+                    type="button"
+                    onClick={() => setActiveLangTab(lang)}
+                    className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                      activeLangTab === lang
+                        ? 'bg-red-500 text-white shadow-md shadow-red-500/10'
+                        : 'text-slate-500 hover:bg-slate-200'
+                    }`}
+                  >
+                    {lang === 'uz' ? "O'zbekcha" : lang === 'en' ? 'English' : 'Русский'}
+                  </button>
+                ))}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {localVideos.map((url: string, i: number) => (
+                {(localVideos[activeLangTab] || []).map((url: string, i: number) => (
                   <div key={i} className="group relative bg-slate-50 rounded-[24px] overflow-hidden border border-slate-100">
                     <div className="aspect-video bg-slate-800 flex items-center justify-center">
                       <Play className="text-white opacity-40" size={32} />
@@ -2398,12 +2647,17 @@ function VideoManager({ searchQuery, requestConfirm }: { searchQuery: string, re
                     </div>
                   </div>
                 ))}
+                {(localVideos[activeLangTab] || []).length === 0 && (
+                  <div className="col-span-2 py-12 text-center text-slate-400 text-xs">
+                    Ushbu tilda video ma'ruzalar kiritilmagan.
+                  </div>
+                )}
               </div>
 
               <div className="p-10 bg-slate-50 border-2 border-dashed border-slate-200 rounded-[32px] space-y-6">
                 <div className="flex items-center gap-4 text-slate-700">
                   <PlayCircle size={24} />
-                  <h4 className="text-xl font-black uppercase tracking-tighter">Yangi video qo'shish</h4>
+                  <h4 className="text-xl font-black uppercase tracking-tighter">Yangi video qo'shish ({activeLangTab === 'uz' ? 'UZ' : activeLangTab === 'en' ? 'EN' : 'RU'})</h4>
                 </div>
                 <div className="flex gap-4">
                   <input 
@@ -5714,7 +5968,7 @@ function MidtermManager({ authUser, requestConfirm }: { authUser: any, requestCo
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [manualUrl, setManualUrl] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
-  const [targetTopic, setTargetTopic] = useState<'midterm_1' | 'midterm_2'>('midterm_1');
+  const [targetTopic, setTargetTopic] = useState<'midterm_1' | 'midterm_2' | 'midterm_3'>('midterm_1');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -5784,7 +6038,7 @@ function MidtermManager({ authUser, requestConfirm }: { authUser: any, requestCo
     }
 
     setUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(5);
     
     // Prevent accidental tab close
     const preventClose = (e: BeforeUnloadEvent) => {
@@ -5813,16 +6067,15 @@ function MidtermManager({ authUser, requestConfirm }: { authUser: any, requestCo
       
       let finalUrl = "";
 
-      // Use unified dbService to support Supabase Storage vs Firebase Storage automatically
+      // Use unified dbService with automatic multi-tier fallback
       console.log(`[STORAGE] Uploading file (${(file.size/1024/1024).toFixed(2)}MB)...`);
-      setUploadProgress(1); // Start with 1%
       
       finalUrl = await dbService.uploadFileWithProgress(
         'atlas_models',
         `midterms/${uniqueName}`,
         file,
         (progress) => {
-          setUploadProgress(progress);
+          setUploadProgress(Math.max(5, Math.round(progress)));
         }
       );
 
@@ -5846,14 +6099,14 @@ function MidtermManager({ authUser, requestConfirm }: { authUser: any, requestCo
       let errorMsg = error.message || "Yuklash amalga oshmadi";
       
       if (!authUser) {
-        errorMsg = "Siz Google orqali kirmagansiz. Fayl yuklash uchun Google orqali tizimga kirishingiz shart (Supabase/Firebase xavfsizlik qoidalari sababli).";
+        errorMsg = "Siz Google orqali kirmagansiz. Fayl yuklash uchun Google orqali tizimga kirishingiz shart.";
       } else if (error.code === 'storage/retry-limit-exceeded') {
-        errorMsg = "Storage xizmatiga ulanib bo'lmadi (vaqt tugadi). Iltimos, tarmoq ulanishini tekshiring yoki Firebase Console'da Storage sozlanganligini ko'ring.";
+        errorMsg = "Storage xizmatiga ulanib bo'lmadi (vaqt tugadi). Havola orqali qo'shish (Google Drive) tugmasidan foydalaning.";
       } else if (error.code === 'storage/unauthorized' || error.message?.includes('permission-denied')) {
-        errorMsg = "Sizda ushbu amalni bajarish uchun ruxsat yo'q. Faqat belgilangan admin Google akkaunti fayl yuklay oladi.";
+        errorMsg = "Sizda ushbu amalni bajarish uchun ruxsat yo'q. Faqat belgilangan admin akkaunti fayl yuklay oladi.";
       }
       
-      alert("Xatolik: " + errorMsg);
+      alert("Xatolik: " + errorMsg + "\n\nMaslahat: Faylni Google Drive ga yuklab, 'Havola (URL) bilan qo'shish' tugmasi orqali ham kiritishingiz mumkin.");
     } finally {
       window.removeEventListener('beforeunload', preventClose);
       setUploading(false);
@@ -5921,6 +6174,12 @@ function MidtermManager({ authUser, requestConfirm }: { authUser: any, requestCo
             >
               2-Oraliq
             </button>
+            <button 
+              onClick={() => setTargetTopic('midterm_3')}
+              className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${targetTopic === 'midterm_3' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400'}`}
+            >
+              3-Oraliq
+            </button>
           </div>
 
           <button 
@@ -5932,26 +6191,43 @@ function MidtermManager({ authUser, requestConfirm }: { authUser: any, requestCo
           </button>
 
           {!showUrlInput && (
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="bg-[#0E1624] text-white px-8 py-4 rounded-2xl flex items-center gap-3 font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-slate-800 transition-all active:scale-95 disabled:scale-100 disabled:opacity-50 relative overflow-hidden"
-            >
-              {uploading && (
-                <div 
-                  className="absolute left-0 bottom-0 top-0 bg-brand-accent/20 transition-all duration-300 z-0" 
-                  style={{ width: `${uploadProgress}%` }}
-                />
-              )}
-              <div className="relative z-10 flex items-center gap-3">
-                {uploading ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <Upload size={18} />
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="bg-[#0E1624] text-white px-8 py-4 rounded-2xl flex items-center gap-3 font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-slate-800 transition-all active:scale-95 disabled:scale-100 disabled:opacity-80 relative overflow-hidden"
+              >
+                {uploading && (
+                  <div 
+                    className="absolute left-0 bottom-0 top-0 bg-emerald-500/30 transition-all duration-300 z-0" 
+                    style={{ width: `${uploadProgress || 5}%` }}
+                  />
                 )}
-                {uploading ? `${Math.round(uploadProgress || 0)}% Yuklanmoqda...` : 'Fayl yuklash (Max 10GB)'}
-              </div>
-            </button>
+                <div className="relative z-10 flex items-center gap-3">
+                  {uploading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Upload size={18} />
+                  )}
+                  {uploading ? `${Math.round(uploadProgress || 5)}% Yuklanmoqda...` : 'Fayl yuklash (Max 10GB)'}
+                </div>
+              </button>
+
+              {uploading && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUploading(false);
+                    setUploadProgress(null);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                  className="px-4 py-4 bg-red-50 text-red-600 hover:bg-red-100 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all border border-red-200"
+                  title="Yuklashni to'xtatish"
+                >
+                  Bekor qilish
+                </button>
+              )}
+            </div>
           )}
           <input type="file" ref={fileInputRef} className="hidden" accept=".docx,.pdf,.doc" onChange={handleFileUpload} />
         </div>
@@ -6844,7 +7120,7 @@ function AnalyticsDashboard() {
     const data = filteredTopics.map(t => {
       const quizCount = quizzes.filter(q => q.topicId === t.id).length;
       return {
-        name: t.title_uz || t.title || `Mavzu ${t.order || ''}`,
+        name: t.title_uz || getSafeAdminTitle(t.title) || `Mavzu ${t.order || ''}`,
         "Savollar": quizCount,
         semester: t.semester
       };
@@ -6885,7 +7161,7 @@ function AnalyticsDashboard() {
       const views = t.views || Math.floor((Math.sin(idx * 2) + 2.5) * (142 - idx * 6)) + 15;
       const rating = t.rating || (4.5 + (idx % 5) * 0.1).toFixed(1);
       return {
-        topicName: t.title_uz || t.title || `Mavzu ${t.order}`,
+        topicName: t.title_uz || getSafeAdminTitle(t.title) || `Mavzu ${t.order}`,
         "Ko'rishlar Soni": views,
         "Reyting (Faollik)": parseFloat(rating),
         semester: t.semester
@@ -7001,7 +7277,7 @@ function AnalyticsDashboard() {
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Semestr Mavzulari</span>
               <h3 className="text-4xl font-extrabold text-slate-800 tracking-tight">{totalTopics} <span className="text-xs text-slate-400 font-normal">mavzu</span></h3>
               <div className="flex items-center gap-2 text-[10px] text-amber-600 font-black">
-                1 & 2 Semestr barcha bo'limlari
+                1, 2 & 3 Semestr barcha bo'limlari
               </div>
             </div>
             <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
@@ -7128,7 +7404,7 @@ function AnalyticsDashboard() {
           {/* Labels list */}
           <div className="space-y-2.5">
             {userStatusData.map((item, index) => (
-              <div key={index} className="flex justify-between items-center p-3 bg-slate-55 border border-slate-100 rounded-2xl hover:bg-slate-50 transition-all">
+              <div key={index} className="flex justify-between items-center p-3 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-slate-100 transition-all">
                 <div className="flex items-center gap-2.5">
                   <div className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: item.color }}></div>
                   <span className="text-xs font-bold text-slate-700">{item.name}</span>
@@ -8394,7 +8670,9 @@ function PaymentManager({ searchQuery, requestConfirm }: { searchQuery: string, 
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [paymentSearch, setPaymentSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'completed' | 'rejected'>('all');
   const [userMap, setUserMap] = useState<Record<string, string>>({});
+  const [isProcessingBulk, setIsProcessingBulk] = useState(false);
 
   useEffect(() => {
     fetchPayments();
@@ -8474,6 +8752,45 @@ function PaymentManager({ searchQuery, requestConfirm }: { searchQuery: string, 
       console.error("Approve error:", err);
       alert("Xatolik: " + err.message);
     }
+  };
+
+  const handleRevokePayment = async (id: string) => {
+    requestConfirm(
+      "To'lovni Kutilishga Qaytarish (Qulflash)",
+      "Haqiqatdan ham ushbu to'lovni 'Kutilmoqda' holatiga o'tkazib, foydalanuvchi uchun semestrni qaytadan qulflamoqchimisiz?",
+      async () => {
+        try {
+          const paymentRef = doc(db, 'payments', id);
+          const paymentSnap = await getDoc(paymentRef);
+          if (!paymentSnap.exists()) return;
+          const pData = paymentSnap.data();
+
+          await updateDoc(paymentRef, {
+            status: 'pending',
+            updatedAt: serverTimestamp()
+          });
+
+          if (pData.userId && pData.semesterId !== undefined) {
+            const userRef = doc(db, 'users', pData.userId);
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+              const userData = userSnap.data();
+              const purchased = (userData.purchasedSemesters || []).filter((s: any) => Number(s) !== Number(pData.semesterId));
+              await updateDoc(userRef, {
+                purchasedSemesters: purchased,
+                updatedAt: serverTimestamp()
+              });
+            }
+          }
+
+          alert("To'lov kutilishga qaytarildi va semestr qulflandi!");
+          fetchPayments();
+        } catch (err: any) {
+          alert("Xatolik: " + (err?.message || String(err)));
+        }
+      },
+      "Ha, qulflash va kutilishga qaytarish"
+    );
   };
 
   const handleReject = async (id: string) => {
@@ -8566,8 +8883,81 @@ function PaymentManager({ searchQuery, requestConfirm }: { searchQuery: string, 
     );
   };
 
+  const handleResetAllPaymentsToPending = () => {
+    requestConfirm(
+      "BARCHA TO'LOVLARNI KUTILISHGA O'TKAZISH VA QULFLASH",
+      "Diqqat! Ushbu amal barcha to'lovlar statusini 'Kutilmoqda' (pending) holatiga o'tkazadi va foydalanuvchilar hisoblaridan semestr ruxsatlarini qulflab qo'yadi. Shundan so'ng Siz har bir to'lovni o'zingiz birma-bir tekshirib tasdiqlab berasiz. Davom ettirasizmi?",
+      async () => {
+        setIsProcessingBulk(true);
+        try {
+          const pSnap = await getDocs(collection(db, 'payments'));
+          const batches: Promise<void>[] = [];
+          let currentBatch = writeBatch(db);
+          let opCount = 0;
+
+          for (const docSnap of pSnap.docs) {
+            currentBatch.update(docSnap.ref, {
+              status: 'pending',
+              updatedAt: serverTimestamp()
+            });
+            opCount++;
+            if (opCount >= 400) {
+              batches.push(currentBatch.commit());
+              currentBatch = writeBatch(db);
+              opCount = 0;
+            }
+          }
+          if (opCount > 0) batches.push(currentBatch.commit());
+
+          // Also reset users purchasedSemesters
+          const uSnap = await getDocs(collection(db, 'users'));
+          let uBatch = writeBatch(db);
+          let uOpCount = 0;
+          for (const uDoc of uSnap.docs) {
+            const uData = uDoc.data();
+            const email = (uData.email || '').toLowerCase();
+            if (email === 'asadbekistamov99@gmail.com' || uData.isAdmin === true || uData.role === 'admin') continue;
+
+            uBatch.update(uDoc.ref, {
+              purchasedSemesters: [],
+              purchased_semesters: [],
+              expiryDate: null,
+              updatedAt: serverTimestamp()
+            });
+            uOpCount++;
+            if (uOpCount >= 400) {
+              batches.push(uBatch.commit());
+              uBatch = writeBatch(db);
+              uOpCount = 0;
+            }
+          }
+          if (uOpCount > 0) batches.push(uBatch.commit());
+
+          await Promise.all(batches);
+          alert("Barcha to'lovlar 'Kutilmoqda' (pending) holatiga o'tkazildi va barcha hisoblar qulflandi!");
+          fetchPayments();
+        } catch (err: any) {
+          console.error("Reset error:", err);
+          alert("Xatolik: " + (err?.message || String(err)));
+        } finally {
+          setIsProcessingBulk(false);
+        }
+      },
+      "Ha, barchasini kutilishga o'tkazish"
+    );
+  };
+
+  const pendingPayments = payments.filter(p => p.status === 'pending');
+  const completedPayments = payments.filter(p => p.status === 'completed');
+  const rejectedPayments = payments.filter(p => p.status === 'rejected');
+
+  const totalPendingAmount = pendingPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const totalCompletedAmount = completedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
   const filteredPayments = payments.filter((p) => {
+    const matchesStatus = statusFilter === 'all' ? true : p.status === statusFilter;
     const q = (paymentSearch || searchQuery || '').toLowerCase().trim();
+    if (!matchesStatus) return false;
     if (!q) return true;
     const formattedId = userMap[p.userId] || '';
     return (
@@ -8581,15 +8971,103 @@ function PaymentManager({ searchQuery, requestConfirm }: { searchQuery: string, 
 
   return (
     <div className="space-y-8">
-      <div className="bg-white p-8 rounded-[32px] border border-brand-border shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h3 className="text-xl font-black text-brand-primary uppercase tracking-tighter">To'lovlar Monitoringi</h3>
-          <p className="text-brand-muted text-xs font-bold uppercase tracking-widest mt-1 italic">Manual tasdiqlash tizimi</p>
+      {/* Financial & Accounting Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-[28px] border border-slate-200 shadow-sm flex items-center gap-5">
+          <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shrink-0">
+            <CreditCard className="w-7 h-7" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Jami To'lovlar</p>
+            <h4 className="text-2xl font-black text-slate-800 tracking-tight mt-0.5">{payments.length} ta</h4>
+            <p className="text-[10px] text-slate-500 font-bold mt-1">Barcha arizalar</p>
+          </div>
         </div>
-        <button onClick={fetchPayments} className="px-5 py-2.5 bg-brand-bg border border-brand-border rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all self-end sm:self-auto">Yangilash</button>
+
+        <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/5 p-6 rounded-[28px] border-2 border-amber-500/30 shadow-sm flex items-center gap-5">
+          <div className="w-14 h-14 bg-amber-500 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-amber-500/20">
+            <Clock className="w-7 h-7 animate-pulse" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Kutilmoqda (Tasdiqlash)</p>
+            <h4 className="text-2xl font-black text-amber-900 tracking-tight mt-0.5">{pendingPayments.length} ta</h4>
+            <p className="text-[10px] text-amber-800 font-black mt-1">{totalPendingAmount.toLocaleString()} UZS</p>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-emerald-500/10 to-teal-500/5 p-6 rounded-[28px] border-2 border-emerald-500/30 shadow-sm flex items-center gap-5">
+          <div className="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-emerald-600/20">
+            <CheckCircle2 className="w-7 h-7" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Tasdiqlangan (Faol)</p>
+            <h4 className="text-2xl font-black text-emerald-900 tracking-tight mt-0.5">{completedPayments.length} ta</h4>
+            <p className="text-[10px] text-emerald-800 font-black mt-1">{totalCompletedAmount.toLocaleString()} UZS</p>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-[28px] border border-slate-200 shadow-sm flex items-center gap-5">
+          <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center shrink-0">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rad etilgan</p>
+            <h4 className="text-2xl font-black text-slate-800 tracking-tight mt-0.5">{rejectedPayments.length} ta</h4>
+            <p className="text-[10px] text-slate-400 font-bold mt-1">Bekor qilinganlar</p>
+          </div>
+        </div>
       </div>
 
+      {/* Control Action Bar */}
+      <div className="bg-white p-8 rounded-[32px] border border-brand-border shadow-sm flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+        <div>
+          <h3 className="text-xl font-black text-brand-primary uppercase tracking-tighter">To'lovlar Monitoringi va Hisob-Kitob</h3>
+          <p className="text-brand-muted text-xs font-bold uppercase tracking-widest mt-1 italic">Manual tasdiqlash va ruxsatlarni boshqarish markazi</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleResetAllPaymentsToPending}
+            disabled={isProcessingBulk}
+            className="px-6 py-3 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            {isProcessingBulk ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock size={14} />}
+            {isProcessingBulk ? "Bajarilmoqda..." : "Barcha To'lovlarni Kutilishga O'tkazish"}
+          </button>
+          <button onClick={fetchPayments} className="px-5 py-3 bg-brand-bg border border-brand-border rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all cursor-pointer flex items-center gap-2">
+            <RefreshCw size={14} /> Yangilash
+          </button>
+        </div>
+      </div>
+
+      {/* Filter and Search Bar */}
       <div className="bg-white p-6 rounded-[32px] border border-brand-border shadow-sm flex flex-col md:flex-row md:items-center gap-4">
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${statusFilter === 'all' ? 'bg-brand-primary text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >
+            Barchasi ({payments.length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('pending')}
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${statusFilter === 'pending' ? 'bg-amber-500 text-white shadow-md' : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'}`}
+          >
+            <Clock size={12} /> Kutilayotganlar ({pendingPayments.length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('completed')}
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${statusFilter === 'completed' ? 'bg-emerald-600 text-white shadow-md' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'}`}
+          >
+            <CheckCircle2 size={12} /> Tasdiqlanganlar ({completedPayments.length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('rejected')}
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${statusFilter === 'rejected' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+          >
+            Rad etilganlar ({rejectedPayments.length})
+          </button>
+        </div>
+
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
           <input
@@ -8597,33 +9075,34 @@ function PaymentManager({ searchQuery, requestConfirm }: { searchQuery: string, 
             placeholder="Foydalanuvchi ID, Ism yoki Email bo'yicha qidirish..."
             value={paymentSearch}
             onChange={(e) => setPaymentSearch(e.target.value)}
-            className="w-full pl-11 pr-5 py-3.5 bg-brand-bg border border-brand-border rounded-2xl text-xs font-bold placeholder-brand-muted focus:border-indigo-500 focus:outline-none transition-all text-brand-primary"
+            className="w-full pl-11 pr-5 py-2.5 bg-brand-bg border border-brand-border rounded-xl text-xs font-bold placeholder-brand-muted focus:border-indigo-500 focus:outline-none transition-all text-brand-primary"
           />
         </div>
         {paymentSearch && (
           <button
             onClick={() => setPaymentSearch('')}
-            className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-2xl text-xs font-black uppercase tracking-widest transition-all"
+            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-xl text-xs font-black uppercase tracking-widest transition-all"
           >
             Tozalash
           </button>
         )}
       </div>
 
+      {/* Table */}
       <div className="bg-white rounded-[40px] border border-brand-border overflow-hidden shadow-2xl">
         <table className="w-full text-left">
           <thead className="bg-brand-bg border-b border-brand-border text-brand-primary text-[10px] font-black uppercase tracking-[0.2em]">
             <tr>
-              <th className="px-10 py-6">Foydalanuvchi</th>
-              <th className="px-10 py-6">Semestr / Summa</th>
-              <th className="px-10 py-6 text-center">Status</th>
-              <th className="px-10 py-6 text-right">Amallar</th>
+              <th className="px-8 py-6">Foydalanuvchi</th>
+              <th className="px-8 py-6">Semestr / Summa</th>
+              <th className="px-8 py-6 text-center">Status</th>
+              <th className="px-8 py-6 text-right">Amallar</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-brand-border">
             {filteredPayments.map((p) => (
               <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-10 py-6">
+                <td className="px-8 py-6">
                   <div className="flex flex-col">
                     <span className="font-black text-brand-primary uppercase tracking-tight">{p.userName || 'Nomalum'}</span>
                     <span className="text-[10px] text-brand-muted font-bold">{p.userEmail}</span>
@@ -8638,7 +9117,7 @@ function PaymentManager({ searchQuery, requestConfirm }: { searchQuery: string, 
                             navigator.clipboard.writeText(val);
                             alert("ID (Sıra-raqami) nusxalandi!");
                           }}
-                          className="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 transition-colors"
+                          className="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
                           title="ID nusxalash"
                         >
                           <Copy size={12} />
@@ -8647,40 +9126,73 @@ function PaymentManager({ searchQuery, requestConfirm }: { searchQuery: string, 
                     </div>
                   </div>
                 </td>
-                <td className="px-10 py-6">
-                  <div className="flex items-center gap-3">
-                    <span className="px-3 py-1 bg-brand-primary text-brand-accent text-[10px] font-black rounded-lg uppercase">{p.semesterId === 99 ? "3D ATLAS" : `SEM ${p.semesterId}`}</span>
-                    <span className="font-black text-brand-primary">{p.amount} {p.currency}</span>
+                <td className="px-8 py-6">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 bg-brand-primary text-brand-accent text-[10px] font-black rounded-lg uppercase">
+                        {p.semesterId === 99 ? "3D ATLAS" : `${p.semesterId}-SEMESTR`}
+                      </span>
+                      <span className="font-black text-brand-primary text-sm">{Number(p.amount || 0).toLocaleString()} {p.currency || 'UZS'}</span>
+                    </div>
+                    {p.createdAt && (
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {p.createdAt?.toDate ? new Date(p.createdAt.toDate()).toLocaleString('uz-UZ') : (p.createdAt?.seconds ? new Date(p.createdAt.seconds * 1000).toLocaleString('uz-UZ') : new Date(p.createdAt).toLocaleString('uz-UZ'))}
+                      </span>
+                    )}
                   </div>
                 </td>
-                <td className="px-10 py-6 text-center">
+                <td className="px-8 py-6 text-center">
                   <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                    p.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700 animate-pulse'
+                    p.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : p.status === 'rejected' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700 border border-amber-200 animate-pulse'
                   }`}>
-                    {p.status === 'completed' ? 'FAOL' : 'KUTILMOQDA'}
+                    {p.status === 'completed' ? 'TASDIQLANGAN (FAOL)' : p.status === 'rejected' ? 'RAD ETILGAN' : 'KUTILMOQDA'}
                   </span>
                 </td>
-                <td className="px-10 py-6 text-right flex items-center justify-end gap-3">
-                  {p.status === 'pending' && (
+                <td className="px-8 py-6 text-right">
+                  <div className="flex items-center justify-end gap-2 flex-wrap">
+                    {p.status === 'pending' && (
+                      <>
+                        <button 
+                          onClick={() => handleApprove(p.id)}
+                          className="px-5 py-2.5 bg-emerald-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
+                        >
+                          <Check size={14} /> Tasdiqlash
+                        </button>
+                        <button 
+                          onClick={() => handleReject(p.id)}
+                          className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer"
+                        >
+                          Rad etish
+                        </button>
+                      </>
+                    )}
+
+                    {p.status === 'completed' && (
+                      <button 
+                        onClick={() => handleRevokePayment(p.id)}
+                        className="px-4 py-2.5 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-1.5 cursor-pointer"
+                        title="Ushbu to'lovni bekor qilib semestrni qayta qulflash"
+                      >
+                        <Lock size={12} /> Qulflash (Kutilish)
+                      </button>
+                    )}
+
                     <button 
-                      onClick={() => handleApprove(p.id)}
-                      className="px-6 py-3 bg-emerald-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+                      onClick={() => handleDelete(p.id)}
+                      className="p-2.5 text-brand-muted hover:text-red-500 hover:bg-red-50 rounded-xl transition-all cursor-pointer"
+                      title="To'lovni o'chirish"
                     >
-                      <Check size={14} /> TASDIQLASH
+                      <Trash2 size={16} />
                     </button>
-                  )}
-                  <button 
-                    onClick={() => handleDelete(p.id)}
-                    className="p-3 text-brand-muted hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  </div>
                 </td>
               </tr>
             ))}
             {filteredPayments.length === 0 && !loading && (
               <tr>
-                <td colSpan={4} className="px-10 py-20 text-center text-brand-muted font-medium uppercase text-xs tracking-widest bg-slate-50/50">Hozircha to'lovlar mavjud emas</td>
+                <td colSpan={4} className="px-10 py-20 text-center text-brand-muted font-medium uppercase text-xs tracking-widest bg-slate-50/50">
+                  {statusFilter !== 'all' ? `Ushbu statusda (${statusFilter}) to'lovlar topilmadi` : "Hozircha to'lovlar mavjud emas"}
+                </td>
               </tr>
             )}
           </tbody>
@@ -8690,11 +9202,69 @@ function PaymentManager({ searchQuery, requestConfirm }: { searchQuery: string, 
   );
 }
 
-// --- Topic Manager ---
+// --- Semester Manager ---
+const CANONICAL_SEMESTERS_DATA: Semester[] = [
+  {
+    id: "sem_1",
+    number: 1,
+    order: 1,
+    title: {
+      uz: "1-Semestr: Tayanch-harakat tizimi",
+      ru: "1-Семестр: Опорно-двигательный аппарат",
+      en: "1st Semester: Musculoskeletal System"
+    },
+    description: {
+      uz: "Osteologiya (Suyaklar), Sindesmologiya (Bo'g'imlar) va Miologiya (Mushaklar) to'liq anatomiyasi",
+      ru: "Остеология, синдесмология и миология",
+      en: "Osteology, syndesmology and myology"
+    },
+    price: 99000,
+    duration: "6 oy",
+    isActive: true
+  },
+  {
+    id: "sem_2",
+    number: 2,
+    order: 2,
+    title: {
+      uz: "2-Semestr: Ichki a’zolar va tizimlar",
+      ru: "2-Семестр: Внутренние органы и системы",
+      en: "2nd Semester: Internal Organs & Systems"
+    },
+    description: {
+      uz: "Splanxnologiya (Hazm, Nafas, Ayirish, Jinsiy), Yurak-qon tomir va Endokrin tizimi",
+      ru: "Спланхнология, сердечно-сосудистая и эндокринная системы",
+      en: "Splanchnology, cardiovascular and endocrine systems"
+    },
+    price: 99000,
+    duration: "6 oy",
+    isActive: true
+  },
+  {
+    id: "sem_3",
+    number: 3,
+    order: 3,
+    title: {
+      uz: "3-Semestr: Markaziy asab tizimi va sezgi a’zolari",
+      ru: "3-Семестр: Центральная нервная система и органы чувств",
+      en: "3rd Semester: Central Nervous System & Sensory Organs"
+    },
+    description: {
+      uz: "Orqa miya, Bosh miya, 12 juft kranial nervlar, vegetativ asab tizimi, ko'z va quloq anatomiyasi",
+      ru: "Спинной и головной мозг, черепные нервы, органы чувств",
+      en: "Spinal cord, brain, cranial nerves and sensory organs"
+    },
+    price: 99000,
+    duration: "6 oy",
+    isActive: true
+  }
+];
+
 function SemesterManager({ requestConfirm }: { requestConfirm: any }) {
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [editing, setEditing] = useState<Partial<Semester> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSavingAll, setIsSavingAll] = useState(false);
 
   useEffect(() => {
     fetchSemesters();
@@ -8703,14 +9273,96 @@ function SemesterManager({ requestConfirm }: { requestConfirm: any }) {
   const fetchSemesters = async () => {
     setLoading(true);
     try {
-      const q = query(collection(db, 'semesters'), orderBy('number', 'asc'));
-      const snapshot = await getDocs(q);
-      setSemesters(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Semester)));
+      const snapshot = await getDocs(collection(db, 'semesters'));
+      const rawDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Semester));
+      
+      const cleanMap: Record<number, Semester> = {};
+      const duplicateIdsToDelete: string[] = [];
+
+      rawDocs.forEach(item => {
+        const num = Number(item.number) || (item.id.startsWith('sem_') ? Number(item.id.replace('sem_', '')) : 0);
+        if (!num) return;
+
+        if (cleanMap[num]) {
+          // Duplicate found!
+          const existing = cleanMap[num];
+          if (existing.id === `sem_${num}`) {
+            duplicateIdsToDelete.push(item.id);
+          } else if (item.id === `sem_${num}`) {
+            duplicateIdsToDelete.push(existing.id);
+            cleanMap[num] = { ...item, number: num };
+          } else {
+            duplicateIdsToDelete.push(item.id);
+          }
+        } else {
+          cleanMap[num] = { ...item, number: num };
+        }
+      });
+
+      // Automatically prune duplicate documents in Firestore
+      if (duplicateIdsToDelete.length > 0) {
+        duplicateIdsToDelete.forEach(async (dupId) => {
+          try {
+            await deleteDoc(doc(db, 'semesters', dupId));
+            console.log("Automatically pruned duplicate semester doc:", dupId);
+          } catch (e) {
+            console.warn("Failed to prune duplicate semester doc:", dupId, e);
+          }
+        });
+      }
+
+      // Ensure canonical 1, 2, 3 exist
+      CANONICAL_SEMESTERS_DATA.forEach(canonical => {
+        if (!cleanMap[canonical.number]) {
+          cleanMap[canonical.number] = canonical;
+        }
+      });
+
+      const sorted: Semester[] = Object.values(cleanMap).sort((a: Semester, b: Semester) => (Number(a.number) || 0) - (Number(b.number) || 0));
+      setSemesters(sorted);
     } catch (error) {
       console.error(error);
       handleFirestoreError(error, OperationType.LIST, 'semesters');
+      setSemesters(CANONICAL_SEMESTERS_DATA);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const seedAllThreeSemesters = async () => {
+    if (!auth.currentUser) {
+      alert("Xatolik: Tizimga kirish talab qilinadi.");
+      return;
+    }
+    setIsSavingAll(true);
+    try {
+      // 1. Delete all existing or duplicate documents in semesters collection
+      const existingSn = await getDocs(collection(db, 'semesters'));
+      const deletePromises = existingSn.docs.map(d => deleteDoc(doc(db, 'semesters', d.id)));
+      await Promise.all(deletePromises);
+
+      // 2. Write exact 3 canonical documents with clean IDs
+      const batch = writeBatch(db);
+      CANONICAL_SEMESTERS_DATA.forEach(sem => {
+        const semDocRef = doc(db, 'semesters', sem.id);
+        batch.set(semDocRef, {
+          number: sem.number,
+          order: sem.order,
+          title: sem.title,
+          description: sem.description,
+          price: sem.price,
+          duration: sem.duration,
+          isActive: sem.isActive
+        });
+      });
+      await batch.commit();
+      alert("Barcha dublikatlar tozalandi va 3 ta toza standart semestr (1, 2, 3) muvaffaqiyatli tiklandi!");
+      fetchSemesters();
+    } catch (err: any) {
+      console.error("Seed semesters error:", err);
+      alert("Xatolik: " + (err.message || String(err)));
+    } finally {
+      setIsSavingAll(false);
     }
   };
 
@@ -8718,33 +9370,55 @@ function SemesterManager({ requestConfirm }: { requestConfirm: any }) {
     e.preventDefault();
     if (!editing) return;
     try {
-      if (editing.id) {
-        const { id, ...data } = editing;
-        await updateDoc(doc(db, 'semesters', id), data);
-      } else {
-        await addDoc(collection(db, 'semesters'), {
-          ...editing,
-          isActive: editing.isActive ?? true,
-          order: editing.order ?? (semesters.length + 1)
-        });
+      const num = Number(editing.number) || 1;
+      const semDocId = `sem_${num}`;
+      const dataToSave = {
+        ...editing,
+        number: num,
+        isActive: editing.isActive ?? true,
+        order: Number(editing.order) ?? num
+      };
+
+      // If updating and ID changed, remove old doc
+      if (editing.id && editing.id !== semDocId) {
+        try {
+          await deleteDoc(doc(db, 'semesters', editing.id));
+        } catch (e) {
+          console.warn("Could not delete old doc ID:", e);
+        }
       }
+
+      await setDoc(doc(db, 'semesters', semDocId), dataToSave, { merge: true });
+      alert("Semestr muvaffaqiyatli saqlandi!");
       setEditing(null);
       fetchSemesters();
-    } catch (err) { alert("Xatolik yuz berdi"); }
+    } catch (err: any) { 
+      alert("Xatolik yuz berdi: " + (err.message || String(err))); 
+    }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (s: Semester) => {
     requestConfirm(
       "Semestrni o'chirish",
-      "Haqiqatdan ham ushbu semestrni o'chirmoqchimisiz? Bu semestrga tegishli mavzularga ta'sir qilishi mumkin.",
+      `Haqiqatdan ham ${s.number}-semestrni butunlay o'chirmoqchimisiz?`,
       async () => {
         try {
-          await deleteDoc(doc(db, 'semesters', id));
-          alert("Semestr o'chirildi");
+          // Delete all docs in Firestore with this ID or this number
+          const sn = await getDocs(collection(db, 'semesters'));
+          const toDelete = sn.docs.filter(d => d.id === s.id || Number(d.data().number) === Number(s.number));
+          
+          await Promise.all(toDelete.map(d => deleteDoc(doc(db, 'semesters', d.id))));
+          if (s.id && !toDelete.some(d => d.id === s.id)) {
+            await deleteDoc(doc(db, 'semesters', s.id));
+          }
+
+          // Also remove from local state immediately
+          setSemesters(prev => prev.filter(item => Number(item.number) !== Number(s.number) && item.id !== s.id));
+          alert(`${s.number}-semestr muvaffaqiyatli o'chirildi!`);
           fetchSemesters();
-        } catch (err) {
+        } catch (err: any) {
           console.error(err);
-          alert("O'chirishda xatolik");
+          alert("O'chirishda xatolik: " + (err.message || String(err)));
         }
       }
     );
@@ -8752,17 +9426,30 @@ function SemesterManager({ requestConfirm }: { requestConfirm: any }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center bg-white p-8 rounded-[32px] border border-brand-border">
+      <div className="flex flex-wrap justify-between items-center gap-4 bg-white p-8 rounded-[32px] border border-brand-border shadow-sm">
         <div>
           <h2 className="text-2xl font-black text-brand-primary tracking-tighter uppercase">Semestrlar Boshqaruvi</h2>
-          <p className="text-brand-muted text-xs font-bold uppercase tracking-widest mt-1">Platformadagi semestrlar ro'yxati</p>
+          <p className="text-brand-muted text-xs font-bold uppercase tracking-widest mt-1">Platformadagi barcha 3 ta semestr (1-Semestr, 2-Semestr, 3-Semestr)</p>
         </div>
-        <button 
-          onClick={() => setEditing({ number: semesters.length + 1, title: { uz: '' }, description: { uz: '' }, isActive: true, order: semesters.length + 1 })}
-          className="bg-brand-accent text-brand-primary px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:scale-105 transition-all shadow-xl shadow-brand-accent/20"
-        >
-          <Plus size={18} /> YANGI SEMESTR QO'SHISH
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button 
+            type="button"
+            onClick={seedAllThreeSemesters}
+            disabled={isSavingAll}
+            className="bg-emerald-50 text-emerald-600 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-100 transition-all border border-emerald-200 cursor-pointer disabled:opacity-50"
+            title="Barcha dublikatlarni tozalab, 3 ta standart semestrni tiklash"
+          >
+            {isSavingAll ? <RefreshCw className="animate-spin w-4 h-4" /> : <Sparkles size={16} />}
+            DUBLIKATLARNI TOZALASH (3 TA SEMESTR)
+          </button>
+          <button 
+            type="button"
+            onClick={() => setEditing({ number: semesters.length + 1, title: { uz: '' }, description: { uz: '' }, isActive: true, order: semesters.length + 1 })}
+            className="bg-brand-accent text-brand-primary px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:scale-105 transition-all shadow-xl shadow-brand-accent/20 cursor-pointer"
+          >
+            <Plus size={18} /> YANGI SEMESTR QO'SHISH
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -8776,19 +9463,25 @@ function SemesterManager({ requestConfirm }: { requestConfirm: any }) {
               <tr>
                 <th className="px-10 py-6">Raqam</th>
                 <th className="px-10 py-6">Sarlavha</th>
+                <th className="px-10 py-6">Tavsif</th>
                 <th className="px-10 py-6">Holat</th>
                 <th className="px-10 py-6 text-right">Amallar</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-brand-border">
               {semesters.map(s => (
-                <tr key={s.id} className="hover:bg-brand-bg/50 transition-colors group">
+                <tr key={s.id || s.number} className="hover:bg-brand-bg/50 transition-colors group">
                   <td className="px-10 py-6">
                     <span className="w-10 h-10 bg-brand-primary text-brand-accent flex items-center justify-center font-black rounded-xl border border-brand-border">
                       {s.number}
                     </span>
                   </td>
-                  <td className="px-10 py-6 font-black text-brand-primary text-lg tracking-tight">{(s.title as any)?.uz || (s.title as any)}</td>
+                  <td className="px-10 py-6 font-black text-brand-primary text-lg tracking-tight">
+                    {getSafeAdminTitle(s.title)}
+                  </td>
+                  <td className="px-10 py-6 text-xs text-brand-muted font-medium max-w-md line-clamp-2">
+                    {getSafeAdminTitle(s.description)}
+                  </td>
                   <td className="px-10 py-6 text-[10px] font-black uppercase tracking-widest">
                     <span className={`px-3 py-1 rounded-full ${s.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
                       {s.isActive ? 'Faol' : 'Faol emas'}
@@ -8796,10 +9489,10 @@ function SemesterManager({ requestConfirm }: { requestConfirm: any }) {
                   </td>
                   <td className="px-10 py-6 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => setEditing({ ...s, title: s.title || { uz: '' }, description: s.description || { uz: '' } })} className="p-3 text-brand-primary hover:bg-brand-accent rounded-xl transition-all border border-brand-border shadow-sm">
+                      <button onClick={() => setEditing({ ...s, title: s.title || { uz: '' }, description: s.description || { uz: '' } })} className="p-3 text-brand-primary hover:bg-brand-accent rounded-xl transition-all border border-brand-border shadow-sm cursor-pointer" title="Tahrirlash">
                         <Edit size={18} />
                       </button>
-                      <button onClick={() => handleDelete(s.id)} className="p-3 text-red-600 hover:bg-red-50 rounded-xl transition-all border border-brand-border shadow-sm">
+                      <button onClick={() => handleDelete(s)} className="p-3 text-red-600 hover:bg-red-50 rounded-xl transition-all border border-brand-border shadow-sm cursor-pointer" title="O'chirish">
                         <Trash2 size={18} />
                       </button>
                     </div>
@@ -8867,11 +9560,13 @@ function SemesterManager({ requestConfirm }: { requestConfirm: any }) {
 
 function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: string, authUser: any, requestConfirm: any }) {
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [selectedSemester, setSelectedSemester] = useState<number | 'all'>('all');
   const [editing, setEditing] = useState<Topic | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiResultMsg, setAiResultMsg] = useState("");
+  const [topicEditVidTab, setTopicEditVidTab] = useState<'uz' | 'en' | 'ru'>('uz');
 
   TERMS_MAPPING = {
     "Sath to‘g‘risida tushuncha. Anatomik terminologiya. Umurtqa pog‘onasi": [
@@ -8958,6 +9653,45 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
     "Qorin bo'shlig'i a'zolari topografiyasi. Qorin pardasi": [
       "Peritoneum", "Mesenterium", "Omentum majus", "Omentum minus"
     ],
+    "Orqa miya. Orqa miya pardalari. Bosh miyaning umumiy tuzilishi. Bosh miya asosi. 12 juft bosh miya nervlarining chiqishi. Uzunchoq miya. Voroliy ko‘prigi. Miyacha. Bosh miyaning IV qorinchasi": [
+      "Medulla spinalis (Orqa miya)", "Dura mater spinalis", "Pia mater spinalis", "Medulla oblongata (Uzunchoq miya)", "Pons (Voroliy ko'prigi)", "Cerebellum (Miyacha)", "Ventriculus quartus (IV qorincha)"
+    ],
+    "O‘rta miya. Oraliq miya. Bosh miyaning III qorinchasi": [
+      "Mesencephalon (O'rta miya)", "Diencephalon (Oraliq miya)", "Thalamus", "Hypothalamus", "Ventriculus tertius (III qorincha)", "Aqueductus cerebri"
+    ],
+    "Bosh miya po‘stlog‘i. Gumbaz, qadoqsimon tana. Bosh miyaning bazal o‘zaklari. Bosh miyaning yon qorinchalari. Bosh miyani o‘raydigan pardalar": [
+      "Cortex cerebri (Miya po'stlog'i)", "Corpus callosum (Qadoqsimon tana)", "Nucleus caudatus", "Nucleus lentiformis", "Ventriculus lateralis", "Meninges"
+    ],
+    "Bosh miya va orqa miyaning o‘tkazuv yo‘llari. Oddiy refleks yoyi. Sezuvchi va harakatlantiruvchi o‘tkazuv yo‘llari": [
+      "Tractus corticospinalis", "Tractus spinothalamicus", "Arcus reflexus", "Fasciculus gracilis", "Fasciculus cuneatus"
+    ],
+    "Orqa miya nervlarining hosil bo‘lishi. Orqa tarmoqlari. Oldingi tarmoqlari. Qovurg‘alararo nervlar. Bo‘yin chigali": [
+      "Nervi spinales", "Plexus cervicalis", "Nervus phrenicus", "Nervi intercostales"
+    ],
+    "Yelka chigalining uzun va kalta tarmoqlari": [
+      "Plexus brachialis", "Nervus radialis", "Nervus medianus", "Nervus ulnaris", "Nervus musculocutaneus", "Nervus axillaris"
+    ],
+    "Bel chigali. Dumg‘aza chigali": [
+      "Plexus lumbalis", "Plexus sacralis", "Nervus femoralis", "Nervus ischiadicus", "Nervus obturatorius", "Nervus tibialis"
+    ],
+    "I, II, VIII juft bosh miya nervlari": [
+      "Nervus olfactorius (I)", "Nervus opticus (II)", "Nervus vestibulocochlearis (VIII)"
+    ],
+    "III, IV, VI, XI, XII juft bosh miya nervlari": [
+      "Nervus oculomotorius (III)", "Nervus trochlearis (IV)", "Nervus abducens (VI)", "Nervus accessorius (XI)", "Nervus hypoglossus (XII)"
+    ],
+    "V juft bosh miya nervi. Uch shoxli nerv yo‘nalishi bo‘yicha parasimpatik tugunlar": [
+      "Nervus trigeminus (V)", "Nervus ophthalmicus", "Nervus maxillaris", "Nervus mandibularis", "Ganglion ciliare", "Ganglion pterygopalatinum", "Ganglion oticum"
+    ],
+    "VII va IX juft bosh miya nervlari. X juft bosh miya nervi": [
+      "Nervus facialis (VII)", "Nervus glossopharyngeus (IX)", "Nervus vagus (X)"
+    ],
+    "Vegetativ nerv tizimining simpatik va parasimpatik bo‘limlari": [
+      "Systema nervosum autonomicum", "Pars sympathica", "Pars parasympathica", "Truncus sympathicus"
+    ],
+    "Eshituv va muvozanat a’zosi": [
+      "Organum vestibulocochleare", "Auris externa", "Auris media", "Auris interna", "Cochlea", "Labyrinthus"
+    ],
     "Markaziy asab tizimi. Orqa miya anatomiyasi": [
       "Medulla spinalis (Orqa miya)", "Cauda equina (Ot dumi)", "Pia mater", "Dura mater"
     ],
@@ -9017,7 +9751,6 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
             const latin = match ? match[1] : termStr;
             const uzbek = match ? match[2] : "";
             
-            // Check if already exists in glossary (simple one-by-one check for now)
             const existsQ = query(collection(db, 'latin_terms'), where('latin', '==', latin));
             const existsSnap = await getDocs(existsQ);
             
@@ -9042,14 +9775,72 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
     }
   };
 
-  const resetToCanonical26 = async () => {
+  const seedSemester3Topics = async () => {
     if (!auth.currentUser) {
       alert("Xatolik: Tizimga kirish talab qilinadi.");
       return;
     }
     requestConfirm(
-      "Mavzularni Tozalash va 26 taga Qaytarish",
-      "Haqiqatdan ham bazadagi BARCHA noto'g'ri/ko'payib ketgan mavzularni o'chirib, 26 ta standart (Semester 1: 13 ta, Semester 2: 13 ta) mavzuni toza holatda qayta yuklamoqchimisiz? Bu jarayon barcha eski mavzularni o'chirib, toza 26 ta mavzuni o'rnatadi.",
+      "3-Semestr Mavzularini Yuklash (13 ta)",
+      "3-Semestr (Markaziy asab tizimi va sezgi a'zolari) bo'yicha barcha 13 ta rasmiy mavzuni to'liq nazariyasi va terminlari bilan bazaga yuklamoqchimisiz?",
+      async () => {
+        setLoading(true);
+        try {
+          const batch = writeBatch(db);
+          SEMESTER_3_DETAILED_TOPICS.forEach((topicData, idx) => {
+            const docId = `sem_3_top_${idx + 1}`;
+            const ref = doc(db, 'topics', docId);
+            batch.set(ref, {
+              ...topicData,
+              semester: 3,
+              order: idx + 1
+            }, { merge: true });
+          });
+          await batch.commit();
+          alert("3-Semestr bo'yicha 13 ta mavzu muvaffaqiyatli yuklandi!");
+          fetchTopics();
+        } catch (err: any) {
+          console.error("Seed Sem 3 error:", err);
+          alert("Xatolik: " + (err.message || String(err)));
+        } finally {
+          setLoading(false);
+        }
+      }
+    );
+  };
+
+  const handleMergeAndDeduplicateAll = async () => {
+    if (!auth.currentUser) {
+      alert("Xatolik: Tizimga kirish talab qilinadi.");
+      return;
+    }
+    requestConfirm(
+      "Takrorlangan Mavzularni 1 Taga Birlashtirish",
+      "Haqiqatdan ham bazadagi barcha 1, 2 va 3-semestr mavzularining takrorlangan nusxalarini bitta to'liq va boyitilgan mavzuga birlashtirib, ortiqcha takroriy hujjatlarni tozalashni xohlaysizmi?",
+      async () => {
+        setLoading(true);
+        try {
+          const res = await cleanupFirestoreDuplicateTopics(db);
+          alert(`Muvaffaqiyatli yakunlandi!\n${res.deletedDocsCount} ta ortiqcha takrorlangan hujjat tozalandi va ${res.mergedCount} ta yagona standart mavzuga birlashtirildi.`);
+          await fetchTopics();
+        } catch (err: any) {
+          console.error("Deduplication error:", err);
+          alert("Xatolik: " + (err.message || String(err)));
+        } finally {
+          setLoading(false);
+        }
+      }
+    );
+  };
+
+  const resetToCanonical39 = async () => {
+    if (!auth.currentUser) {
+      alert("Xatolik: Tizimga kirish talab qilinadi.");
+      return;
+    }
+    requestConfirm(
+      "Barcha Mavzularni Tozalash va 39 taga Qaytarish",
+      "Haqiqatdan ham bazadagi BARCHA mavzularni o'chirib, 3 ta semestr bo'yicha jami 39 ta standart mavzuni (Sem 1: 13 ta, Sem 2: 13 ta, Sem 3: 13 ta) toza holatda qayta yuklamoqchimisiz?",
       async () => {
         setLoading(true);
         try {
@@ -9062,39 +9853,54 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
           
           const sem1Batch = writeBatch(db);
           SEMESTER_1_TOPICS.forEach((title, index) => {
-            const ref = doc(collection(db, 'topics'));
+            const ref = doc(db, 'topics', `sem_1_top_${index + 1}`);
             sem1Batch.set(ref, {
               semester: 1,
               order: index + 1,
-              title: { uz: title, ru: title, en: title },
+              title: { uz: `${index + 1}-Mavzu: ${title}`, ru: `Тема ${index + 1}: ${title}`, en: `Topic ${index + 1}: ${title}` },
               theory: {
                 uz: `Bu mavzu bo‘yicha nazariy ma'lumotlar tez orada yuklanadi. ${title} haqida batafsil o'rganish uchun darslikdan foydalaning.`,
                 en: `Theoretical contents for ${title} will be uploaded soon. Please consult textbooks for further details.`,
                 ru: `Теоретические материалы к разделу ${title} будут добавлены в ближайшее время. Сверяйтесь с атласом.`
               },
-              latinTerms: TERMS_MAPPING[title] || []
+              latinTerms: TERMS_MAPPING[title] || [],
+              image: "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?q=80&w=2564&auto=format&fit=crop",
+              videos: []
             });
           });
           await sem1Batch.commit();
 
           const sem2Batch = writeBatch(db);
           SEMESTER_2_TOPICS.forEach((title, index) => {
-            const ref = doc(collection(db, 'topics'));
+            const ref = doc(db, 'topics', `sem_2_top_${index + 1}`);
             sem2Batch.set(ref, {
               semester: 2,
               order: index + 1,
-              title: { uz: title, ru: title, en: title },
+              title: { uz: `${index + 1}-Mavzu: ${title}`, ru: `Тема ${index + 1}: ${title}`, en: `Topic ${index + 1}: ${title}` },
               theory: {
                 uz: `Bu mavzu bo‘yicha nazariy ma'lumotlar tez orada yuklanadi. ${title} haqida batafsil o'rganish uchun darslikdan foydalaning.`,
                 en: `Theoretical contents for ${title} will be uploaded soon. Please consult textbooks for further details.`,
                 ru: `Теоретические материалы к разделу ${title} будут добавлены в ближайшее время. Сверяйтесь с атласом.`
               },
-              latinTerms: TERMS_MAPPING[title] || []
+              latinTerms: TERMS_MAPPING[title] || [],
+              image: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?q=80&w=2670&auto=format&fit=crop",
+              videos: []
             });
           });
           await sem2Batch.commit();
 
-          alert("Barcha mavzular tozalandi va 26 ta toza standart mavzu tiklandi!");
+          const sem3Batch = writeBatch(db);
+          SEMESTER_3_DETAILED_TOPICS.forEach((topicData, idx) => {
+            const ref = doc(db, 'topics', `sem_3_top_${idx + 1}`);
+            sem3Batch.set(ref, {
+              ...topicData,
+              semester: 3,
+              order: idx + 1
+            });
+          });
+          await sem3Batch.commit();
+
+          alert("Barcha 3 ta semestr bo'yicha 39 ta toza standart mavzu tiklandi!");
           fetchTopics();
         } catch (error: any) {
           console.error("Cleanup error:", error);
@@ -9112,10 +9918,14 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
       const q = query(collection(db, 'topics'), orderBy('semester', 'asc'), orderBy('order', 'asc'));
       const snapshot = await getDocs(q);
       const allTopics = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      setTopics(allTopics.filter((t: any) => {
+      const validTopics = allTopics.filter((t: any) => {
         const title = typeof t.title === 'object' ? (t.title?.uz || t.title?.en) : t.title;
-        return title && title.trim().length > 3 && t.semester > 0 && t.semester < 10;
-      }));
+        return title && String(title).trim().length > 3 && t.semester > 0 && t.semester < 10;
+      });
+
+      // Deduplicate and consolidate all duplicate entries into one unified topic
+      const { mergedTopics } = deduplicateAndMergeTopics(validTopics);
+      setTopics(mergedTopics);
     } catch (error) {
       console.error(error);
       handleFirestoreError(error, OperationType.LIST, 'topics');
@@ -9190,7 +10000,6 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
           ? res.theory_uz 
           : { ...(editing.theory || {}), uz: res.theory_uz };
 
-        // Automatically extract latin terms
         const latinTermsRegex = /\*([A-Za-z\s‘’-]{3,50})\*/g;
         const matchTerms: string[] = [];
         let match;
@@ -9261,36 +10070,86 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
     );
   };
 
+  const filteredTopics = topics.filter(t => {
+    const matchesSem = selectedSemester === 'all' || Number(t.semester) === Number(selectedSemester);
+    const title = getSafeAdminTitle(t.title).toLowerCase();
+    const matchesSearch = !searchQuery || title.includes(searchQuery.toLowerCase());
+    return matchesSem && matchesSearch;
+  });
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center bg-white p-8 rounded-[32px] border border-brand-border">
+      <div className="flex flex-wrap justify-between items-center gap-4 bg-white p-8 rounded-[32px] border border-brand-border shadow-sm">
         <div>
           <h2 className="text-2xl font-black text-brand-primary tracking-tighter uppercase">Mavzular Boshqaruvi</h2>
-          <p className="text-brand-muted text-xs font-bold uppercase tracking-widest mt-1">Platformadagi barcha o'quv mavzulari</p>
+          <p className="text-brand-muted text-xs font-bold uppercase tracking-widest mt-1">Platformadagi barcha 1, 2 va 3-semestr mavzulari</p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-3">
           <button 
-            onClick={resetToCanonical26}
-            className="bg-red-50 text-red-600 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-red-100 transition-all border border-red-100"
-            title="Barcha eski va ko'payib ketgan mavzularni o'chirib, bazani 26 ta toza mavluzaga qaytaradi (Clean and Reset Topics to exactly 26)"
+            type="button"
+            onClick={handleMergeAndDeduplicateAll}
+            className="bg-purple-50 text-purple-700 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-purple-100 transition-all border border-purple-200 cursor-pointer shadow-sm"
+            title="Bazadagi barcha takrorlangan mavzularni birlashtirib 1 ta qiladi va ortiqcha dublikatlarni tozalaydi"
           >
-            <RefreshCw size={18} /> MAVZULARNI TOZALASH (26 TA)
+            <Sparkles size={16} className="text-purple-600" /> TAKRORLARNI 1 TA QILISH & TOZALASH
           </button>
           <button 
+            type="button"
+            onClick={seedSemester3Topics}
+            className="bg-indigo-50 text-indigo-600 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-indigo-100 transition-all border border-indigo-200 cursor-pointer"
+            title="3-Semestr mavzularini to'liq nazariya va terminlari bilan bazaga yuklash"
+          >
+            <BookOpen size={16} /> 3-SEMESTR MAVZULARINI YUKLASH (13 TA)
+          </button>
+          <button 
+            type="button"
+            onClick={resetToCanonical39}
+            className="bg-red-50 text-red-600 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-red-100 transition-all border border-red-100 cursor-pointer"
+            title="Barcha eski va ko'payib ketgan mavzularni o'chirib, bazani 39 ta toza standart mavzuga qaytaradi (Sem 1, Sem 2, Sem 3)"
+          >
+            <RefreshCw size={16} /> MAVZULARNI TOZALASH (39 TA)
+          </button>
+          <button 
+            type="button"
             onClick={autoFillTerms}
             disabled={isSeeding}
-            className="bg-emerald-50 text-emerald-600 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-emerald-100 transition-all border border-emerald-100"
+            className="bg-emerald-50 text-emerald-600 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-100 transition-all border border-emerald-100 cursor-pointer"
           >
-            {isSeeding ? <RefreshCw className="animate-spin w-4 h-4" /> : <Database size={18} />}
+            {isSeeding ? <RefreshCw className="animate-spin w-4 h-4" /> : <Database size={16} />}
             TERMINLARNI TO'LDIRISH
           </button>
           <button 
-            onClick={() => setEditing({ semester: 1, order: topics.length + 1, title: { uz: '' }, theory: { uz: '' }, latinTerms: [], videos: [] } as any)}
-            className="bg-brand-accent text-brand-primary px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:scale-105 transition-all shadow-xl shadow-brand-accent/20"
+            type="button"
+            onClick={() => setEditing({ semester: selectedSemester === 'all' ? 1 : selectedSemester, order: topics.length + 1, title: { uz: '' }, theory: { uz: '' }, latinTerms: [], videos: [] } as any)}
+            className="bg-brand-accent text-brand-primary px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:scale-105 transition-all shadow-xl shadow-brand-accent/20 cursor-pointer"
           >
-            <Plus size={18} /> YANGI MAVZU QO'SHISH
+            <Plus size={16} /> YANGI MAVZU
           </button>
         </div>
+      </div>
+
+      {/* Semester filter bar */}
+      <div className="flex flex-wrap gap-2 bg-white p-4 rounded-2xl border border-brand-border shadow-sm">
+        <button
+          type="button"
+          onClick={() => setSelectedSemester('all')}
+          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${selectedSemester === 'all' ? 'bg-brand-primary text-white shadow' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+        >
+          Barcha Mavzular ({topics.length})
+        </button>
+        {[1, 2, 3].map(sNum => {
+          const semCount = topics.filter(t => Number(t.semester) === sNum).length;
+          return (
+            <button
+              key={sNum}
+              type="button"
+              onClick={() => setSelectedSemester(sNum)}
+              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${selectedSemester === sNum ? 'bg-brand-accent text-brand-primary shadow font-black' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+            >
+              {sNum}-Semestr ({semCount} ta)
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (
@@ -9308,25 +10167,27 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
               </tr>
             </thead>
             <tbody className="divide-y divide-brand-border">
-              {topics.map(t => (
+              {filteredTopics.map(t => (
                 <tr key={t.id} className="hover:bg-brand-bg/50 transition-colors group">
                   <td className="px-10 py-6">
                     <span className="px-3 py-1 bg-brand-primary text-brand-accent text-[10px] font-black rounded-lg">
                       SEM {t.semester} • #{t.order}
                     </span>
                   </td>
-                  <td className="px-10 py-6 font-black text-brand-primary text-lg tracking-tight group-hover:text-brand-accent transition-colors">{(t.title as any)?.uz || (t.title as any)}</td>
+                  <td className="px-10 py-6 font-black text-brand-primary text-lg tracking-tight group-hover:text-brand-accent transition-colors">{getSafeAdminTitle(t.title)}</td>
                   <td className="px-10 py-6 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button 
                         onClick={() => setEditing({ ...t, title: t.title || { uz: '' }, theory: t.theory || { uz: '' }, latinTerms: t.latinTerms || [], image: t.image || '' })} 
-                        className="p-3 text-brand-primary hover:bg-brand-accent hover:text-brand-primary rounded-xl transition-all shadow-sm hover:shadow-lg border border-brand-border"
+                        className="p-3 text-brand-primary hover:bg-brand-accent hover:text-brand-primary rounded-xl transition-all shadow-sm hover:shadow-lg border border-brand-border cursor-pointer"
+                        title="Tahrirlash"
                       >
                         <Edit size={18} />
                       </button>
                       <button 
                         onClick={() => handleDelete(t.id)} 
-                        className="p-3 text-red-600 hover:bg-red-50 hover:text-red-700 rounded-xl transition-all shadow-sm border border-brand-border"
+                        className="p-3 text-red-600 hover:bg-red-50 hover:text-red-700 rounded-xl transition-all shadow-sm border border-brand-border cursor-pointer"
+                        title="O'chirish"
                       >
                         <Trash2 size={18} />
                       </button>
@@ -9334,6 +10195,13 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
                   </td>
                 </tr>
               ))}
+              {filteredTopics.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-10 py-16 text-center text-slate-400 font-bold uppercase tracking-widest text-xs">
+                    Ushbu semestr bo'yicha mavzular topilmadi
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -9486,11 +10354,61 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
                       <label className="block text-[10px] font-black text-brand-muted uppercase tracking-widest mb-3">Lotin terminlari (har bir qatorda bitta)</label>
-                      <textarea rows={5} value={(editing.latinTerms || []).join('\n')} onChange={e => setEditing({...editing, latinTerms: e.target.value.split('\n').filter(t => t.trim() !== '')})} className="w-full p-6 bg-brand-bg rounded-2xl border-2 border-brand-border focus:border-brand-accent focus:bg-white outline-none transition-all font-mono text-sm" />
+                      <textarea rows={8} value={(editing.latinTerms || []).join('\n')} onChange={e => setEditing({...editing, latinTerms: e.target.value.split('\n').filter(t => t.trim() !== '')})} className="w-full p-6 bg-brand-bg rounded-2xl border-2 border-brand-border focus:border-brand-accent focus:bg-white outline-none transition-all font-mono text-sm" />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-black text-brand-muted uppercase tracking-widest mb-3">Videolar (har bir qatorda bitta YouTube URL)</label>
-                      <textarea rows={5} value={(editing.videos || []).join('\n')} onChange={e => setEditing({...editing, videos: e.target.value.split('\n').filter(v => v.trim() !== '')})} className="w-full p-6 bg-brand-bg rounded-2xl border-2 border-brand-border focus:border-brand-accent focus:bg-white outline-none transition-all font-mono text-sm" placeholder="https://www.youtube.com/watch?v=..." />
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="block text-[10px] font-black text-brand-muted uppercase tracking-widest">Videolar (har bir tilda alohida, har bir qatorda bitta YouTube URL)</label>
+                        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
+                          {(['uz', 'en', 'ru'] as const).map((langKey) => (
+                            <button
+                              type="button"
+                              key={langKey}
+                              onClick={() => setTopicEditVidTab(langKey)}
+                              className={`px-3 py-1 text-[9px] font-black uppercase tracking-wider rounded-lg transition-all ${
+                                topicEditVidTab === langKey
+                                  ? 'bg-brand-primary text-white shadow-xs'
+                                  : 'text-brand-muted hover:bg-slate-200'
+                              }`}
+                            >
+                              {langKey === 'uz' ? 'UZB' : langKey === 'en' ? 'ENG' : 'RUS'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <textarea
+                        rows={6}
+                        value={(() => {
+                          const v = editing.videos;
+                          if (v && typeof v === 'object' && !Array.isArray(v)) {
+                            return ((v as any)[topicEditVidTab] || []).join('\n');
+                          }
+                          if (Array.isArray(v)) {
+                            return topicEditVidTab === 'uz' ? v.join('\n') : '';
+                          }
+                          return '';
+                        })()}
+                        onChange={(e) => {
+                          const valList = e.target.value.split('\n').filter(v => v.trim() !== '');
+                          let current = editing.videos;
+                          if (!current || Array.isArray(current) || typeof current !== 'object') {
+                            current = {
+                              uz: Array.isArray(current) ? current : [],
+                              en: [],
+                              ru: []
+                            };
+                          }
+                          setEditing({
+                            ...editing,
+                            videos: {
+                              ...current,
+                              [topicEditVidTab]: valList
+                            }
+                          });
+                        }}
+                        className="w-full p-6 bg-brand-bg rounded-2xl border-2 border-brand-border focus:border-brand-accent focus:bg-white outline-none transition-all font-mono text-sm"
+                        placeholder={`Masalan: https://www.youtube.com/watch?v=...\n(Har bir qatorda bitta URL)`}
+                      />
                     </div>
                   </div>
 
@@ -9536,6 +10454,7 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
 function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, requestConfirm: any }) {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [selectedSemester, setSelectedSemester] = useState<number | 'all'>('all');
   const [editing, setEditing] = useState<Partial<Quiz> | null>(null);
   const [loading, setLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -9587,10 +10506,11 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
   };
 
   const handleBulkGenerate = async () => {
-    if (topics.length === 0) return;
-    
-    // Select first 26 topics or all if less
-    const targetTopics = topics.slice(0, 26);
+    const targetTopics = selectedSemester === 'all' 
+      ? topics 
+      : topics.filter(t => Number(t.semester) === Number(selectedSemester));
+      
+    if (targetTopics.length === 0) return;
     
     requestConfirm(
       "AI Testlar Yaratish",
@@ -9670,10 +10590,14 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
     );
   };
 
+  const displayedTopics = selectedSemester === 'all'
+    ? topics
+    : topics.filter(t => Number(t.semester) === Number(selectedSemester));
+
   return (
     <div className="space-y-8">
       <ExternalHostingGuide />
-      <div className="flex justify-between items-center bg-white p-8 rounded-[32px] border border-brand-border shadow-sm">
+      <div className="flex flex-wrap justify-between items-center gap-4 bg-white p-8 rounded-[32px] border border-brand-border shadow-sm">
         <div className="flex items-center gap-6">
           <div 
             onClick={() => setSelectedTopicId(null)}
@@ -9694,27 +10618,52 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
             </p>
           </div>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-3">
           <button 
             onClick={handleBulkGenerate}
-            disabled={isGenerating || topics.length === 0}
-            className="px-8 py-4 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-100 transition-all disabled:opacity-50"
+            disabled={isGenerating || displayedTopics.length === 0}
+            className="px-8 py-4 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-100 transition-all disabled:opacity-50 cursor-pointer"
           >
             {isGenerating ? <RefreshCw className="animate-spin w-4 h-4" /> : <Sparkles size={18} />}
-            {isGenerating ? `${genProgress.current}/${genProgress.total} MAVZU...` : `AI BILAN ${topics.filter(t => (typeof t.title === 'object' ? t.title?.uz : t.title)?.trim().length > 3).length} TA MAVZUNI TO'LDIRISH`}
+            {isGenerating ? `${genProgress.current}/${genProgress.total} MAVZU...` : `AI BILAN ${displayedTopics.length} TA MAVZUNI TO'LDIRISH`}
           </button>
           <button 
-            onClick={() => setEditing({ topicId: selectedTopicId || '', question: '', options: ['', '', '', ''], correctAnswerIndex: 0, explanation: '' })} 
-            className="px-8 py-4 bg-brand-accent text-brand-primary rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:scale-[1.02] transition-all shadow-xl shadow-brand-accent/20"
+            onClick={() => setEditing({ topicId: selectedTopicId || (displayedTopics[0]?.id || ''), question: '', options: ['', '', '', ''], correctAnswerIndex: 0, explanation: '' })} 
+            className="px-8 py-4 bg-brand-accent text-brand-primary rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:scale-[1.02] transition-all shadow-xl shadow-brand-accent/20 cursor-pointer"
           >
             <Plus size={18} /> Yangi savol
           </button>
         </div>
       </div>
 
+      {!selectedTopicId && (
+        <div className="flex flex-wrap gap-2 bg-white p-4 rounded-2xl border border-brand-border shadow-sm">
+          <button
+            type="button"
+            onClick={() => setSelectedSemester('all')}
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${selectedSemester === 'all' ? 'bg-brand-primary text-white shadow' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+          >
+            Barcha Semestrlar ({topics.length} ta mavzu)
+          </button>
+          {[1, 2, 3].map(sNum => {
+            const count = topics.filter(t => Number(t.semester) === sNum).length;
+            return (
+              <button
+                key={sNum}
+                type="button"
+                onClick={() => setSelectedSemester(sNum)}
+                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${selectedSemester === sNum ? 'bg-brand-accent text-brand-primary shadow font-black' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+              >
+                {sNum}-Semestr ({count} ta mavzu)
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {!selectedTopicId ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {topics.map(topic => {
+          {displayedTopics.map(topic => {
             const topicQuizzes = quizzes.filter(q => q.topicId === topic.id);
             const isThisGenerating = generatingTopicId === topic.id;
             const isAnyGenerating = !!generatingTopicId;
@@ -9736,7 +10685,7 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
                     </div>
                   </div>
                   <h4 className="text-base font-black text-brand-primary uppercase tracking-tight leading-tight group-hover:text-brand-accent transition-colors">
-                    {(topic.title as any)?.uz || topic.title}
+                    {getSafeAdminTitle(topic.title)}
                   </h4>
                 </div>
 
@@ -9854,7 +10803,7 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
                     required
                   >
                     <option value="">Tanlang...</option>
-                    {topics.map(t => <option key={t.id} value={t.id}>Sem {t.semester} | {(t.title as any)?.uz || (t.title as any)}</option>)}
+                    {topics.map(t => <option key={t.id} value={t.id}>Sem {t.semester} | {getSafeAdminTitle(t.title)}</option>)}
                   </select>
                 </div>
 
@@ -10171,7 +11120,7 @@ function AtlasManager({ searchQuery, requestConfirm }: { searchQuery: string, re
                 <td className="px-10 py-6 font-black text-brand-primary uppercase text-sm tracking-widest">{e.uzbekName}</td>
                 <td className="px-10 py-6">
                   <span className="text-[10px] font-black text-brand-muted uppercase tracking-widest">
-                    {(topics.find(t => t.id === e.topicId)?.title as any)?.uz || 'Mavzu biriktirilmagan'}
+                    {getSafeAdminTitle(topics.find(t => t.id === e.topicId)?.title) || 'Mavzu biriktirilmagan'}
                   </span>
                 </td>
                 <td className="px-10 py-6 text-right">
@@ -10243,7 +11192,7 @@ function AtlasManager({ searchQuery, requestConfirm }: { searchQuery: string, re
                     className="w-full p-5 bg-brand-bg rounded-2xl border-2 border-brand-border outline-none focus:border-brand-accent transition-all font-bold"
                   >
                     <option value="">Mavzuni tanlang...</option>
-                    {topics.map(t => <option key={t.id} value={t.id}>Sem {t.semester} | {(t.title as any)?.uz || (t.title as any)}</option>)}
+                    {topics.map(t => <option key={t.id} value={t.id}>Sem {t.semester} | {getSafeAdminTitle(t.title)}</option>)}
                   </select>
                 </div>
 

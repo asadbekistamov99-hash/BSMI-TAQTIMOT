@@ -1127,24 +1127,8 @@ export default function Atlas({ isAdmin: isAdminProp, user }: { isAdmin?: boolea
         // 1. Check Profile for access list
         const profile = await dbService.getProfile(user.uid);
         if (profile) {
-          // If the student has any active subscription whose duration has not expired, grant full access
-          if (profile.expiryDate) {
-            let expiryDate: Date | null = null;
-            if (typeof profile.expiryDate.toDate === 'function') {
-              expiryDate = profile.expiryDate.toDate();
-            } else if (profile.expiryDate.seconds !== undefined) {
-              expiryDate = new Date(profile.expiryDate.seconds * 1000);
-            } else {
-              expiryDate = new Date(profile.expiryDate);
-            }
-            if (expiryDate && expiryDate > new Date()) {
-              setIsPaid(true);
-              setIsPending(false);
-              return;
-            }
-          }
-
-          if (profile.purchasedSemesters && profile.purchasedSemesters.includes(99)) {
+          const purchased = (profile.purchasedSemesters || []).map(Number);
+          if (purchased.includes(99)) {
             setIsPaid(true);
             setIsPending(false);
             return;
@@ -1170,7 +1154,7 @@ export default function Atlas({ isAdmin: isAdminProp, user }: { isAdmin?: boolea
     checkPayment();
   }, [user]);
 
-  const isUnlocked = isAdmin || isPaid;
+  const isUnlocked = isPaid;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -2062,9 +2046,21 @@ export default function Atlas({ isAdmin: isAdminProp, user }: { isAdmin?: boolea
           semesterId={99}
           user={user}
           onClose={() => setShowPaymentModal(false)}
-          onSuccess={() => {
+          onSuccess={async () => {
             setShowPaymentModal(false);
-            window.location.reload();
+            try {
+              const profile = await dbService.getProfile(user.uid);
+              const payment = await dbService.getPayment(user.uid, 99);
+              if ((profile?.purchasedSemesters || []).map(Number).includes(99) || payment?.status === 'completed' || payment?.status === 'approved') {
+                setIsPaid(true);
+                setIsPending(false);
+              } else if (payment?.status === 'pending') {
+                setIsPending(true);
+                setIsPaid(false);
+              }
+            } catch (e) {
+              console.error("Atlas payment refresh error:", e);
+            }
           }}
         />
       )}

@@ -16,6 +16,7 @@ import {
   orderBy, 
   limit 
 } from 'firebase/firestore';
+import { deduplicateAndMergeTopics } from './topicDeduplication';
 
 export let supabaseFallbackActive = false;
 
@@ -273,7 +274,13 @@ export const dbService = {
           supabaseFallbackActive = true;
           const q = query(collection(db, 'semesters'), where('isActive', '==', true), orderBy('number', 'asc'));
           const snapshot = await getDocs(q);
-          return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const raw = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const map = new Map<number, any>();
+          raw.forEach((s: any) => {
+            const num = Number(s.number) || (s.id?.startsWith('sem_') ? Number(s.id.replace('sem_', '')) : 0);
+            if (num && (!map.has(num) || s.id === `sem_${num}`)) map.set(num, s);
+          });
+          return Array.from(map.values()).sort((a, b) => (a.number || 0) - (b.number || 0));
         }
         
         return (data || []).map(mapSemester);
@@ -282,12 +289,24 @@ export const dbService = {
         supabaseFallbackActive = true;
         const q = query(collection(db, 'semesters'), where('isActive', '==', true), orderBy('number', 'asc'));
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const raw = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const map = new Map<number, any>();
+        raw.forEach((s: any) => {
+          const num = Number(s.number) || (s.id?.startsWith('sem_') ? Number(s.id.replace('sem_', '')) : 0);
+          if (num && (!map.has(num) || s.id === `sem_${num}`)) map.set(num, s);
+        });
+        return Array.from(map.values()).sort((a, b) => (a.number || 0) - (b.number || 0));
       }
     } else {
       const q = query(collection(db, 'semesters'), where('isActive', '==', true), orderBy('number', 'asc'));
       const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const raw = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const map = new Map<number, any>();
+      raw.forEach((s: any) => {
+        const num = Number(s.number) || (s.id?.startsWith('sem_') ? Number(s.id.replace('sem_', '')) : 0);
+        if (num && (!map.has(num) || s.id === `sem_${num}`)) map.set(num, s);
+      });
+      return Array.from(map.values()).sort((a, b) => (a.number || 0) - (b.number || 0));
     }
   },
 
@@ -330,6 +349,8 @@ export const dbService = {
 
   // 2. TOPICS
   async getTopics(semesterId?: number): Promise<any[]> {
+    let rawTopics: any[] = [];
+
     if (isAppwriteEnabled() && appwriteDb) {
       try {
         const queries = [Query.orderAsc('order'), Query.limit(100)];
@@ -338,56 +359,66 @@ export const dbService = {
         }
         const res = await appwriteDb.listDocuments(appwriteDatabaseId, 'topics', queries);
         if (res.documents.length > 0) {
-          return res.documents.map(mapAppwriteTopic);
+          rawTopics = res.documents.map(mapAppwriteTopic);
+        } else {
+          activateAppwriteFallback();
         }
-        console.warn("Appwrite topics empty, trying fallback...");
-        activateAppwriteFallback();
       } catch (err) {
         console.warn("Appwrite getTopics failed, trying fallback:", err);
         activateAppwriteFallback();
       }
     }
 
-    if (isSupabaseEnabled() && supabase) {
-      try {
-        let queryBuilder = supabase.from('topics').select('*');
-        if (semesterId) {
-          queryBuilder = queryBuilder.eq('semester', semesterId);
-        }
-        const { data, error } = await queryBuilder.order('order', { ascending: true });
-        if (error) throw error;
-        
-        // If topics is empty, Supabase is unseeded. Fall back to Firebase.
-        if (!data || data.length === 0) {
-          console.warn("Supabase topics is empty, activating Firebase fallback...");
+    if (rawTopics.length === 0) {
+      if (isSupabaseEnabled() && supabase) {
+        try {
+          let queryBuilder = supabase.from('topics').select('*');
+          if (semesterId) {
+            queryBuilder = queryBuilder.eq('semester', semesterId);
+          }
+          const { data, error } = await queryBuilder.order('order', { ascending: true });
+          if (error) throw error;
+          
+          if (!data || data.length === 0) {
+            supabaseFallbackActive = true;
+            const q = semesterId 
+              ? query(collection(db, 'topics'), where('semester', '==', semesterId))
+              : query(collection(db, 'topics'), orderBy('order', 'asc'));
+            const snapshot = await getDocs(q);
+            rawTopics = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          } else {
+            rawTopics = (data || []).map(mapTopic);
+          }
+        } catch (err) {
+          console.warn("Supabase getTopics failed, fallback to Firebase:", err);
           supabaseFallbackActive = true;
           const q = semesterId 
             ? query(collection(db, 'topics'), where('semester', '==', semesterId))
             : query(collection(db, 'topics'), orderBy('order', 'asc'));
           const snapshot = await getDocs(q);
-          const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          return list.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+          rawTopics = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         }
-        
-        return (data || []).map(mapTopic);
-      } catch (err) {
-        console.warn("Supabase getTopics failed, fallback to Firebase:", err);
-        supabaseFallbackActive = true;
+      } else {
         const q = semesterId 
           ? query(collection(db, 'topics'), where('semester', '==', semesterId))
           : query(collection(db, 'topics'), orderBy('order', 'asc'));
         const snapshot = await getDocs(q);
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        return list.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+        rawTopics = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       }
-    } else {
-      const q = semesterId 
-        ? query(collection(db, 'topics'), where('semester', '==', semesterId))
-        : query(collection(db, 'topics'), orderBy('order', 'asc'));
-      const snapshot = await getDocs(q);
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      return list.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
     }
+
+    // Filter valid topics
+    const validRaw = rawTopics.filter(t => {
+      const title = typeof t.title === 'object' ? (t.title?.uz || t.title?.en) : t.title;
+      return title && String(title).trim().length > 3;
+    });
+
+    // Deduplicate and consolidate all duplicate entries into one unified topic!
+    const { mergedTopics } = deduplicateAndMergeTopics(validRaw);
+    if (semesterId) {
+      return mergedTopics.filter(t => Number(t.semester) === Number(semesterId));
+    }
+    return mergedTopics;
   },
 
   async getTopicDetail(topicId: string): Promise<any> {
@@ -481,13 +512,9 @@ export const dbService = {
         return mapTopic(data);
       }
     } else {
-      if (topicId) {
-        await setDoc(doc(db, 'topics', topicId), topicData, { merge: true });
-        return { id: topicId, ...topicData };
-      } else {
-        const docRef = await addDoc(collection(db, 'topics'), topicData);
-        return { id: docRef.id, ...topicData };
-      }
+      const targetId = topicId || `sem_${topicData.semester || 1}_top_${topicData.order || 1}`;
+      await setDoc(doc(db, 'topics', targetId), topicData, { merge: true });
+      return { id: targetId, ...topicData };
     }
   },
 
@@ -988,17 +1015,6 @@ export const dbService = {
       if (localPay) return JSON.parse(localPay);
     } catch (e) {}
 
-    // For a local_virtual_guest or unregistered sandbox user, auto-approve so they can test the premium modules
-    if (userId === 'local_virtual_guest' || !userId) {
-      return {
-        id: `${userId}_${semesterId}`,
-        userId: userId || 'local_virtual_guest',
-        semesterId: Number(semesterId),
-        status: 'approved',
-        amount: 49000,
-        createdAt: new Date().toISOString()
-      };
-    }
     return null;
   },
 
@@ -1259,7 +1275,7 @@ export const dbService = {
       photoURL: 'https://api.iconify.design/healthicons:user-outline.svg',
       isAdmin: false,
       role: 'user',
-      purchasedSemesters: [1, 2], // Auto-unlock course semesters for best app review experience
+      purchasedSemesters: [], // Clean empty by default, no free semesters
       isBlocked: false
     };
 
@@ -1277,64 +1293,162 @@ export const dbService = {
     file: File,
     onProgress: (progress: number) => void
   ): Promise<string> {
+    // Progressive fake ticker helper while network is in-flight so UI never freezes at 0%
+    let currentPct = 5;
+    onProgress(currentPct);
+    const progressTicker = setInterval(() => {
+      if (currentPct < 90) {
+        currentPct += Math.max(1, Math.floor((90 - currentPct) / 10));
+        onProgress(currentPct);
+      }
+    }, 400);
+
+    const cleanupTicker = () => {
+      clearInterval(progressTicker);
+    };
+
+    // 0. Primary: Direct Server /api/upload endpoint (Instant, highly reliable, no external storage dependency)
+    try {
+      const serverUploadPromise = new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            const base64Content = reader.result as string;
+            const res = await fetch('/api/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fileName: file.name,
+                fileData: base64Content,
+                mimeType: file.type
+              })
+            });
+
+            if (!res.ok) {
+              const errJson = await res.json().catch(() => ({}));
+              throw new Error(errJson.error || `Server status ${res.status}`);
+            }
+
+            const data = await res.json();
+            if (data.url) {
+              cleanupTicker();
+              onProgress(100);
+              resolve(data.url);
+            } else {
+              throw new Error('Server URL qaytarmadi');
+            }
+          } catch (e) {
+            reject(e);
+          }
+        };
+        reader.onerror = () => reject(new Error("Faylni o'qishda xatolik yuz berdi"));
+        reader.readAsDataURL(file);
+      });
+
+      const serverUpload = await Promise.race([
+        serverUploadPromise,
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Server upload timeout (15s)')), 15000))
+      ]);
+
+      if (serverUpload) {
+        return serverUpload;
+      }
+    } catch (serverErr) {
+      console.warn("[STORAGE] Direct /api/upload failed or unavailable, falling back to cloud storages...", serverErr);
+    }
+
+    // 1. Try Appwrite Storage if configured
     if (isAppwriteEnabled() && appwriteStorage) {
       try {
-        onProgress(10);
         const uniqueFileId = ID.unique();
         const res = await appwriteStorage.createFile(bucketName, uniqueFileId, file);
+        cleanupTicker();
         onProgress(100);
         const endpoint = (import.meta as any).env.VITE_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1';
         const project = (import.meta as any).env.VITE_APPWRITE_PROJECT || '';
         return `${endpoint}/storage/buckets/${bucketName}/files/${res.$id}/view?project=${project}`;
       } catch (err) {
-        console.warn("Appwrite storage upload failed, trying Supabase...", err);
+        console.warn("Appwrite storage upload failed, trying next storage...", err);
       }
     }
 
+    // 2. Try Supabase Storage if configured (with safety timeout and error catching)
     if (isSupabaseEnabled() && supabase) {
       try {
-        // Attempt to create bucket if it doesn't already exist
-        await supabase.storage.createBucket(bucketName, { public: true });
-      } catch (err) {
-        // Fails gracefully (e.g. if bucket exists or policy doesn't permit direct creation)
-      }
-
-      onProgress(1);
-      const { data, error } = await supabase.storage
-        .from(bucketName)
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true,
-          onUploadProgress: (progressEvent: any) => {
-            const percent = (progressEvent.loaded / progressEvent.total) * 100;
-            onProgress(isNaN(percent) ? 5 : Math.round(percent));
+        const uploadPromise = (async () => {
+          try {
+            await supabase.storage.createBucket(bucketName, { public: true });
+          } catch {
+            // ignore bucket creation error if already exists or RLS restricted
           }
-        } as any);
 
-      if (error) {
-        console.error("Supabase upload error:", error);
-        throw new Error(
-          `Supabase storage'ga yuklashda xatolik: ${error.message}. Iltimos, Supabase panelingizda '${bucketName}' nomli public (ochiq) bucket yaratilganiga ishonch hosil qiling.`
+          const { data, error } = await supabase.storage
+            .from(bucketName)
+            .upload(filePath, file, {
+              cacheControl: '3600',
+              upsert: true,
+              onUploadProgress: (progressEvent: any) => {
+                if (progressEvent && progressEvent.total) {
+                  const percent = (progressEvent.loaded / progressEvent.total) * 100;
+                  if (!isNaN(percent)) {
+                    currentPct = Math.max(currentPct, Math.min(95, Math.round(percent)));
+                    onProgress(currentPct);
+                  }
+                }
+              }
+            } as any);
+
+          if (error) throw error;
+          const { data: { publicUrl } } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+          return publicUrl;
+        })();
+
+        // 8 seconds timeout for Supabase Storage to respond
+        const timeoutPromise = new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error("Supabase Storage timeout (8s)")), 8000)
         );
-      }
 
-      onProgress(100);
-      const { data: { publicUrl } } = supabase.storage.from(bucketName).getPublicUrl(filePath);
-      return publicUrl;
-    } else {
+        const publicUrl = await Promise.race([uploadPromise, timeoutPromise]);
+        cleanupTicker();
+        onProgress(100);
+        return publicUrl;
+      } catch (err) {
+        console.warn("Supabase storage upload failed or timed out, seamlessly falling back to Firebase Storage:", err);
+      }
+    }
+
+    // 3. Fallback to Firebase Storage
+    try {
       const { ref, uploadBytesResumable, getDownloadURL } = await import('firebase/storage');
       const { storage } = await import('./firebase');
       const storageRef = ref(storage, `${bucketName}/${filePath}`);
       const uploadTask = uploadBytesResumable(storageRef, file);
 
-      return new Promise((resolve, reject) => {
-        uploadTask.on('state_changed',
+      return await new Promise<string>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          uploadTask.cancel();
+          reject(new Error("Firebase Storage yuklash vaqti tugadi (tarmoq ulanishini tekshiring)."));
+        }, 90000); // 90 sec timeout for large files
+
+        uploadTask.on(
+          'state_changed',
           (snapshot) => {
-            const p = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            onProgress(isNaN(p) ? 5 : Math.round(p));
+            if (snapshot.totalBytes > 0) {
+              const p = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              if (!isNaN(p)) {
+                currentPct = Math.max(currentPct, Math.min(98, Math.round(p)));
+                onProgress(currentPct);
+              }
+            }
           },
-          (err) => reject(err),
+          (err) => {
+            clearTimeout(timeout);
+            cleanupTicker();
+            reject(err);
+          },
           async () => {
+            clearTimeout(timeout);
+            cleanupTicker();
             try {
               const url = await getDownloadURL(uploadTask.snapshot.ref);
               onProgress(100);
@@ -1345,6 +1459,27 @@ export const dbService = {
           }
         );
       });
+    } catch (firebaseErr: any) {
+      cleanupTicker();
+      console.error("All cloud storage uploads failed:", firebaseErr);
+      
+      // If file is small (< 3MB), we can encode to Data URL Base64 as ultimate emergency fallback
+      if (file.size <= 3 * 1024 * 1024) {
+        console.warn("Using Data URI fallback for small file...");
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            onProgress(100);
+            resolve(reader.result as string);
+          };
+          reader.onerror = () => reject(new Error("Faylni o'qishda xatolik"));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      throw new Error(
+        "Fayl saqlash serveriga ulanib bo'lmadi (" + (firebaseErr.message || "Timeout") + "). Havola (Google Drive/URL) orqali kiritish tugmasidan foydalaning."
+      );
     }
   },
 
@@ -1406,6 +1541,96 @@ export const dbService = {
       }
     } else {
       await deleteDoc(doc(db, 'anatomy_models', id));
+    }
+  },
+
+  // 12. USER BADGES (FIRESTORE)
+  async getUserBadges(userId: string): Promise<any[]> {
+    if (!userId) return [];
+    try {
+      const q = collection(db, 'users', userId, 'badges');
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (err) {
+      console.warn("Error fetching user badges from Firestore:", err);
+      return [];
+    }
+  },
+
+  async saveUserBadge(userId: string, badge: any): Promise<void> {
+    if (!userId || !badge || !badge.id) return;
+    try {
+      const badgeRef = doc(db, 'users', userId, 'badges', badge.id);
+      await setDoc(badgeRef, {
+        ...badge,
+        earned: true,
+        earnedAt: badge.earnedAt || new Date().toISOString()
+      }, { merge: true });
+    } catch (err) {
+      console.warn("Error saving user badge to Firestore:", err);
+    }
+  },
+
+  // 13. POMODORO STUDY SESSIONS
+  async getPomodoroSessions(userId: string): Promise<any[]> {
+    if (!userId) return [];
+    try {
+      const q = query(
+        collection(db, 'users', userId, 'pomodoro_sessions'),
+        orderBy('completedAt', 'desc'),
+        limit(50)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (err) {
+      console.warn("Error fetching pomodoro sessions from Firestore:", err);
+      return [];
+    }
+  },
+
+  async savePomodoroSession(userId: string, session: { id?: string; topicTitle: string; durationMinutes: number; mode: string; completedAt?: string }): Promise<void> {
+    if (!userId || !session) return;
+    try {
+      const sessionId = session.id || `pomo_${Date.now()}`;
+      const sessionRef = doc(db, 'users', userId, 'pomodoro_sessions', sessionId);
+      await setDoc(sessionRef, {
+        id: sessionId,
+        topicTitle: session.topicTitle || 'Anatomiya Tayyorgarligi',
+        durationMinutes: session.durationMinutes || 25,
+        mode: session.mode || 'work',
+        completedAt: session.completedAt || new Date().toISOString()
+      });
+    } catch (err) {
+      console.warn("Error saving pomodoro session to Firestore:", err);
+    }
+  },
+
+  // 14. WEEKLY STUDY GOAL
+  async getWeeklyGoal(userId: string): Promise<number> {
+    if (!userId) return 10; // Default 10 hours
+    try {
+      const goalRef = doc(db, 'users', userId, 'goals', 'weekly');
+      const snap = await getDoc(goalRef);
+      if (snap.exists() && typeof snap.data().targetHours === 'number') {
+        return snap.data().targetHours;
+      }
+      return 10;
+    } catch (err) {
+      console.warn("Error getting weekly goal from Firestore:", err);
+      return 10;
+    }
+  },
+
+  async saveWeeklyGoal(userId: string, targetHours: number): Promise<void> {
+    if (!userId) return;
+    try {
+      const goalRef = doc(db, 'users', userId, 'goals', 'weekly');
+      await setDoc(goalRef, {
+        targetHours,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (err) {
+      console.warn("Error saving weekly goal to Firestore:", err);
     }
   }
 };

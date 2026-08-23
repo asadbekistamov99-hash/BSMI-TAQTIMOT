@@ -11,31 +11,44 @@ import {
   Sparkles, 
   Award, 
   CheckCircle, 
-  TrendingUp 
+  TrendingUp,
+  ShieldCheck,
+  Target,
+  Trophy,
+  FileText,
+  Layers,
+  Box
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { dbService } from '../lib/dbService';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
 import { Semester } from '../types';
+import { parseDate } from '../lib/dateUtils';
+import ResumeLastViewedBanner from '../components/ResumeLastViewedBanner';
+import UserProgressSection from '../components/UserProgressSection';
+import WeeklyStudyGoals from '../components/WeeklyStudyGoals';
+import SEO from '../components/SEO';
 
 export default function Home({ isAdmin: isAdminProp, user }: { isAdmin?: boolean, user?: any }) {
   const { settings } = useSettings();
   const { t, language, getLocalized } = useLanguage();
   const [userPayments, setUserPayments] = useState<Record<number, { status: string, createdAt: any }>>({});
   const [semesters, setSemesters] = useState<Semester[]>([]);
-  const [topicsCounts, setTopicsCounts] = useState<Record<number, number>>({ 1: 13, 2: 13 });
+  const [topicsCounts, setTopicsCounts] = useState<Record<number, number>>({ 1: 13, 2: 13, 3: 13 });
   const [completedTopics, setCompletedTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const isAdmin = isAdminProp ?? !!localStorage.getItem('adminToken');
 
   const sem1Total = topicsCounts[1] || 13;
   const sem2Total = topicsCounts[2] || 13;
-  const totalTopics = sem1Total + sem2Total;
+  const sem3Total = topicsCounts[3] || 13;
+  const totalTopics = sem1Total + sem2Total + sem3Total;
 
   const sem1Completed = completedTopics.filter((item: any) => Number(item.semester) === 1).length;
   const sem2Completed = completedTopics.filter((item: any) => Number(item.semester) === 2).length;
-  const totalCompleted = sem1Completed + sem2Completed;
+  const sem3Completed = completedTopics.filter((item: any) => Number(item.semester) === 3).length;
+  const totalCompleted = sem1Completed + sem2Completed + sem3Completed;
 
   const totalPercentage = totalTopics > 0 ? Math.round((totalCompleted / totalTopics) * 100) : 0;
 
@@ -95,43 +108,53 @@ export default function Home({ isAdmin: isAdminProp, user }: { isAdmin?: boolean
 
   useEffect(() => {
     const fetchSemesters = async () => {
+      const defaultSemesters = [
+        { 
+          id: 'sem_1',
+          number: 1, 
+          title: { uz: '1-Semester: Tayanch-harakat tizimi', en: '1-Semester: Musculoskeletal system', ru: '1-Семестр: Опорно-двигательная система' }, 
+          description: { uz: 'Osteologiya, sindesmologiya va miologiya bo‘limlarini qamrab olgan fundamental kurs.', en: 'A fundamental course covering osteology, syndesmology and myology.', ru: 'Фундаментальный курс, охватывающий остеологию, синдесмологию и миологию.' },
+          isActive: true,
+          order: 1
+        },
+        { 
+          id: 'sem_2',
+          number: 2, 
+          title: { uz: '2-Semester: Ichki a’zolar va tizimlar', en: '2-Semester: Internal organs and systems', ru: '2-Семестр: Внутренние органы и системы' }, 
+          description: { uz: 'Splanxnologiya, angiologya, nevrologiya va endokrin tizim bo‘limlarini o‘z ichiga oladi.', en: 'Includes splanchnology, angiology, neurology and endocrine system.', ru: 'Включает спланхнологию, ангиологию, неврологию и эндокринную систему.' },
+          isActive: true,
+          order: 2
+        },
+        { 
+          id: 'sem_3',
+          number: 3, 
+          title: { uz: '3-Semester: Markaziy asab tizimi va sezgi a’zolari', en: '3-Semester: Central Nervous System and Sensory Organs', ru: '3-Семестр: Центральная нервная система и органы чувств' }, 
+          description: { uz: 'Nevrologiya, estiziologiya va klinik topografik anatomiya bo‘limlarini o‘z ichiga olgan chuqurlashtirilgan kurs.', en: 'Advanced course covering neurology, esthesiology and clinical topographical anatomy.', ru: 'Углубленный курс, охватывающий неврологию, эстезиологию и клиническую топографическую анатомию.' },
+          isActive: true,
+          order: 3
+        }
+      ];
+
       try {
         const data = await dbService.getSemesters();
         
-        if (data.length === 0 && isAdmin) {
-          // Only seed initial semesters if user is admin
-          const initialSemesters = [
-            { 
-              number: 1, 
-              title: { uz: '1-Semester: Tayanch-harakat tizimi', en: '1-Semester: Musculoskeletal system', ru: '1-Семестр: Опорно-двигательная система' }, 
-              description: { uz: 'Osteologiya, sindesmologiya va miologiya bo‘limlarini qamrab olgan fundamental kurs.', en: 'A fundamental course covering osteology, syndesmology and myology.', ru: 'Фундаментальный курс, охватывающий остеологию, синдесмологию и миологию.' },
-              isActive: true,
-              order: 1
-            },
-            { 
-              number: 2, 
-              title: { uz: '2-Semester: Ichki a’zolar va tizimlar', en: '2-Semester: Internal organs and systems', ru: '2-Семестр: Внутренние органы и системы' }, 
-              description: { uz: 'Splanxnologiya, angiologya, nevrologiya va endokrin tizim bo‘limlarini o‘z ichiga oladi.', en: 'Includes splanchnology, angiology, neurology and endocrine system.', ru: 'Включает спланхнологию, ангиологию, неврологию и эндокринную систему.' },
-              isActive: true,
-              order: 2
+        const semMap = new Map<number, Semester>();
+        defaultSemesters.forEach(s => semMap.set(Number(s.number), s));
+        
+        if (data && data.length > 0) {
+          data.forEach((s: any) => {
+            const num = Number(s.number || s.id?.replace?.(/\D/g, '') || 1);
+            if (num >= 1 && num <= 3) {
+              semMap.set(num, { ...semMap.get(num), ...s, number: num, id: `sem_${num}` });
             }
-          ];
-          
-          for (const s of initialSemesters) {
-            try {
-              await dbService.addSemester(s);
-            } catch (e) {
-              console.warn("Seeding failed, might not be admin yet:", e);
-            }
-          }
-          
-          const freshData = await dbService.getSemesters();
-          setSemesters(freshData);
-        } else {
-          setSemesters(data);
+          });
         }
+        
+        const merged = Array.from(semMap.values()).sort((a, b) => a.number - b.number);
+        setSemesters(merged);
       } catch (error) {
         console.error("Error loaded semesters:", error);
+        setSemesters(defaultSemesters);
       }
     };
 
@@ -144,14 +167,24 @@ export default function Home({ isAdmin: isAdminProp, user }: { isAdmin?: boolean
 
       try {
         const payments: Record<number, { status: string, createdAt: any }> = {};
-        const semesterIds = [1, 2];
+        const profile = await dbService.getProfile(user.uid);
+        const purchasedList = (profile?.purchasedSemesters || []).map(Number);
+
+        const semesterIds = [1, 2, 3];
         for (const semId of semesterIds) {
-          const payData = await dbService.getPayment(user.uid, semId);
-          if (payData) {
-            payments[semId] = { 
-              status: payData.status, 
-              createdAt: payData.createdAt 
+          if (purchasedList.includes(Number(semId))) {
+            payments[semId] = {
+              status: 'completed',
+              createdAt: profile?.createdAt || new Date().toISOString()
             };
+          } else {
+            const payData = await dbService.getPayment(user.uid, semId);
+            if (payData) {
+              payments[semId] = { 
+                status: payData.status, 
+                createdAt: payData.createdAt 
+              };
+            }
           }
         }
         setUserPayments(payments);
@@ -165,7 +198,7 @@ export default function Home({ isAdmin: isAdminProp, user }: { isAdmin?: boolean
     const fetchTopicsCounts = async () => {
       try {
         const topics = await dbService.getTopics();
-        const counts: Record<number, number> = { 1: 13, 2: 13 };
+        const counts: Record<number, number> = { 1: 13, 2: 13, 3: 13 };
         
         let hasData = false;
         topics.forEach(t => {
@@ -176,6 +209,7 @@ export default function Home({ isAdmin: isAdminProp, user }: { isAdmin?: boolean
               if (!hasData) {
                 counts[1] = 0;
                 counts[2] = 0;
+                counts[3] = 0;
                 hasData = true;
               }
               counts[semNum] = (counts[semNum] || 0) + 1;
@@ -185,6 +219,7 @@ export default function Home({ isAdmin: isAdminProp, user }: { isAdmin?: boolean
         
         if (!counts[1]) counts[1] = 13;
         if (!counts[2]) counts[2] = 13;
+        if (!counts[3]) counts[3] = 13;
         
         setTopicsCounts(counts);
       } catch (error) {
@@ -205,6 +240,11 @@ export default function Home({ isAdmin: isAdminProp, user }: { isAdmin?: boolean
 
   return (
     <div className="flex flex-col">
+      <SEO 
+        title={settings?.siteName ? `${settings.siteName} - Odam Anatomiyasi Platformasi` : "BSMI Anatomy - Odam Anatomiyasi Bo'yicha Interaktiv Ta'lim Portali"}
+        description={settings?.tagline || "Buxoro Davlat Tibbiyot Instituti Odam anatomiyasi kafedrasi elektron ta'lim portali. 1, 2, 3-semestr to'liq fan dasturi, 1200+ testlar, 3D modellar va klinik keyslar."}
+        keywords="odam anatomiyasi, tibbiyot instituti, bsmi anatomiya, anatomiya testlari, 3d anatomiya, osteologiya, miologiya, splanxnologiya, nevrologiya"
+      />
       {/* Hero Section */}
       <section className="relative py-24 overflow-hidden bg-brand-primary border-b border-slate-800">
         <div className="absolute inset-0 opacity-20">
@@ -285,115 +325,38 @@ export default function Home({ isAdmin: isAdminProp, user }: { isAdmin?: boolean
       {/* Semesters Section */}
       <section className="py-24 bg-brand-bg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <ResumeLastViewedBanner user={user} />
           <div className="text-center mb-16">
             <h2 className="text-3xl font-black text-brand-primary uppercase tracking-tight">{settings.homeCurriculumTitle || t('home.curriculum')}</h2>
             <p className="text-brand-muted mt-2 font-medium italic uppercase tracking-widest text-[10px]">{settings.homeCurriculumDesc || t('home.curriculum_desc')}</p>
           </div>
 
-          {/* Progress Dashboard Panel */}
-          <div className="mb-16 bg-white p-8 md:p-10 rounded-[32px] border border-brand-border shadow-xl shadow-brand-primary/5">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-8 border-b border-brand-border">
-              <div className="space-y-1">
-                <h3 className="text-2xl font-black text-brand-primary tracking-tight">
-                  {t('progress.title')}
-                </h3>
-                <p className="text-brand-muted text-sm font-medium">
-                  {t('progress.desc')}
-                </p>
-              </div>
-              <div className={`flex items-center gap-3 px-5 py-3 rounded-2xl border ${rank.bg}`}>
-                <Award className="w-6 h-6 animate-pulse text-amber-500" />
-                <div>
-                  <div className="text-[9px] font-black uppercase tracking-wider opacity-75">
-                    {language === 'uz' ? 'UNVONINGIZ' : language === 'ru' ? 'ВАШ СТАТУС' : 'YOUR RANK'}
-                  </div>
-                  <div className="text-sm font-black tracking-tight">{rank.name}</div>
-                </div>
-              </div>
-            </div>
+          {/* Progress Dashboard Panel with Interactive Charts */}
+          <UserProgressSection
+            user={user}
+            completedTopics={completedTopics}
+            sem1Total={sem1Total}
+            sem2Total={sem2Total}
+            sem3Total={sem3Total}
+            totalPercentage={totalPercentage}
+            rank={rank}
+          />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-8">
-              {/* Overall Stat Card */}
-              <div className="flex flex-col justify-between p-6 bg-slate-50 border border-slate-100 rounded-2xl">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="w-5 h-5 text-indigo-500" />
-                    <span className="text-xs font-black text-slate-500 uppercase tracking-wider">
-                      {t('progress.overall')}
-                    </span>
-                  </div>
-                  <div className="text-3xl font-black text-brand-primary tracking-tight mt-1">
-                    {totalPercentage}%
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                    <div className="bg-brand-accent h-full rounded-full transition-all duration-500" style={{ width: `${totalPercentage}%` }} />
-                  </div>
-                  <span className="text-[10px] text-brand-muted mt-2 block font-bold uppercase tracking-wider leading-relaxed">
-                    {rank.desc}
-                  </span>
-                </div>
-              </div>
-
-              {/* Semester 1 Stat Card */}
-              <div className="flex flex-col justify-between p-6 bg-slate-50 border border-slate-100 rounded-2xl">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <BookOpen className="w-5 h-5 text-blue-500" />
-                    <span className="text-xs font-black text-slate-500 uppercase tracking-wider">
-                      {language === 'uz' ? '1-SEMESTR MAVZULARI' : language === 'ru' ? 'ТЕМЫ 1-ГО СЕМЕСТРА' : 'SEMESTER 1 TOPICS'}
-                    </span>
-                  </div>
-                  <div className="text-3xl font-black text-brand-primary tracking-tight mt-1">
-                    {sem1Completed} / {sem1Total}
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                    <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${sem1Total > 0 ? Math.round((sem1Completed / sem1Total) * 100) : 0}%` }} />
-                  </div>
-                  <span className="text-[10px] text-brand-muted mt-2 block font-bold uppercase tracking-wider">
-                    {Math.round((sem1Completed / (sem1Total || 1)) * 100)}% {t('progress.percentage').toLowerCase()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Semester 2 Stat Card */}
-              <div className="flex flex-col justify-between p-6 bg-slate-50 border border-slate-100 rounded-2xl">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <BookOpen className="w-5 h-5 text-emerald-500" />
-                    <span className="text-xs font-black text-slate-500 uppercase tracking-wider">
-                      {language === 'uz' ? '2-SEMESTR MAVZULARI' : language === 'ru' ? 'ТЕМЫ 2-ГО СЕМЕСТРА' : 'SEMESTER 2 TOPICS'}
-                    </span>
-                  </div>
-                  <div className="text-3xl font-black text-brand-primary tracking-tight mt-1">
-                    {sem2Completed} / {sem2Total}
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                    <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${sem2Total > 0 ? Math.round((sem2Completed / sem2Total) * 100) : 0}%` }} />
-                  </div>
-                  <span className="text-[10px] text-brand-muted mt-2 block font-bold uppercase tracking-wider">
-                    {Math.round((sem2Completed / (sem2Total || 1)) * 100)}% {t('progress.percentage').toLowerCase()}
-                  </span>
-                </div>
-              </div>
-            </div>
+          {/* Weekly Study Goals Dashboard */}
+          <div className="mb-12">
+            <WeeklyStudyGoals user={user} />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {semesters.map((sem) => (
               <SemesterCard 
                 key={sem.id}
                 semester={sem.number}
                 title={getLocalized(sem.title)}
                 description={getLocalized(sem.description)}
-                topicsCount={topicsCounts[sem.number] || 26}
-                completedCount={sem.number === 1 ? sem1Completed : sem2Completed}
-                status={isAdmin ? 'completed' : userPayments[sem.number]?.status}
+                topicsCount={topicsCounts[sem.number] || 13}
+                completedCount={completedTopics.filter((item: any) => Number(item.semester) === sem.number).length}
+                status={userPayments[sem.number]?.status}
                 paymentData={userPayments[sem.number]}
               />
             ))}
@@ -414,14 +377,15 @@ function FeatureCard({ icon, title, description }: { icon: React.ReactNode, titl
   );
 }
 
-function Countdown({ createdAt }: { createdAt: Date }) {
+function Countdown({ createdAt }: { createdAt: any }) {
   const [timeLeft, setTimeLeft] = useState<string>('');
 
   useEffect(() => {
     const calculateTime = () => {
       const waitTime = 24 * 60 * 60 * 1000; // 24 hours
-      const deadline = createdAt.getTime() + waitTime;
-      const now = new Date().getTime();
+      const createdDate = parseDate(createdAt);
+      const deadline = createdDate.getTime() + waitTime;
+      const now = Date.now();
       const diff = deadline - now;
 
       if (diff <= 0) {
@@ -549,23 +513,5 @@ function SemesterCard({
         </div>
       </div>
     </motion.div>
-  );
-}
-
-function Layers({ className }: { className?: string }) {
-  return (
-    <svg 
-      className={className} 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round"
-    >
-      <polygon points="12 2 2 7 12 12 22 7 12 2" />
-      <polyline points="2 17 12 22 22 17" />
-      <polyline points="2 12 12 17 22 12" />
-    </svg>
   );
 }

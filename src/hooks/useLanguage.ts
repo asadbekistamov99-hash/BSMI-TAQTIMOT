@@ -4,8 +4,10 @@ type LanguageCode = 'uz' | 'ru' | 'en';
 
 const uzDict: Record<string, string> = {
   // Navigation
+  'nav.semesters': 'SEMESTRLAR',
   'nav.semester1': 'SEMESTR 1',
   'nav.semester2': 'SEMESTR 2',
+  'nav.semester3': 'SEMESTR 3',
   'nav.glossary': "LUG'AT",
   'nav.atlas': 'ATLAS',
   'nav.models': '3D MODELLAR',
@@ -104,6 +106,7 @@ const uzDict: Record<string, string> = {
   'footer.sections_title': "BO'LIMLAR",
   'footer.semester1': '1-Semester',
   'footer.semester2': '2-Semester',
+  'footer.semester3': '3-Semester',
   'footer.3d_atlas': '3D Atlas',
   'footer.contact': 'ALOQA',
   'footer.address': "Buxoro, O'zbekiston",
@@ -112,8 +115,10 @@ const uzDict: Record<string, string> = {
 
 const ruDict: Record<string, string> = {
   // Navigation
+  'nav.semesters': 'СЕМЕСТРЫ',
   'nav.semester1': 'СЕМЕСТР 1',
   'nav.semester2': 'СЕМЕСТР 2',
+  'nav.semester3': 'СЕМЕСТР 3',
   'nav.glossary': 'СЛОВАРЬ',
   'nav.atlas': 'АТЛАС',
   'nav.models': '3D МОДЕЛИ',
@@ -212,6 +217,7 @@ const ruDict: Record<string, string> = {
   'footer.sections_title': 'РАЗДЕЛЫ',
   'footer.semester1': '1-Семестр',
   'footer.semester2': '2-Семестр',
+  'footer.semester3': '3-Семестр',
   'footer.3d_atlas': '3D Атлас',
   'footer.contact': 'СВЯЗЬ',
   'footer.address': 'Бухара, Узбекистан',
@@ -220,8 +226,10 @@ const ruDict: Record<string, string> = {
 
 const enDict: Record<string, string> = {
   // Navigation
+  'nav.semesters': 'SEMESTERS',
   'nav.semester1': 'SEMESTER 1',
   'nav.semester2': 'SEMESTER 2',
+  'nav.semester3': 'SEMESTER 3',
   'nav.glossary': 'GLOSSARY',
   'nav.atlas': 'ATLAS',
   'nav.models': '3D MODELS',
@@ -320,6 +328,7 @@ const enDict: Record<string, string> = {
   'footer.sections_title': 'SECTIONS',
   'footer.semester1': '1-Semester',
   'footer.semester2': '2-Semester',
+  'footer.semester3': '3-Semester',
   'footer.3d_atlas': '3D Atlas',
   'footer.contact': 'CONTACT',
   'footer.address': 'Bukhara, Uzbekistan',

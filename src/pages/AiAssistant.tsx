@@ -1,11 +1,76 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../hooks/useLanguage';
 import { useSettings } from '../hooks/useSettings';
-import { Sparkles, Send, Trash2, HelpCircle, BookOpen, Microscope, ArrowRight, Image as ImageIcon, X, Copy, Check, MessageSquare, AlertTriangle, Lock, Mic, MicOff, Globe } from 'lucide-react';
+import { Sparkles, Send, Trash2, HelpCircle, BookOpen, Microscope, ArrowRight, Image as ImageIcon, X, Copy, Check, MessageSquare, AlertTriangle, Lock, Mic, MicOff, Globe, Layers, Eye, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { dbService } from '../lib/dbService';
+import SEO from '../components/SEO';
+
+import skeletalDiag from '../assets/images/skeletal_system_backdrop_1783853676839.jpg';
+import muscularDiag from '../assets/images/muscular_system_backdrop_1783853695747.jpg';
+import nervousDiag from '../assets/images/nervous_system_backdrop_1783853738336.jpg';
+import circulatoryDiag from '../assets/images/circulatory_system_backdrop_1783853755670.jpg';
+import visceralDiag from '../assets/images/internal_organs_backdrop_1783853721565.jpg';
+
+const ANATOMICAL_DIAGRAMS = [
+  {
+    id: 'skeletal',
+    title: { uz: 'Suyak Tizimi (Osteologiya)', ru: 'Скелетная система', en: 'Skeletal System' },
+    subtitle: { uz: 'Skelet tuzilishi va bo‘g‘imlar', ru: 'Строение скелета и суставы', en: 'Skeleton structure & joints' },
+    src: skeletalDiag,
+    promptSuggestion: { 
+      uz: "Skelet anatomiyasi va suyaklar birikish turlari bo'yicha ma'lumot ber", 
+      ru: "Опишите скелетную систему человека и типы соединения костей", 
+      en: "Explain human skeletal anatomy and joint types" 
+    }
+  },
+  {
+    id: 'muscular',
+    title: { uz: 'Muskul Tizimi (Miologiya)', ru: 'Мышечная система', en: 'Muscular System' },
+    subtitle: { uz: 'Skelet muskullari va fassiyalar', ru: 'Скелетные мышцы и фасции', en: 'Skeletal muscles & fascia' },
+    src: muscularDiag,
+    promptSuggestion: { 
+      uz: "Muskullar tizimi, ularning pay va birikish nuqtalari haqida tushuntirib ber", 
+      ru: "Расскажите про мышечную систему, сухожилия и точки прикрепления", 
+      en: "Explain muscular anatomy, origin, insertion, and function" 
+    }
+  },
+  {
+    id: 'nervous',
+    title: { uz: 'Nerv Tizimi (Nevrologiya)', ru: 'Нервная система', en: 'Nervous System' },
+    subtitle: { uz: 'Bosh miya, orqa miya va nervlar', ru: 'Головной, спинной мозг и нервы', en: 'Brain, spinal cord & nerves' },
+    src: nervousDiag,
+    promptSuggestion: { 
+      uz: "Markaziy va periferik nerv tizimi hamda neyronlar tuzilishini tahlil qil", 
+      ru: "Проанализируйте центральную и периферическую нервную систему", 
+      en: "Analyze central and peripheral nervous system architecture" 
+    }
+  },
+  {
+    id: 'circulatory',
+    title: { uz: 'Qon Aylanish Tizimi (Angiologiya)', ru: 'Кровеносная система', en: 'Circulatory System' },
+    subtitle: { uz: 'Yurak, arteriya va venalar', ru: 'Сердце, артерии и вены', en: 'Heart, arteries & veins' },
+    src: circulatoryDiag,
+    promptSuggestion: { 
+      uz: "Qon aylanish doiralari hamda yurak va tomirlar anatomiyasini tushuntir", 
+      ru: "Объясните круги кровообращения и анатомию сердца и сосудов", 
+      en: "Detail systemic and pulmonary circulation anatomy" 
+    }
+  },
+  {
+    id: 'visceral',
+    title: { uz: 'Ichki A’zolar (Splanxnologiya)', ru: 'Внутренние органы', en: 'Internal Organs' },
+    subtitle: { uz: 'Hazm, nafas va siydik-tanosil', ru: 'Пищеварение, дыхание и выделение', en: 'Digestive, respiratory & urinary' },
+    src: visceralDiag,
+    promptSuggestion: { 
+      uz: "Ichki a'zolar va ularning topografik anatomiyasini tahlil qilib ber", 
+      ru: "Проанализируйте внутренние органы и их топографическую анатомию", 
+      en: "Analyze splanchnology and organ topography" 
+    }
+  }
+];
 
 interface ChatMessage {
   role: 'user' | 'model';
@@ -30,6 +95,7 @@ export default function AiAssistant({ user }: { user: any }) {
   const recognitionRef = useRef<any>(null);
   const [handsFree, setHandsFree] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [previewDiagram, setPreviewDiagram] = useState<typeof ANATOMICAL_DIAGRAMS[0] | null>(null);
   
   const silenceTimerRef = useRef<any>(null);
   const inputRef = useRef('');
@@ -42,6 +108,30 @@ export default function AiAssistant({ user }: { user: any }) {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const attachDiagramAndAskVoice = async (diag: typeof ANATOMICAL_DIAGRAMS[0]) => {
+    try {
+      const response = await fetch(diag.src);
+      const blob = await response.blob();
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImage({
+          data: reader.result as string,
+          mimeType: 'image/jpeg'
+        });
+        const promptText = diag.promptSuggestion[language] || diag.promptSuggestion['uz'];
+        setInput(promptText);
+        setPreviewDiagram(null);
+        // Trigger speech recognition voice input
+        setTimeout(() => {
+          safeStartRecognition();
+        }, 200);
+      };
+      reader.readAsDataURL(blob);
+    } catch (e) {
+      console.error("Failed to load diagram image:", e);
+    }
+  };
 
   // Check user subscription / paid status
   useEffect(() => {
@@ -756,6 +846,11 @@ export default function AiAssistant({ user }: { user: any }) {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10" id="ai-assistant-root">
+      <SEO 
+        title="24/7 Anatomiya Sun'iy Intellekt Maslahatchisi | BSMI Anatomy"
+        description="Odam anatomiyasi bo'yicha Gemini AI asosidagi intellektual yordamchi. Anatomik rasmlarni tahlil qilish, terminlarni tushuntirish va test savollariga javob berish."
+        keywords="ai anatomiya, suniy intellekt, anatomiya bot, gemini ai anatomiya, rasm tahlili anatomiya"
+      />
       {/* Decorative gradient background glow */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[300px] bg-gradient-to-tr from-amber-200/20 to-brand-accent/20 rounded-full filter blur-[100px] opacity-70 pointer-events-none -z-10" />
 
@@ -845,6 +940,59 @@ export default function AiAssistant({ user }: { user: any }) {
                 </div>
               </li>
             </ul>
+          </div>
+
+          {/* Anatomical Diagrams Voice Query Gallery */}
+          <div className="bg-white border border-slate-200/60 rounded-3xl p-6 shadow-sm">
+            <h2 className="text-xs font-black text-brand-primary uppercase tracking-widest border-b border-slate-100 pb-4 mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-cyan-500" />
+                {language === 'uz' ? "Anatomik Diagrammalar" : "Анатомические Схемы"}
+              </span>
+              <span className="px-2 py-0.5 bg-cyan-50 text-cyan-600 text-[9px] font-black uppercase tracking-wider rounded-md border border-cyan-100">
+                Ovozli Savol
+              </span>
+            </h2>
+            <p className="text-slate-500 text-[11px] font-medium leading-relaxed mb-4">
+              {language === 'uz'
+                ? "Diagrammalarni tomosha qiling yoki ulardan birini tanlab mikrofon tugmasi orqali verbal anatomik savol bering:"
+                : "Просматривайте схемы или выберите одну из них, чтобы задать устный вопрос голосом:"}
+            </p>
+
+            <div className="space-y-3">
+              {ANATOMICAL_DIAGRAMS.map((diag) => (
+                <div 
+                  key={diag.id}
+                  className="group relative overflow-hidden rounded-2xl border border-slate-200 hover:border-cyan-400 bg-slate-50 hover:bg-cyan-50/30 transition-all p-3 flex items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0 cursor-pointer" onClick={() => setPreviewDiagram(diag)}>
+                    <div className="w-12 h-12 rounded-xl overflow-hidden border border-slate-200 shrink-0 bg-slate-900 relative">
+                      <img src={diag.src} alt={diag.title.uz} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300 opacity-90" />
+                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Eye className="w-4 h-4 text-white" />
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-black text-slate-800 truncate group-hover:text-cyan-700 transition-colors">
+                        {diag.title[language] || diag.title.uz}
+                      </h4>
+                      <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
+                        {diag.subtitle[language] || diag.subtitle.uz}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => attachDiagramAndAskVoice(diag)}
+                    className="shrink-0 px-2.5 py-1.5 bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm transition active:scale-95 cursor-pointer"
+                    title={language === 'uz' ? "Rasm bilan ovozli savol berish" : "Спросить голосом с рисунком"}
+                  >
+                    <Mic className="w-3 h-3" />
+                    <span className="hidden sm:inline">Ovoz</span>
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="bg-[#0E1624] text-white border border-slate-800 rounded-3xl p-6 shadow-xl select-none relative overflow-hidden">
@@ -1249,6 +1397,76 @@ export default function AiAssistant({ user }: { user: any }) {
           </div>
         </div>
       </div>
+
+      {/* Diagram Lightbox & Voice Question Modal */}
+      <AnimatePresence>
+        {previewDiagram && (
+          <div className="fixed inset-0 z-[1000] overflow-y-auto font-sans flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setPreviewDiagram(null)}
+              className="fixed inset-0 bg-slate-950/80 backdrop-blur-md"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden z-10 text-white"
+            >
+              <div className="p-5 border-b border-slate-800 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-cyan-500/20 text-cyan-400 rounded-xl border border-cyan-500/30">
+                    <Layers className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white">
+                      {previewDiagram.title[language] || previewDiagram.title.uz}
+                    </h3>
+                    <p className="text-xs text-slate-400 font-medium mt-0.5">
+                      {previewDiagram.subtitle[language] || previewDiagram.subtitle.uz}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setPreviewDiagram(null)}
+                  className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 bg-slate-950 flex items-center justify-center max-h-[480px] overflow-hidden">
+                <img 
+                  src={previewDiagram.src} 
+                  alt={previewDiagram.title.uz} 
+                  className="max-h-[440px] w-auto object-contain rounded-xl shadow-lg border border-slate-800"
+                />
+              </div>
+
+              <div className="p-5 bg-slate-900 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-xs text-slate-300 font-medium">
+                  <p className="font-bold text-cyan-400 flex items-center gap-1.5 mb-0.5">
+                    <Zap className="w-3.5 h-3.5" /> Verbal Ovozli Savol Berish
+                  </p>
+                  <span>Diagramma avtomatik AI vision tahlili uchun biriktiriladi hamda mikrofon faollashtiriladi.</span>
+                </div>
+
+                <button
+                  onClick={() => attachDiagramAndAskVoice(previewDiagram)}
+                  className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-cyan-500 to-indigo-500 hover:from-cyan-600 hover:to-indigo-600 text-white font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 shrink-0 cursor-pointer active:scale-95"
+                >
+                  <Mic className="w-4 h-4 animate-bounce" />
+                  <span>Diagramma bo‘yicha Ovozli Savol Berish</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

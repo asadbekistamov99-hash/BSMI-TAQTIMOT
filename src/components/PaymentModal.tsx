@@ -5,6 +5,7 @@ import { auth, db } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
+import { parseDate } from '../lib/dateUtils';
 
 interface PaymentModalProps {
   semesterId: number;
@@ -25,9 +26,16 @@ export default function PaymentModal({ semesterId, user, onClose, onSuccess }: P
   const isAtlas = semesterId === 99;
   const currentPriceUZS = isAtlas ? 30000 : (settings?.priceUZS || 0);
   const currentPriceUSD = isAtlas ? 3 : (settings?.priceUSD || 0);
+  const getSemesterTitle = (sem: number) => {
+    if (sem === 1) return language === 'uz' ? "1-Semestr: Tayanch-harakat tizimi" : language === 'ru' ? "1-Семестр: Опорно-двигательная система" : "1st Semester: Musculoskeletal system";
+    if (sem === 2) return language === 'uz' ? "2-Semestr: Ichki a'zolar va tizimlar" : language === 'ru' ? "2-Семестр: Внутренние органы" : "2nd Semester: Internal organs";
+    if (sem === 3) return language === 'uz' ? "3-Semestr: Markaziy asab tizimi va sezgi a'zolari" : language === 'ru' ? "3-Семестр: ЦНС и органы чувств" : "3rd Semester: Central Nervous System";
+    return `${sem}-Semestr`;
+  };
+
   const titleText = isAtlas 
     ? (language === 'uz' ? "3D Atlas Obunasi" : language === 'ru' ? "Подписка на 3D Атлас" : "3D Atlas Subscription")
-    : (language === 'uz' ? `${semesterId}-Semestr` : language === 'ru' ? `${semesterId}-Семестр` : `${semesterId}-Semester`);
+    : getSemesterTitle(semesterId);
 
   useEffect(() => {
     checkPendingPayment();
@@ -51,15 +59,7 @@ export default function PaymentModal({ semesterId, user, onClose, onSuccess }: P
     if (!pendingPayment?.createdAt) return;
 
     const interval = setInterval(() => {
-      let created: Date;
-      if (pendingPayment.createdAt?.toDate) {
-        created = pendingPayment.createdAt.toDate();
-      } else if (pendingPayment.createdAt) {
-        created = new Date(pendingPayment.createdAt.seconds * 1000 || pendingPayment.createdAt);
-      } else {
-        created = new Date();
-      }
-      
+      const created = parseDate(pendingPayment.createdAt);
       const expires = new Date(created.getTime() + 24 * 60 * 60 * 1000);
       const now = new Date();
       

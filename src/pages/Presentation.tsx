@@ -29,6 +29,7 @@ import {
   CheckCircle,
   HelpCircle
 } from 'lucide-react';
+import SEO from '../components/SEO';
 
 // Interfaces
 interface Scene {
@@ -392,6 +393,11 @@ OHANG: Ishonchli, ilmiy va jozibador ovozli professional suxandon
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col relative overflow-hidden selection:bg-brand-accent/30 selection:text-white">
+      <SEO 
+        title="Interaktiv Taqdimot va Platforma Imkoniyatlari | BSMI Anatomy"
+        description="BSMI Anatomy zamonaviy tibbiy ta'lim platformasining interaktiv taqdimoti, video ssenariysi, 3D atlas va sun'iy intellekt integratsiyalari."
+        keywords="bsmi taqdimot, anatomiya taqdimoti, tibbiyot innovatsiya, tibbiy talim platformasi"
+      />
       {/* Dynamic Background Canvas */}
       <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-0" />
       

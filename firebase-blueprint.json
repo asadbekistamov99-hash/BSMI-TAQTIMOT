@@ -51,7 +51,95 @@
         "uid": { "type": "string" },
         "email": { "type": "string" },
         "displayName": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastViewedPage": {
+          "type": "object",
+          "description": "Last page viewed by user to resume session"
+        }
+      }
+    },
+    "badge": {
+      "title": "Badge",
+      "description": "An earned user achievement badge",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nameUz": { "type": "string" },
+        "nameRu": { "type": "string" },
+        "nameEn": { "type": "string" },
+        "descUz": { "type": "string" },
+        "descRu": { "type": "string" },
+        "descEn": { "type": "string" },
+        "icon": { "type": "string" },
+        "earned": { "type": "boolean" },
+        "earnedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "nameUz", "earned"]
+    },
+    "pomodoro_session": {
+      "title": "Pomodoro Session",
+      "description": "Completed deep work study session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "topicTitle": { "type": "string" },
+        "durationMinutes": { "type": "integer" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "mode": { "type": "string" }
+      },
+      "required": ["id", "durationMinutes", "completedAt"]
+    },
+    "weekly_goal": {
+      "title": "Weekly Goal",
+      "description": "User target study hours per week",
+      "type": "object",
+      "properties": {
+        "targetHours": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["targetHours"]
+    },
+    "osce_result": {
+      "title": "OSCE Exam Result",
+      "description": "Completed practical OSCE station exam result",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "stationId": { "type": "string" },
+        "stationTitle": { "type": "string" },
+        "score": { "type": "number" },
+        "maxScore": { "type": "number" },
+        "passed": { "type": "boolean" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "stationId", "score"]
+    },
+    "leaderboard_entry": {
+      "title": "Leaderboard Entry",
+      "description": "Aggregated points and achievements for student ranking",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "academicGroup": { "type": "string" },
+        "totalScore": { "type": "number" },
+        "pomodoroMinutes": { "type": "number" },
+        "quizzesCompleted": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "totalScore"]
+    },
+    "flashcard": {
+      "title": "Flashcard",
+      "description": "A flashcard review state and favorite indicator for a term",
+      "type": "object",
+      "properties": {
+        "termId": { "type": "string" },
+        "isFavorite": { "type": "boolean" },
+        "interval": { "type": "number" },
+        "repetitions": { "type": "number" },
+        "easeFactor": { "type": "number" },
+        "nextReview": { "type": "string" }
       }
     },
     "payment": {
@@ -146,9 +234,56 @@
         "pins": { "type": "array", "items": { "type": "object" } }
       },
       "required": ["id", "title", "system"]
+    },
+    "academic_group": {
+      "title": "Academic Group",
+      "description": "Student study group for collaborative leaderboard and rankings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "groupName": { "type": "string" },
+        "faculty": { "type": "string" },
+        "description": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "groupCode": { "type": "string" },
+        "members": { "type": "array", "items": { "type": "object" } },
+        "totalScore": { "type": "number" },
+        "membersCount": { "type": "number" },
+        "avgAccuracy": { "type": "number" },
+        "topStudent": { "type": "string" }
+      },
+      "required": ["groupName", "faculty"]
+    },
+    "pin_quiz": {
+      "title": "Pin Quiz Diagram",
+      "description": "Anatomical visual specimen with interactive numbered pins for practical skill tests",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "object" },
+        "system": { "type": "string" },
+        "difficulty": { "type": "string", "enum": ["Oson", "O'rta", "Murakkab"] },
+        "customImageUrl": { "type": "string" },
+        "imageBackdrop": { "type": "string" },
+        "description": { "type": "string" },
+        "pins": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "title", "system", "pins"]
     }
   },
   "firestore": {
+    "pin_quizzes": {
+      "schema": "pin_quiz",
+      "description": "Collection of anatomical Pin Test specimens and numbered pins"
+    },
+    "academic_groups": {
+      "schema": "academic_group",
+      "description": "Collection of academic study groups"
+    },
     "topics": {
       "schema": "topic",
       "description": "Collection of anatomy topics"
@@ -168,6 +303,18 @@
     "users": {
       "schema": "user",
       "description": "Student user profiles"
+    },
+    "users/{userId}/flashcards/{flashcardId}": {
+      "schema": "flashcard",
+      "description": "Flashcard state/favorites for a specific user"
+    },
+    "users/{userId}/badges/{badgeId}": {
+      "schema": "badge",
+      "description": "Earned badges for a specific user"
+    },
+    "users/{userId}/pomodoro_sessions/{sessionId}": {
+      "schema": "pomodoro_session",
+      "description": "Completed study timer sessions for a specific user"
     },
     "payments": {
       "schema": "payment",

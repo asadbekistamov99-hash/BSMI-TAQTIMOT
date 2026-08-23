@@ -8,6 +8,7 @@ import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import FlashcardStudy from '../components/FlashcardStudy';
 import AnatomicalDictation from '../components/AnatomicalDictation';
+import SEO from '../components/SEO';
 
 interface LatinTerm {
   id: string;
@@ -409,6 +410,11 @@ export default function LatinGlossary({ isAdmin: isAdminProp, user }: { isAdmin?
 
   return (
     <div className="bg-brand-bg min-h-screen">
+      <SEO 
+        title="Lotincha Anatomik Lug'at va Flashcardlar | BSMI Anatomy"
+        description="Odam anatomiyasi fani bo'yicha to'liq lotincha-o'zbekcha-ruscha terminologik lug'at, interaktiv flashcardlar va lotincha diktant mashqlari."
+        keywords="lotincha lugat, anatomiya terminlari, lotincha anatomiya, flashcard anatomiya, lotincha diktant"
+      />
       {/* Header */}
       <header className="bg-brand-primary py-20 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-1/3 h-full bg-brand-accent/10 blur-[100px] -mr-20"></div>

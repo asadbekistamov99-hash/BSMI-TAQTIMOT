@@ -4,20 +4,24 @@ import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/
 import { db, auth } from '../lib/firebase';
 import { dbService, isSupabaseEnabled } from '../lib/dbService';
 import { Quiz, Topic } from '../types';
+import { getCuratedQuizzesForTopic } from '../data/topicQuizzesData';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, XCircle, ChevronRight, RotateCcw, Award, Lock, Clock, Sparkles, Languages } from 'lucide-react';
 import PaymentModal from '../components/PaymentModal';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
+import { parseDate } from '../lib/dateUtils';
+import SEO from '../components/SEO';
 
-function Countdown({ createdAt }: { createdAt: Date }) {
+function Countdown({ createdAt }: { createdAt: any }) {
   const [timeLeft, setTimeLeft] = useState<string>('');
 
   useEffect(() => {
     const calculateTime = () => {
       const waitTime = 24 * 60 * 60 * 1000;
-      const deadline = createdAt.getTime() + waitTime;
-      const now = new Date().getTime();
+      const createdDate = parseDate(createdAt);
+      const deadline = createdDate.getTime() + waitTime;
+      const now = Date.now();
       const diff = deadline - now;
 
       if (diff <= 0) {
@@ -164,28 +168,12 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
             unlocked = true;
             setIsPaid(true);
           } else if (user) {
-            // 1. Check User/Profile document for permanent access and expiry
+            // 1. Check User/Profile document for semester access
             try {
               const uProfile = await dbService.getProfile(user.uid);
               if (uProfile) {
-                // If the user has any active subscription whose duration has not expired, grant full access
-                if (uProfile.expiryDate) {
-                  let expiryDate: Date | null = null;
-                  if (typeof uProfile.expiryDate.toDate === 'function') {
-                    expiryDate = uProfile.expiryDate.toDate();
-                  } else if (uProfile.expiryDate.seconds !== undefined) {
-                    expiryDate = new Date(uProfile.expiryDate.seconds * 1000);
-                  } else {
-                    expiryDate = new Date(uProfile.expiryDate);
-                  }
-                  if (expiryDate && expiryDate > new Date()) {
-                    unlocked = true;
-                    setIsPaid(true);
-                    setIsPending(false);
-                  }
-                }
-
-                if (!unlocked && (uProfile.purchasedSemesters || []).includes(topicData.semester)) {
+                const purchased = (uProfile.purchasedSemesters || []).map(Number);
+                if (purchased.includes(Number(topicData.semester))) {
                   unlocked = true;
                   setIsPaid(true);
                   setIsPending(false);
@@ -205,14 +193,17 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
                 } else if (pData.status === 'pending') {
                   setIsPending(true);
                   setIsPaid(false);
-                  setPaymentCreatedAt(pData.createdAt ? new Date(pData.createdAt) : new Date());
+                  setPaymentCreatedAt(parseDate(pData.createdAt));
                 }
               }
             }
           }
 
           if (unlocked) {
-            const data = await dbService.getQuizzes(topicId);
+            let data = await dbService.getQuizzes(topicId);
+            if (!data || data.length === 0) {
+              data = getCuratedQuizzesForTopic(topicData);
+            }
             setQuizzes(data);
           }
         }
@@ -303,7 +294,7 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
     );
   }
 
-  const isUnlocked = isAdmin || isPaid;
+  const isUnlocked = isPaid;
 
   if (!isUnlocked && topic) {
     return (
@@ -348,9 +339,25 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
             semesterId={topic.semester} 
             user={user}
             onClose={() => setShowPaymentModal(false)}
-            onSuccess={() => {
+            onSuccess={async () => {
               setShowPaymentModal(false);
-              window.location.reload();
+              if (user && topic) {
+                try {
+                  const uProfile = await dbService.getProfile(user.uid);
+                  const pData = await dbService.getPayment(user.uid, topic.semester);
+                  const purchased = (uProfile?.purchasedSemesters || []).map(Number);
+                  if (purchased.includes(Number(topic.semester)) || pData?.status === 'completed' || pData?.status === 'approved') {
+                    setIsPaid(true);
+                    setIsPending(false);
+                  } else if (pData?.status === 'pending') {
+                    setIsPending(true);
+                    setIsPaid(false);
+                    if (pData.createdAt) setPaymentCreatedAt(parseDate(pData.createdAt));
+                  }
+                } catch (e) {
+                  console.error("Quiz payment refresh error:", e);
+                }
+              }
             }}
           />
         )}
@@ -435,8 +442,15 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
   const displayOptions = (translatedQuiz && translatedQuiz.options && translatedQuiz.options.length > 0) ? translatedQuiz.options : currentQuiz.options;
   const displayExplanation = translatedQuiz ? translatedQuiz.explanation : currentQuiz.explanation;
 
+  const quizTitle = getLocalized(topic?.title) || (topic?.title ? (typeof topic.title === 'object' ? (topic.title.uz || topic.title.en || topic.title.ru || '') : topic.title) : '') || (topicId?.includes('midterm') ? (topicId === 'midterm_1' ? '1-Oraliq Nazorati Testi' : '2-Oraliq Nazorati Testi') : 'Anatomiya Testi');
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-20">
+      <SEO 
+        title={`${quizTitle} - Test Sinovi | BSMI Anatomy`}
+        description={`BSMI Odam anatomiyasi fanidan ${quizTitle} mavzusi bo'yicha interaktiv test sinovi, bilimlarni baholash va tahlil qilish.`}
+        keywords={`anatomiya testi, ${quizTitle}, tibbiy testlar, oraliq nazorat, bsmi`}
+      />
       <div className="mb-12 flex items-center justify-between border-l-4 border-brand-accent pl-6">
         <div>
           <h2 className="text-[10px] font-black text-brand-accent uppercase tracking-[0.3em] mb-2 leading-none">
@@ -445,7 +459,7 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
               : { uz: 'Anatomik Bilim Testi', ru: 'Анатомический Тест', en: 'Anatomy Practice Quiz' }[language]}
           </h2>
           <h1 className="text-2xl font-black text-brand-primary tracking-tight leading-tight line-clamp-1 max-w-[400px]">
-            {getLocalized(topic?.title) || (topic?.title as any)?.uz || (topic?.title as any) || (topicId?.includes('midterm') ? (topicId === 'midterm_1' ? '1-ORALIQ' : '2-ORALIQ') : 'TEST JARAYONI')}
+            {getLocalized(topic?.title) || (topic?.title ? (typeof topic.title === 'object' ? (topic.title.uz || topic.title.en || topic.title.ru || '') : topic.title) : '') || (topicId?.includes('midterm') ? (topicId === 'midterm_1' ? '1-ORALIQ' : '2-ORALIQ') : 'TEST JARAYONI')}
           </h1>
         </div>
         <div className="text-right">

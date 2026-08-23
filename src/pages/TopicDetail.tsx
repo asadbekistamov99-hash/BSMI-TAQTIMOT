@@ -3,24 +3,31 @@ import { useEffect, useState } from 'react';
 import { doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Topic, AtlasEntry } from '../types';
+import { dbService } from '../lib/dbService';
+import { SEMESTER_1_TOPICS, SEMESTER_2_TOPICS } from '../constants';
+import { SEMESTER_3_DETAILED_TOPICS } from '../data/semester3TopicsData';
 import { motion } from 'motion/react';
-import { Book, Play, Image as ImageIcon, Languages, ChevronRight, ClipboardCheck, Lock, Sparkles, Clock, Maximize2, Minimize2, ZoomIn, ZoomOut, X, Type, BookOpen, Search, CheckCircle, Edit3, Trash2, History, Download, Bold, Italic, List, Heading, Code, Check, Stethoscope } from 'lucide-react';
+import { Book, Play, Image as ImageIcon, Languages, ChevronRight, ClipboardCheck, Lock, Sparkles, Clock, Maximize2, Minimize2, ZoomIn, ZoomOut, X, Type, BookOpen, Search, CheckCircle, Edit3, Trash2, History, Download, Bold, Italic, List, Heading, Code, Check, Stethoscope, Printer } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import PaymentModal from '../components/PaymentModal';
 import CreativeAnatomyDiagram from '../components/CreativeAnatomyDiagram';
 import AnatomyClinicalCases from '../components/AnatomyClinicalCases';
+import ExportTopicPdfModal from '../components/ExportTopicPdfModal';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
+import { parseDate } from '../lib/dateUtils';
+import SEO from '../components/SEO';
 
-function Countdown({ createdAt }: { createdAt: Date }) {
+function Countdown({ createdAt }: { createdAt: any }) {
   const [timeLeft, setTimeLeft] = useState<string>('');
   const { t } = useLanguage();
 
   useEffect(() => {
     const calculateTime = () => {
       const waitTime = 24 * 60 * 60 * 1000;
-      const deadline = createdAt.getTime() + waitTime;
-      const now = new Date().getTime();
+      const createdDate = parseDate(createdAt);
+      const deadline = createdDate.getTime() + waitTime;
+      const now = Date.now();
       const diff = deadline - now;
 
       if (diff <= 0) {
@@ -79,6 +86,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
 
   // Fullscreen & Reading Comfort States
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showExportModal, setShowExportModal] = useState<boolean>(false);
   const [textSize, setTextSize] = useState<'normal' | 'large' | 'extra'>('normal');
   const [readTheme, setReadTheme] = useState<'light' | 'warm' | 'dark'>('warm');
   const [fontFamily, setFontFamily] = useState<'sans' | 'serif'>('sans');
@@ -91,6 +99,20 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
 
   // Video Lecture State
   const [selectedVidIndex, setSelectedVidIndex] = useState(0);
+
+  // Get localized videos list based on topic.videos structure (Record<string, string[]> or legacy array)
+  const localizedVideos = (() => {
+    if (!topic) return [];
+    const v = topic.videos;
+    if (!v) return [];
+    if (typeof v === 'object' && !Array.isArray(v)) {
+      return (v as any)[language] || [];
+    }
+    if (Array.isArray(v)) {
+      return language === 'uz' ? v : [];
+    }
+    return [];
+  })();
 
   // Reset video index on topic change
   useEffect(() => {
@@ -483,16 +505,61 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
       setIsPending(false);
 
       try {
-        const docRef = doc(db, 'topics', id);
-        const snapshot = await getDoc(docRef);
+        let topicData: Topic | null = null;
+        try {
+          const docRef = doc(db, 'topics', id);
+          const snapshot = await getDoc(docRef);
+          if (snapshot.exists()) {
+            topicData = { id: snapshot.id, ...snapshot.data() } as Topic;
+          }
+        } catch (e) {
+          console.warn("Direct firestore topic fetch failed, checking fallbacks:", e);
+        }
+
+        // Fallback local resolution for sem 1, 2, 3
+        if (!topicData) {
+          if (id.startsWith('sem_3_top_') || id.startsWith('sem3_topic_')) {
+            const index = parseInt(id.replace('sem_3_top_', '').replace('sem3_topic_', ''), 10) - 1;
+            if (index >= 0 && index < SEMESTER_3_DETAILED_TOPICS.length) {
+              topicData = SEMESTER_3_DETAILED_TOPICS[index];
+            }
+          } else if (id.startsWith('sem_1_top_') || id.startsWith('sem1_topic_')) {
+            const index = parseInt(id.replace('sem_1_top_', '').replace('sem1_topic_', ''), 10) - 1;
+            if (index >= 0 && index < SEMESTER_1_TOPICS.length) {
+              topicData = {
+                id,
+                semester: 1,
+                order: index + 1,
+                title: { uz: `${index + 1}-Mavzu: ${SEMESTER_1_TOPICS[index]}`, en: `Topic ${index + 1}: ${SEMESTER_1_TOPICS[index]}`, ru: `Тема ${index + 1}: ${SEMESTER_1_TOPICS[index]}` },
+                theory: { uz: `${SEMESTER_1_TOPICS[index]} bo'yicha batafsil darslik.`, en: '', ru: '' },
+                latinTerms: [],
+                image: "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?q=80&w=2564&auto=format&fit=crop",
+                videos: []
+              };
+            }
+          } else if (id.startsWith('sem_2_top_') || id.startsWith('sem2_topic_')) {
+            const index = parseInt(id.replace('sem_2_top_', '').replace('sem2_topic_', ''), 10) - 1;
+            if (index >= 0 && index < SEMESTER_2_TOPICS.length) {
+              topicData = {
+                id,
+                semester: 2,
+                order: index + 1,
+                title: { uz: `${index + 1}-Mavzu: ${SEMESTER_2_TOPICS[index]}`, en: `Topic ${index + 1}: ${SEMESTER_2_TOPICS[index]}`, ru: `Тема ${index + 1}: ${SEMESTER_2_TOPICS[index]}` },
+                theory: { uz: `${SEMESTER_2_TOPICS[index]} bo'yicha batafsil darslik.`, en: '', ru: '' },
+                latinTerms: [],
+                image: "https://images.unsplash.com/photo-1559757175-5700dde675bc?q=80&w=2670&auto=format&fit=crop",
+                videos: []
+              };
+            }
+          }
+        }
         
-        if (snapshot.exists()) {
-          const topicData = { id: snapshot.id, ...snapshot.data() } as Topic;
+        if (topicData) {
           setTopic(topicData);
 
           // Fetch related atlas entries too
           try {
-            const atlasQuery = query(collection(db, 'atlas'), where('topicId', '==', snapshot.id));
+            const atlasQuery = query(collection(db, 'atlas'), where('topicId', '==', topicData.id));
             const atlasSnap = await getDocs(atlasQuery);
             const related: AtlasEntry[] = [];
             atlasSnap.forEach(doc => {
@@ -503,36 +570,44 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
             console.error("Error fetching related atlas entries:", err);
           }
 
-          if (isAdmin) {
+          if (isAdmin || user?.isAdmin) {
             setIsPaid(true);
+            setIsPending(false);
           } else if (!user) {
             setIsPaid(false);
+            setIsPending(false);
           } else {
-            // 1. Check User document for permanent access and expiry
+            // Check direct user object first to prevent any lock-screen flickering
+            const currentPurchased = (user.purchasedSemesters || []).map(Number);
+            if (currentPurchased.includes(Number(topicData.semester))) {
+              setIsPaid(true);
+              setIsPending(false);
+              return;
+            }
+
+            // 1. Check User profile via dbService (supports Appwrite/Supabase/Firebase/Local)
+            try {
+              const profile = await dbService.getProfile(user.uid);
+              if (profile) {
+                const purchased = (profile.purchasedSemesters || []).map(Number);
+                if (purchased.includes(Number(topicData.semester))) {
+                  setIsPaid(true);
+                  setIsPending(false);
+                  return;
+                }
+              }
+            } catch (err) {
+              console.error("Profile check error:", err);
+            }
+
+            // 2. Check direct Firestore user document
             try {
               const userRef = doc(db, 'users', user.uid);
               const userSnap = await getDoc(userRef);
               if (userSnap.exists()) {
                 const userData = userSnap.data();
-                
-                // If the user has any active subscription whose duration has not expired, grant full access
-                if (userData.expiryDate) {
-                  let expiryDate: Date | null = null;
-                  if (typeof userData.expiryDate.toDate === 'function') {
-                    expiryDate = userData.expiryDate.toDate();
-                  } else if (userData.expiryDate.seconds !== undefined) {
-                    expiryDate = new Date(userData.expiryDate.seconds * 1000);
-                  } else {
-                    expiryDate = new Date(userData.expiryDate);
-                  }
-                  if (expiryDate && expiryDate > new Date()) {
-                    setIsPaid(true);
-                    setIsPending(false);
-                    return;
-                  }
-                }
-
-                if ((userData.purchasedSemesters || []).includes(topicData.semester)) {
+                const purchased = (userData.purchasedSemesters || []).map(Number);
+                if (purchased.includes(Number(topicData.semester))) {
                   setIsPaid(true);
                   setIsPending(false);
                   return;
@@ -542,20 +617,23 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
               console.error("User check error:", err);
             }
 
-            // 2. Fallback to Payment check
-            const paymentId = `${user.uid}_${topicData.semester}`;
-            const pSnap = await getDoc(doc(db, 'payments', paymentId));
-            
-            if (pSnap.exists()) {
-              const pData = pSnap.data();
-              if (pData.status === 'completed') {
-                setIsPaid(true);
-                setIsPending(false);
-              } else if (pData.status === 'pending') {
-                setIsPending(true);
-                setIsPaid(false);
-                setPaymentCreatedAt(pData.createdAt?.toDate ? pData.createdAt.toDate() : new Date(pData.createdAt));
+            // 3. Fallback to Payment check for THIS topic's semester
+            try {
+              const pData = await dbService.getPayment(user.uid, topicData.semester);
+              if (pData) {
+                if (pData.status === 'completed' || pData.status === 'approved') {
+                  setIsPaid(true);
+                  setIsPending(false);
+                  return;
+                } else if (pData.status === 'pending') {
+                  setIsPending(true);
+                  setIsPaid(false);
+                  setPaymentCreatedAt(parseDate(pData.createdAt));
+                  return;
+                }
               }
+            } catch (err) {
+              console.error("Payment check error:", err);
             }
           }
         }
@@ -586,7 +664,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
     );
   }
 
-  const isUnlocked = isAdmin || isPaid;
+  const isUnlocked = isPaid;
 
   if (!isUnlocked) {
     return (
@@ -647,9 +725,25 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
             semesterId={topic.semester} 
             user={user}
             onClose={() => setShowPaymentModal(false)}
-            onSuccess={() => {
+            onSuccess={async () => {
               setShowPaymentModal(false);
-              window.location.reload();
+              if (user) {
+                try {
+                  const profile = await dbService.getProfile(user.uid);
+                  const pData = await dbService.getPayment(user.uid, topic.semester);
+                  const purchased = (profile?.purchasedSemesters || []).map(Number);
+                  if (purchased.includes(Number(topic.semester)) || pData?.status === 'completed' || pData?.status === 'approved') {
+                    setIsPaid(true);
+                    setIsPending(false);
+                  } else if (pData?.status === 'pending') {
+                    setIsPending(true);
+                    setIsPaid(false);
+                    if (pData.createdAt) setPaymentCreatedAt(parseDate(pData.createdAt));
+                  }
+                } catch (e) {
+                  console.error("Payment check error:", e);
+                }
+              }
             }}
           />
         )}
@@ -701,8 +795,20 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
 
   const totalResultsCount = matchedLatin.length + matchedAtlas.length + matchedTheoryParas.length + matchedGuideParas.length;
 
+  const topicTitle = getLocalized(topic.title) || 'Anatomiya Mavzusi';
+  const topicShortDesc = theoryText 
+    ? theoryText.replace(/[#*`_\[\]]/g, '').substring(0, 160).trim() + '...'
+    : `BSMI ${topic.semester}-semestr ${topicTitle} mavzusi bo'yicha to'liq nazariy darslik, klinik keyslar va terminlar.`;
+
   return (
     <div className="bg-brand-bg min-h-screen pb-24">
+      <SEO 
+        title={`${topicTitle} | ${topic.semester}-Semestr`}
+        description={topicShortDesc}
+        keywords={`${topicTitle}, semestr ${topic.semester}, anatomiya darslik, tibbiyot, ${(topic.latinTerms || []).slice(0, 5).join(', ')}`}
+        ogImage={topic.image || undefined}
+        ogType="article"
+      />
       {/* Header */}
       <header className="bg-brand-primary py-20 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-1/3 h-full bg-brand-accent/10 blur-[100px] -mr-20"></div>
@@ -800,15 +906,26 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     </span>
                   </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsFullscreen(true)}
-                  className="self-start sm:self-auto flex items-center gap-2 px-5 py-2.5 bg-brand-accent hover:bg-brand-accent/90 border border-brand-accent/30 text-brand-primary rounded-xl text-xs font-black uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-95 shadow-lg shadow-brand-accent/10 cursor-pointer"
-                  title="To'liq ekranda o'qish"
-                >
-                  <Maximize2 className="w-4 h-4" />
-                  <span>Kengaytirish</span>
-                </button>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setShowExportModal(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-95 shadow-md border border-slate-700 cursor-pointer"
+                    title="Mavzu konspektini PDF qilib saqlash yoki chop etish"
+                  >
+                    <Printer className="w-4 h-4 text-blue-400" />
+                    <span className="hidden sm:inline">PDF Konspekt</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsFullscreen(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-brand-accent hover:bg-brand-accent/90 border border-brand-accent/30 text-brand-primary rounded-xl text-xs font-black uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-95 shadow-lg shadow-brand-accent/10 cursor-pointer"
+                    title="To'liq ekranda o'qish"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                    <span>Kengaytirish</span>
+                  </button>
+                </div>
               </div>
 
               {/* SEARCH BOX */}
@@ -1123,7 +1240,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                   )}
 
                   {/* After-Learning Video CTA Section */}
-                  {topic.videos && topic.videos.length > 0 && (
+                  {localizedVideos && localizedVideos.length > 0 && (
                     <div className="mt-16 p-8 bg-indigo-50/30 border-2 border-dashed border-indigo-100 rounded-[28px] text-center relative overflow-hidden group">
                       <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl group-hover:scale-150 transition-all duration-700 pointer-events-none"></div>
                       <div className="w-14 h-14 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 transition-colors shadow-inner">
@@ -1153,7 +1270,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                 </>
               ) : activeTab === 'video_lessons' ? (
                 <div className="space-y-8">
-                  {(!topic.videos || topic.videos.length === 0) ? (
+                  {(!localizedVideos || localizedVideos.length === 0) ? (
                     <div className="py-20 text-center">
                       <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-6">
                         <Play className="w-8 h-8" />
@@ -1163,10 +1280,10 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                       </h4>
                       <p className="text-sm text-brand-muted max-w-sm mx-auto leading-relaxed">
                         {language === 'uz'
-                          ? "Ushbu mavzu uchun video ma'ruzalar hali yuklanmagan. Tez orada admin tomonidan kiritiladi."
+                          ? "Ushbu tilda video ma'ruzalar hali yuklanmagan. Tez orada admin tomonidan kiritiladi."
                           : language === 'ru'
-                            ? "Видеолекции по этой теме еще не добавлены. Они появятся здесь в ближайшее время."
-                            : "No video lectures have been uploaded for this topic yet. They will be added soon."}
+                            ? "Видеолекции на этом языке еще не добавлены. Они появятся здесь в ближайшее время."
+                            : "No video lectures have been uploaded in this language yet. They will be added soon."}
                       </p>
                     </div>
                   ) : (
@@ -1187,17 +1304,17 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                               </p>
                             </div>
                           </div>
-                          {topic.videos.length > 1 && (
+                          {localizedVideos.length > 1 && (
                             <span className="px-3 py-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-wider rounded-lg">
-                              {topic.videos.length} TA VIDEO
+                              {localizedVideos.length} TA VIDEO
                             </span>
                           )}
                         </div>
 
                         {/* Video selector tabs if multiple videos exist */}
-                        {topic.videos.length > 1 && (
+                        {localizedVideos.length > 1 && (
                           <div className="flex flex-wrap gap-2.5 mb-6 bg-slate-100/50 p-2 rounded-2xl">
-                            {topic.videos.map((vidUrl, index) => (
+                            {localizedVideos.map((vidUrl, index) => (
                               <button
                                 key={index}
                                 onClick={() => setSelectedVidIndex(index)}
@@ -1223,7 +1340,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                               const match = urlStr.match(regExp);
                               return (match && match[1] && match[1].length === 11) ? match[1] : null;
                             };
-                            const id = getYoutubeId(topic.videos[selectedVidIndex || 0]);
+                            const id = getYoutubeId(localizedVideos[selectedVidIndex || 0]);
                             if (id) {
                               return (
                                 <iframe
@@ -1245,7 +1362,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                                       : "Этот формат видео не поддерживает встроенное воспроизведение. Откройте его по ссылке ниже:"}
                                   </p>
                                   <a
-                                    href={topic.videos[selectedVidIndex || 0]}
+                                    href={localizedVideos[selectedVidIndex || 0]}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="px-6 py-3.5 bg-indigo-600 text-white font-black text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all shadow-lg"
@@ -1611,14 +1728,14 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
             </Link>
 
             {/* Video Lessons */}
-            {topic.videos && topic.videos.length > 0 && (
+            {localizedVideos && localizedVideos.length > 0 && (
               <div className="p-8 bg-brand-primary rounded-[32px] border border-slate-700 shadow-xl">
                 <div className="flex items-center gap-3 mb-8 text-white">
                   <Play className="w-6 h-6 text-brand-accent" />
                   <h3 className="text-xl font-black tracking-tight uppercase">{t('topic.video')}</h3>
                 </div>
                 <div className="space-y-6">
-                  {topic.videos.map((url, i) => {
+                  {localizedVideos.map((url, i) => {
                     const isDirectVideo = url.includes('.mp4') || url.includes('firebasestorage');
                     return (
                       <div key={i} className="space-y-3">
@@ -2144,6 +2261,13 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
           </motion.div>
         </div>
       )}
+
+      {/* PDF / Medical Notes Export Modal */}
+      <ExportTopicPdfModal
+        topic={topic}
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+      />
     </div>
   );
 }
