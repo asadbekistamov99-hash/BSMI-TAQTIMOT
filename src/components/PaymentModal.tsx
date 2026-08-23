@@ -3,7 +3,7 @@ import { X, CreditCard, ShieldCheck, Copy, Send, Clock, Timer } from 'lucide-rea
 import { useState, useEffect } from 'react';
 import { auth, db } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore';
-import { useSettings } from '../hooks/useSettings';
+import { useSettings, normalizeTelegram } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
 import { parseDate } from '../lib/dateUtils';
 
@@ -22,6 +22,8 @@ export default function PaymentModal({ semesterId, user, onClose, onSuccess }: P
   const [copied, setCopied] = useState(false);
   const [pendingPayment, setPendingPayment] = useState<any>(null);
   const [timeLeft, setTimeLeft] = useState<string>('');
+
+  const telegramBot = normalizeTelegram(settings.telegramBotUsername || '@Medai_support_bot');
 
   const isAtlas = semesterId === 99;
   const currentPriceUZS = isAtlas ? 30000 : (settings?.priceUZS || 0);
@@ -175,7 +177,7 @@ export default function PaymentModal({ semesterId, user, onClose, onSuccess }: P
               <div className="flex items-center gap-4 p-4 bg-blue-50 rounded-2xl border border-blue-100">
                 <Send className="text-blue-500 shrink-0" size={20} />
                 <p className="text-[11px] text-blue-700 font-bold leading-relaxed">
-                  Agar chekni hali yubormagan bo'lsangiz, uni <a href={`https://t.me/${settings.telegramBotUsername?.replace('@', '')}`} target="_blank" className="underline">{settings.telegramBotUsername}</a> ga yuboring.
+                  Agar chekni hali yubormagan bo'lsangiz, uni <a href={`https://t.me/${telegramBot.replace('@', '')}`} target="_blank" className="underline">{telegramBot}</a> ga yuboring.
                 </p>
               </div>
 
@@ -241,7 +243,7 @@ export default function PaymentModal({ semesterId, user, onClose, onSuccess }: P
                   <div>
                     <p className="text-xs font-black text-brand-primary uppercase tracking-widest mb-1">1-QADAM: CHEKNI YUBORING</p>
                     <p className="text-[11px] text-brand-muted font-medium leading-relaxed">
-                      To'lovdan so'ng chekni <a href={`https://t.me/${settings.telegramBotUsername?.replace('@', '')}`} target="_blank" className="text-brand-primary font-black underline">{settings.telegramBotUsername}</a> tgram adminiga yuboring.
+                      To'lovdan so'ng chekni <a href={`https://t.me/${telegramBot.replace('@', '')}`} target="_blank" className="text-brand-primary font-black underline">{telegramBot}</a> tgram adminiga yuboring.
                     </p>
                   </div>
                 </div>

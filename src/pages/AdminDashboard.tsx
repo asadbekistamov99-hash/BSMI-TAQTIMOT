@@ -186,7 +186,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
-import { useSettings } from '../hooks/useSettings';
+import { useSettings, normalizeTelegram } from '../hooks/useSettings';
 
 const getSafeAdminTitle = (title: any): string => {
   if (!title) return '';
@@ -3303,9 +3303,12 @@ function SettingsManager() {
         const globalDoc = await getDoc(doc(db, 'settings', 'global'));
         if (globalDoc.exists()) {
           const data = globalDoc.data();
+          const tgClean = (data.telegramBotUsername || '').replace('@', '').toLowerCase();
+          const normalizedTg = (tgClean === 'medai_support' || tgClean === 'medai_support_bot') ? '@Medai_support_bot' : (data.telegramBotUsername || '@Medai_support_bot');
           setSettings({ 
             ...settings, 
             ...data,
+            telegramBotUsername: normalizedTg,
             design: { ...settings.design, ...data.design },
             features: { ...settings.features, ...data.features }
           });
@@ -4038,7 +4041,7 @@ function SettingsManager() {
                     <input 
                       type="text" 
                       value={settings.telegramBotUsername || ''}
-                      placeholder="@MEDAI_SUPPORT"
+                      placeholder="@Medai_support_bot"
                       onChange={e => setSettings({...settings, telegramBotUsername: e.target.value})}
                       className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-slate-100 outline-none focus:border-brand-accent transition-all font-bold text-slate-700"
                     />
@@ -7741,6 +7744,9 @@ function BackupManager() {
 
 // --- Support Manager ---
 function SupportManager() {
+  const { settings } = useSettings();
+  const telegramBot = normalizeTelegram(settings.telegramBotUsername || '@Medai_support_bot');
+
   return (
     <div className="max-w-2xl mx-auto space-y-10">
       <div className="bg-white p-12 rounded-[48px] border border-slate-200 shadow-2xl text-center">
@@ -7753,11 +7759,18 @@ function SupportManager() {
         <div className="space-y-6 text-left">
           <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Telegram Support</p>
-            <p className="text-lg font-black text-slate-800">@MEDAI_SUPPORT</p>
+            <a 
+              href={`https://t.me/${telegramBot.replace('@', '').trim()}`} 
+              target="_blank" 
+              rel="noreferrer"
+              className="text-lg font-black text-sky-600 hover:text-sky-700 underline"
+            >
+              {telegramBot}
+            </a>
           </div>
           <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Email</p>
-            <p className="text-lg font-black text-slate-800">support@bsmi.uz</p>
+            <p className="text-lg font-black text-slate-800">{settings.contactEmail || 'support@bsmi.uz'}</p>
           </div>
           <div className="p-6 bg-[#0E1624] rounded-3xl text-white">
             <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-1">System Version</p>

@@ -1,9 +1,19 @@
 import { useState, useEffect } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { dbService, isSupabaseEnabled, isAppwriteEnabled } from '../lib/dbService';
 import { SystemSettings } from '../types';
 import bsmiLogo from '../assets/images/bsmi.jpg';
+
+export function normalizeTelegram(val?: string): string {
+  if (!val) return '@Medai_support_bot';
+  const trimmed = val.trim();
+  const clean = trimmed.replace('@', '').toLowerCase();
+  if (clean === 'medai_support' || clean === 'medai_support_bot') {
+    return '@Medai_support_bot';
+  }
+  return trimmed.startsWith('@') ? trimmed : `@${trimmed}`;
+}
 
 const defaultSettings: SystemSettings = {
   siteName: 'BSMI ANATOMY',
@@ -12,7 +22,7 @@ const defaultSettings: SystemSettings = {
   priceUZS: 30000,
   priceUSD: 4,
   durationMonths: 6,
-  telegramBotUsername: '@MEDAI_SUPPORT_BOT',
+  telegramBotUsername: '@Medai_support_bot',
   aiModel: 'Gemini 1.5 Pro',
   footerText: '© 2026 BSMI ANATOMY. Buxoro Davlat Tibbiyot Instituti.',
   contactPhone: '+998 90 123 45 67',
@@ -71,14 +81,46 @@ export function useSettings() {
       let firebaseData: any = {};
       if (docSnap.exists()) {
         firebaseData = docSnap.data();
+
+        let needsDbFix = false;
+        const updates: any = {};
+        if (firebaseData.telegramBotUsername && firebaseData.telegramBotUsername.toLowerCase().replace('@', '') === 'medai_support') {
+          firebaseData.telegramBotUsername = '@Medai_support_bot';
+          updates.telegramBotUsername = '@Medai_support_bot';
+          needsDbFix = true;
+        }
+        if (firebaseData.contactEmail && firebaseData.contactEmail.toLowerCase().replace('@', '') === 'medai_support') {
+          firebaseData.contactEmail = '@Medai_support_bot';
+          updates.contactEmail = '@Medai_support_bot';
+          needsDbFix = true;
+        }
+        if (firebaseData.contactPhone && firebaseData.contactPhone.toLowerCase().replace('@', '') === 'medai_support') {
+          firebaseData.contactPhone = '@Medai_support_bot';
+          updates.contactPhone = '@Medai_support_bot';
+          needsDbFix = true;
+        }
+
+        if (needsDbFix) {
+          try {
+            setDoc(doc(db, 'settings', 'global'), updates, { merge: true }).catch(() => {});
+          } catch (e) {}
+        }
       }
 
       let finalSettings: SystemSettings = {
         ...defaultSettings,
         ...firebaseData,
+        telegramBotUsername: normalizeTelegram(firebaseData.telegramBotUsername || defaultSettings.telegramBotUsername),
         design: { ...defaultSettings.design, ...firebaseData.design },
         features: { ...defaultSettings.features, ...firebaseData.features }
       };
+
+      if (finalSettings.contactEmail && finalSettings.contactEmail.toLowerCase().replace('@', '') === 'medai_support') {
+        finalSettings.contactEmail = '@Medai_support_bot';
+      }
+      if (finalSettings.contactPhone && finalSettings.contactPhone.toLowerCase().replace('@', '') === 'medai_support') {
+        finalSettings.contactPhone = '@Medai_support_bot';
+      }
 
       if (isAppwriteEnabled() || isSupabaseEnabled()) {
         try {
@@ -86,7 +128,7 @@ export function useSettings() {
           if (cloudData) {
             finalSettings = {
               ...finalSettings,
-              telegramBotUsername: cloudData.telegramBotUsername || finalSettings.telegramBotUsername,
+              telegramBotUsername: normalizeTelegram(cloudData.telegramBotUsername || finalSettings.telegramBotUsername),
               priceSemester1: cloudData.priceSemester1 || finalSettings.priceSemester1,
               priceSemester2: cloudData.priceSemester2 || finalSettings.priceSemester2,
               cardNumber: cloudData.cardNumber || finalSettings.cardNumber,
@@ -111,7 +153,7 @@ export function useSettings() {
             if (data) {
               const merged = {
                 ...defaultSettings,
-                telegramBotUsername: data.telegramBotUsername || defaultSettings.telegramBotUsername,
+                telegramBotUsername: normalizeTelegram(data.telegramBotUsername || defaultSettings.telegramBotUsername),
                 priceSemester1: data.priceSemester1 || defaultSettings.priceSemester1,
                 priceSemester2: data.priceSemester2 || defaultSettings.priceSemester2,
                 cardNumber: data.cardNumber || defaultSettings.cardNumber,

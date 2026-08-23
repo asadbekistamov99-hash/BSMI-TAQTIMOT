@@ -4,6 +4,7 @@ import { AtlasEntry, Topic, Semester } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Info, Microscope, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, X, Maximize2, Box, Image as ImageIcon, ArrowLeft, Lock, Sparkles, Clock, AlertTriangle, Star, Volume2, Move, Compass, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { useLanguage } from '../hooks/useLanguage';
+import { useSettings, normalizeTelegram } from '../hooks/useSettings';
 import PaymentModal from '../components/PaymentModal';
 import '@google/model-viewer';
 import Anatomy3DSuite from '../components/Anatomy3DSuite';
@@ -986,6 +987,8 @@ function Loader2({ className }: { className?: string }) {
 
 export default function Atlas({ isAdmin: isAdminProp, user }: { isAdmin?: boolean, user?: any }) {
   const { language, t, getLocalized } = useLanguage();
+  const { settings } = useSettings();
+  const telegramBot = normalizeTelegram(settings.telegramBotUsername || '@Medai_support_bot');
   const [entries, setEntries] = useState<AtlasEntry[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [semesters, setSemesters] = useState<Semester[]>([]);
@@ -1643,12 +1646,12 @@ export default function Atlas({ isAdmin: isAdminProp, user }: { isAdmin?: boolea
                   <div className="mt-6 flex flex-col items-center gap-2">
                     <span className="text-[10px] font-black tracking-widest text-slate-400 uppercase">TELEGRAM KO'MAK</span>
                     <a 
-                      href="https://t.me/MEDAI_SUPPORT_BOT" 
+                      href={`https://t.me/${telegramBot.replace('@', '').trim()}`} 
                       target="_blank" 
                       rel="noreferrer"
                       className="text-xs text-brand-accent underline font-bold"
                     >
-                      Admin bilan bog'lanish (@MEDAI_SUPPORT_BOT)
+                      Admin bilan bog'lanish ({telegramBot})
                     </a>
                   </div>
                 )}

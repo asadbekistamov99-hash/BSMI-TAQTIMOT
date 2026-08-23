@@ -1,9 +1,11 @@
-import { useSettings } from '../hooks/useSettings';
+import { useSettings, normalizeTelegram } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
 
 export default function Footer() {
   const { settings } = useSettings();
   const { t, getLocalized } = useLanguage();
+
+  const telegramBot = normalizeTelegram(settings.telegramBotUsername || '@Medai_support_bot');
   
   return (
     <footer className="bg-slate-900 text-slate-400 py-12 border-t border-slate-800">
@@ -51,12 +53,12 @@ export default function Footer() {
                   <span className="flex items-center gap-1.5">
                     Telegram: 
                     <a 
-                      href={`https://t.me/${settings.contactEmail.replace('@', '').trim()}`} 
+                      href={`https://t.me/${normalizeTelegram(settings.contactEmail).replace('@', '').trim()}`} 
                       target="_blank" 
                       rel="noreferrer" 
                       className="text-sky-400 hover:text-indigo-400 transition-colors underline font-bold"
                     >
-                      {settings.contactEmail.startsWith('@') ? settings.contactEmail : `@${settings.contactEmail}`}
+                      {normalizeTelegram(settings.contactEmail)}
                     </a>
                   </span>
                 ) : (
@@ -71,12 +73,12 @@ export default function Footer() {
                   <span className="flex items-center gap-1.5">
                     Telegram: 
                     <a 
-                      href={`https://t.me/${settings.contactPhone.replace('@', '').trim()}`} 
+                      href={`https://t.me/${normalizeTelegram(settings.contactPhone).replace('@', '').trim()}`} 
                       target="_blank" 
                       rel="noreferrer" 
                       className="text-sky-400 hover:text-indigo-400 transition-colors underline font-bold"
                     >
-                      {settings.contactPhone.startsWith('@') ? settings.contactPhone : `@${settings.contactPhone}`}
+                      {normalizeTelegram(settings.contactPhone)}
                     </a>
                   </span>
                 ) : (
@@ -87,18 +89,18 @@ export default function Footer() {
               </p>
             )}
 
-            {settings.telegramBotUsername && 
-             !settings.contactEmail?.toLowerCase().includes(settings.telegramBotUsername.replace('@', '').toLowerCase()) && 
-             !settings.contactPhone?.toLowerCase().includes(settings.telegramBotUsername.replace('@', '').toLowerCase()) && (
+            {telegramBot && 
+             !settings.contactEmail?.toLowerCase().includes('medai_support') && 
+             !settings.contactPhone?.toLowerCase().includes('medai_support') && (
               <p className="text-sm mt-1 flex items-center gap-1.5">
                 Telegram: 
                 <a 
-                  href={`https://t.me/${settings.telegramBotUsername.replace('@', '').trim()}`} 
+                  href={`https://t.me/${telegramBot.replace('@', '').trim()}`} 
                   target="_blank" 
                   rel="noreferrer" 
                   className="text-sky-400 hover:text-indigo-400 transition-colors underline font-bold"
                 >
-                  {settings.telegramBotUsername.startsWith('@') ? settings.telegramBotUsername : `@${settings.telegramBotUsername}`}
+                  {telegramBot}
                 </a>
               </p>
             )}

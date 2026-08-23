@@ -266,11 +266,15 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
       );
 
       if (!isDuplicated) {
+        const topicNameUz = typeof topic.title === 'object' ? (topic.title['uz'] || topic.title['uz-UZ'] || topic.title['en'] || 'Mavzu') : (topic.title || 'Mavzu');
+        const topicNameRu = typeof topic.title === 'object' ? (topic.title['ru'] || topic.title['ru-RU'] || topicNameUz) : topicNameUz;
+        const topicNameEn = typeof topic.title === 'object' ? (topic.title['en'] || topic.title['en-US'] || topicNameUz) : topicNameUz;
+
         historyList.push({
           topicId: topic.id,
-          topicNameUz: topic.title['uz'] || topic.title['uz-UZ'] || 'Mavzu',
-          topicNameRu: topic.title['ru'] || topic.title['ru-RU'] || 'Тема',
-          topicNameEn: topic.title['en'] || topic.title['en-US'] || 'Topic',
+          topicNameUz,
+          topicNameRu,
+          topicNameEn,
           score,
           total: quizzes.length,
           percentageVal: Math.round((score / quizzes.length) * 100),

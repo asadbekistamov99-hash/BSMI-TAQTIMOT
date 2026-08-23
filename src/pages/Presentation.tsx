@@ -30,6 +30,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import SEO from '../components/SEO';
+import { useSettings, normalizeTelegram } from '../hooks/useSettings';
 
 // Interfaces
 interface Scene {
@@ -42,6 +43,8 @@ interface Scene {
 }
 
 export default function Presentation() {
+  const { settings } = useSettings();
+  const telegramBot = normalizeTelegram(settings.telegramBotUsername || '@Medai_support_bot');
   const [currentSceneIdx, setCurrentSceneIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -122,8 +125,8 @@ export default function Presentation() {
       id: 7,
       title: "XULOSA & ALOQA",
       subtitle: "Biz bilan hamkorlik qiling va tibbiyotni birga o'zgartiring!",
-      narrativeUz: "BSMI ANATOMY - bu faqat dastur emas, bu tibbiyot kelajagining poydevoridir. Loyihamizni yuqori baholaganingiz uchun tashakkur! Saytning eng quyi qismida biz bilan bog'lanish uchun bevosita Telegram profilimiz (@MEDAI_SUPPORT) va botlarimiz integratsiya qilingan. Hozirgi interaktiv namoyishni ko'rganingizdan mamnunmiz!",
-      narrativeEn: "BSMI ANATOMY is more than an application; it is the cornerstone of modern medical education. Thank you for viewing this presentation. Direct support links, including our Telegram contact (@MEDAI_SUPPORT), are embedded in the footer. Join us on this journey!",
+      narrativeUz: "BSMI ANATOMY - bu faqat dastur emas, bu tibbiyot kelajagining poydevoridir. Loyihamizni yuqori baholaganingiz uchun tashakkur! Saytning eng quyi qismida biz bilan bog'lanish uchun bevosita Telegram profilimiz (@MEDAI_SUPPORT_BOT) va botlarimiz integratsiya qilingan. Hozirgi interaktiv namoyishni ko'rganingizdan mamnunmiz!",
+      narrativeEn: "BSMI ANATOMY is more than an application; it is the cornerstone of modern medical education. Thank you for viewing this presentation. Direct support links, including our Telegram contact (@MEDAI_SUPPORT_BOT), are embedded in the footer. Join us on this journey!",
       duration: 10
     }
   ];
@@ -350,8 +353,8 @@ OHANG: Ishonchli, ilmiy va jozibador ovozli professional suxandon
 
 [1:06 - 1:15] SCENE 7: XULOSA VA ALOQA (CONTACTS)
 -------------------------------------------------------------
-- Vizual: Saytdagi footer bo'limi ko'rsatiladi. Unda telegram belgisi va bevosita "@MEDAI_SUPPORT" yozuviga click qilinayotgani ko'rsatiladi. Foydalanuvchi bitta bosishda telegram lichkasiga o'tib ketadi.
-- Ovoz (Narrator): "BSMI ANATOMY - bu faqat dastur emas, bu tibbiyot kelajagidir. Platforma eng quyi qismida Telegram orqali @MEDAI_SUPPORT bilan to'liq integratsiya qilingan. Hoziroq ro'yxatdan o'ting!"
+- Vizual: Saytdagi footer bo'limi ko'rsatiladi. Unda telegram belgisi va bevosita "@MEDAI_SUPPORT_BOT" yozuviga click qilinayotgani ko'rsatiladi. Foydalanuvchi bitta bosishda telegram lichkasiga o'tib ketadi.
+- Ovoz (Narrator): "BSMI ANATOMY - bu faqat dastur emas, bu tibbiyot kelajagidir. Platforma eng quyi qismida Telegram orqali @MEDAI_SUPPORT_BOT bilan to'liq integratsiya qilingan. Hoziroq ro'yxatdan o'ting!"
 `;
 
     navigator.clipboard.writeText(fullText.trim());
@@ -687,11 +690,11 @@ OHANG: Ishonchli, ilmiy va jozibador ovozli professional suxandon
                                 </div>
                                 <div className="text-left">
                                   <span className="text-[8px] font-bold text-slate-500 uppercase block tracking-widest">Telegram Support</span>
-                                  <span className="text-xs font-black text-white">@MEDAI_SUPPORT</span>
+                                  <span className="text-xs font-black text-white">{telegramBot}</span>
                                 </div>
                               </div>
                               <a 
-                                href="https://t.me/MEDAI_SUPPORT" 
+                                href={`https://t.me/${telegramBot.replace('@', '').trim()}`} 
                                 target="_blank" 
                                 rel="noreferrer"
                                 className="px-5 py-2.5 bg-brand-accent text-brand-primary text-xs font-black uppercase tracking-widest rounded-xl hover:bg-brand-accent/90 transition-all flex items-center gap-1.5"
@@ -867,7 +870,7 @@ OHANG: Ishonchli, ilmiy va jozibador ovozli professional suxandon
 
                       {currentScene.id === 7 && (
                         <div className="p-4 bg-slate-900/60 rounded-2xl border border-slate-800 space-y-2">
-                          <p className="text-[11px] text-slate-300 font-semibold leading-relaxed">⭐ Bizning asosiy aloqa manzilimiz telegramdagi <b>@MEDAI_SUPPORT</b> profiliga bog'langan. Siz bitta bosish orqali unga o'ta olasiz.</p>
+                          <p className="text-[11px] text-slate-300 font-semibold leading-relaxed">⭐ Bizning asosiy aloqa manzilimiz telegramdagi <b>{telegramBot}</b> profiliga bog'langan. Siz bitta bosish orqali unga o'ta olasiz.</p>
                         </div>
                       )}
                     </div>
@@ -978,9 +981,9 @@ OHANG: Ishonchli, ilmiy va jozibador ovozli professional suxandon
                     <span className="text-xs font-black text-brand-accent uppercase tracking-wider">7-Sahna: Xulosa & Aloqa (1:06 - 1:15)</span>
                     <span className="text-xs font-mono font-bold text-slate-500">Davomiyligi: 9 soniya</span>
                   </div>
-                  <p><b>Visual:</b> Saytning quyi qismidagi footer ko'rsatiladi. Sichqoncha borib "@MEDAI_SUPPORT" yozuviga click qiladi va telegram profili yuklanayotgani ko'rsatiladi.</p>
+                  <p><b>Visual:</b> Saytning quyi qismidagi footer ko'rsatiladi. Sichqoncha borib "@MEDAI_SUPPORT_BOT" yozuviga click qiladi va telegram profili yuklanayotgani ko'rsatiladi.</p>
                   <p className="text-indigo-300 italic font-semibold bg-slate-950/50 p-3 rounded-lg border border-slate-900">
-                    🎙️ Suxandon ovozi: "BSMI ANATOMY - bu faqat dastur emas, bu tibbiyot kelajagidir. Platforma eng quyi qismida Telegram orqali @MEDAI_SUPPORT bilan to'liq integratsiya qilingan. Hoziroq ro'yxatdan o'ting!"
+                    🎙️ Suxandon ovozi: "BSMI ANATOMY - bu faqat dastur emas, bu tibbiyot kelajagidir. Platforma eng quyi qismida Telegram orqali @MEDAI_SUPPORT_BOT bilan to'liq integratsiya qilingan. Hoziroq ro'yxatdan o'ting!"
                   </p>
                 </div>
               </div>
