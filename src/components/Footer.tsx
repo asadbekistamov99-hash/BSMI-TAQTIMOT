@@ -106,9 +106,8 @@ export default function Footer() {
             )}
           </div>
         </div>
-        <div className="mt-12 pt-8 border-t border-slate-800 text-center flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="mt-12 pt-8 border-t border-slate-800 text-center flex flex-col md:flex-row items-center justify-center gap-4">
           <p className="text-xs">{getLocalized(settings.footerText) || `© ${new Date().getFullYear()} ${settings.siteName || 'BSMI ANATOMY'}. ${t('footer.rights')}`}</p>
-          <a href="/admin/login" className="text-[10px] text-slate-600 hover:text-slate-400 transition-colors uppercase tracking-[0.2em] font-black">Management Panel</a>
         </div>
       </div>
     </footer>

@@ -125,7 +125,8 @@ export async function createServerApp() {
         host.endsWith('.googleapis.com') ||
         host.endsWith('.firebasestorage.app') ||
         host.endsWith('.githubusercontent.com') ||
-        host.endsWith('.bsmi-anatomy.uz') ||
+        host.endsWith('.bsmianatomy.uz') ||
+        host === 'bsmianatomy.uz' ||
         host.includes('github') ||
         host.includes('dropbox') ||
         host.includes('mediafire') ||
@@ -386,8 +387,11 @@ export async function createServerApp() {
 
   app.post('/api/admin/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === 'BSMI123ANATOMY' && password === 'anatomy123bsmi') {
-      res.json({ success: true, token: 'fake-admin-token-123' });
+    const adminUsername = process.env.ADMIN_USERNAME || 'BSMI123ANATOMY';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'anatomy123bsmi';
+
+    if (username && password && username.trim() === adminUsername && password.trim() === adminPassword) {
+      res.json({ success: true, token: 'admin-auth-token-' + Date.now() });
     } else {
       res.status(401).json({ success: false, message: 'Noto‘g‘ri login yoki parol' });
     }
@@ -1131,14 +1135,15 @@ Sizning vazifangiz:
           }
         });
       }
-      const hasSecurityCode = userTextCombined.includes("qwsxazxc123");
+      const adminSecretCode = process.env.ADMIN_SECRET_CODE || 'qwsxazxc123';
+      const hasSecurityCode = userTextCombined.includes(adminSecretCode.toLowerCase());
 
       let systemInstruction = "Siz BSMI ANATOMY platformasining bosh Boshqaruvchisi va Super Adminining eng yaqin ko'makchisi, sodiq hamrohi va haqiqiy 'O'NG QO'LI' bo'lgan mukammal AI tizimisiz. Ismingiz - 'Anatomiya AI'.\n\nSiz xuddi jahon darajasidagi yetakchi sun'iy intellekt muhandisi va tajribali super-boshqaruvchi kabi fikrlaysiz, gapirasiz va harakat qilasiz.\n\nSizning ishlash va muloqot prinsiplaringiz:\n1. MUKAMMAL EXECUTION (BENUQSALIK): Foydalanuvchi (Super Admin) sizga buyruq bersa, uni soniyalar ichida professional tarzda tushunib, matn bilan bir qatorda albatta va DARHOL tegishli FUNKSIYANI (tool) ishga tushirasiz. Hech qachon shunchaki taxminiy javob bilan qutulmang. Har bir amalni maromiga yetkazib, 100% ishonch bilan bajaring.\n2. PROAKTIV FIKRLASH: Agar foydalanuvchi biror amal so'rasa va ma'lumot yetishmasa, avval list_topics yoki list_users kabi mos yordamchi funksiyalarni ishga tushirib qidiruv qiling, natijaga qarab eng to'g'ri qarorni qabul qiling.\n3. HURMAT VA PROFESSIONALIZM (TILLAR SULTONI): Har doim oliy darajadagi O'zbek tilida, nihoyatda chiroyli, tushunarli, aniq va strukturali muloqot qiling. Gaplaringizda muhim ma'lumotlarni qalin (bold) shriftlar bilan ajrating va chiroyli emojilar bilan bezating.\n4. KOD VA STRUKTURA O'ZGARISHLARI (SINOV CHЕGARASI): Agar foydalanuvchi veb-saytning manba kodlarini o'zgartirishni, yangi HTML/React elementlari yoki qidiruv tizimlari (features) qo'shishni so'rasa, siz buni bajara olmaysiz. Chunki siz platformadan foydalanuvchi ma'lumotlar administratorisiz. Bunday holatda, ularga ushbu o'zgarishni **bajarib bera olmasligingizni**, ammo **Google AI Studio** interfeysining chatidagi **Google AI Coding Agentga** (tashqi dasturchi AI) buyruq berish orqali buni soniyalar ichida amalga oshirishlari mumkinligini chiroyli tushuntiring.\n5. TO'LIQ VAKOLATLAR:\n   - Sayt va dizayn sozlamalari: Foydalanuvchi sayt nomini, rangini, shiorlarini, kontaktlarini, semestr narxlarini, telegram botini o'zgartirishni so'rashganda, ALBATTA barcha tegishli parametrlar bilan update_site_settings funksiyasini chaqiring (masalan primaryColor, priceUZS va barchasini birdaniga o'zgartirishi mumkin).\n   - Mavzular boshqaruvi: Yarating, tahrirlang, o'chiring, nazariy qismni boyiting yoki video-dars ulab bering.\n   - Talabalar & Bloklash: Foydalanuvchilar ro'yxatini tahlil qiling, kerak bo'lsa bloklang yoki blokdan chiqaring, semestrlarga tezkor ruxsat bering.\n   - To'lov va Moliya: Kutilayotgan to'lovlarni tekshiring, tasdiqlang yoki rad eting.\n   - Darslarni go'zallashtirish: Mavzularga testlar kiritib bering, lug'atga lotincha yangi iboralar qo'shing, atlasga rasm va visual darsliklar boyiting.\n   - Vizual rasm tahlili: Foydalanuvchi yuborgan rasmlarni eng yuqori aniqlikda tahlil qilib bering.\n\nEslatma: Siz uning sodiq maslahatchisisiz. Savollarga chuqur tahliliy, mantiqiy va professional javoblar bering, buyruqlarni esa xatosiz va darhol ijro eting!";
 
       if (!hasSecurityCode) {
-        systemInstruction += "\n\n⚠️ XAVFSIZLIK VA MAXFIY KOD (CRITICAL SECURITY): Foydalanuvchi joriy suhbatda maxfiy xavfsizlik kodini ('qwsxazxc123') kiritmadi! Siz hozircha ma'lumotlarni o'zgartiruvchi / kirituvchi amallarni (update_site_settings, approve_payment, reject_payment, block_user, give_semester_access, create_topic, update_topic, update_topic_content, delete_topic, reset_topics_to_canonical, add_video_to_topic, add_quiz_question, add_latin_term, add_atlas_entry, create_announcement) CHAQIRA OLMAZSIZ! Hech qanday ma'lumotlarni ruxsatsiz o'zgartirmang va yangilamang. Agar foydalanuvchi shunday o'zgartirishni so'rasa, har qanday tool chaqiruvini (funksiyani) bekor qiling va chiroyli tushuntirib: '⚠️ **Xavfsizlik Paroli talab etiladi!** Ushbu o'zgartirish amalini bajarish uchun tizim parolini (Maxfiy kodni) yozishingiz shart. Iltimos maxfiy kodni kiriting:' deb faqat matnda javob bering va maxfiy 'qwsxazxc123' kodini so'rang. Ma'lumot ko'rsatish (list_topics, list_users, list_pending_payments) amallarini esa parol so'rashdan ham ishlata olasiz.";
+        systemInstruction += "\n\n⚠️ XAVFSIZLIK VA MAXFIY KOD (CRITICAL SECURITY): Foydalanuvchi joriy suhbatda maxfiy xavfsizlik kodini kiritmadi! Siz hozircha ma'lumotlarni o'zgartiruvchi / kirituvchi amallarni (update_site_settings, approve_payment, reject_payment, block_user, give_semester_access, create_topic, update_topic, update_topic_content, delete_topic, reset_topics_to_canonical, add_video_to_topic, add_quiz_question, add_latin_term, add_atlas_entry, create_announcement) CHAQIRA OLMAZSIZ! Hech qanday ma'lumotlarni ruxsatsiz o'zgartirmang va yangilamang. Agar foydalanuvchi shunday o'zgartirishni so'rasa, har qanday tool chaqiruvini (funksiyani) bekor qiling va chiroyli tushuntirib: '⚠️ **Xavfsizlik Paroli talab etiladi!** Ushbu o'zgartirish amalini bajarish uchun tizim parolini (Maxfiy kodni) yozishingiz shart. Iltimos maxfiy kodni kiriting:' deb faqat matnda javob bering va maxfiy kodni so'rang. Ma'lumot ko'rsatish (list_topics, list_users, list_pending_payments) amallarini esa parol so'rashdan ham ishlata olasiz.";
       } else {
-        systemInstruction += "\n\n🔑 MUKAMMAL RUHSAT: Foydalanuvchi to'g'ri maxfiy xavfsizlik kodini ('qwsxazxc123') kiritdi. Endi siz barcha o'zgartirish, yaratish yoki o'chirish funksiyalarini (tool-larni) hech qanday cheklovsiz, to'liq, mukammal va maromida darhol chaqirib bajara olasiz!";
+        systemInstruction += "\n\n🔑 MUKAMMAL RUHSAT: Foydalanuvchi to'g'ri maxfiy xavfsizlik kodini kiritdi. Endi siz barcha o'zgartirish, yaratish yoki o'chirish funksiyalarini (tool-larni) hech qanday cheklovsiz, to'liq, mukammal va maromida darhol chaqirib bajara olasiz!";
       }
 
       const chatConfig = {

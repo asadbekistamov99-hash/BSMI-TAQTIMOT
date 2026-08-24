@@ -21,7 +21,28 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
     setError("");
 
     try {
-      if (username === "BSMI123ANATOMY" && password === "anatomy123bsmi") {
+      // 1. First authenticate with server-side /api/admin/login endpoint
+      try {
+        const response = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: username.trim(), password: password.trim() })
+        });
+        
+        const data = await response.json();
+        if (response.ok && data.success) {
+          onLogin(data.token || ("admin-token-" + Date.now()));
+          return;
+        } else if (response.status === 401) {
+          setError(data.message || "Noto‘g‘ri login yoki parol!");
+          return;
+        }
+      } catch (apiErr) {
+        console.warn("Backend admin login API offline or unreachable, checking local fallback:", apiErr);
+      }
+
+      // 2. Client fallback verification
+      if (username.trim() === "BSMI123ANATOMY" && password.trim() === "anatomy123bsmi") {
         onLogin("mock-admin-token-" + Date.now());
       } else {
         setError("Noto‘g‘ri login yoki parol!");
