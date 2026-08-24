@@ -66,7 +66,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+        video: { facingMode: 'user', width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 }, frameRate: { ideal: 30, min: 15 } }
       });
 
       setCameraStream(stream);
@@ -181,7 +181,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    const targetWidth = 400;
+    const targetWidth = 640;
     const aspectRatio = video.videoWidth / video.videoHeight;
     const targetHeight = Math.round(targetWidth / aspectRatio);
     canvas.width = targetWidth;
