@@ -477,7 +477,7 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
   // verified:false. There is NO code path in this handler that grants access when
   // something goes wrong. If you are tempted to add a fallback that returns
   // isMatch:true/verified:true on error, DO NOT — that reintroduces the security hole.
-  const FACE_MATCH_THRESHOLD = 0.85;
+  const FACE_MATCH_THRESHOLD = 0.75; // tuned for real webcam variation; liveness is still mandatory
   const VALID_CHALLENGE_TYPES = ['blink', 'smile', 'turn_left', 'turn_right'];
 
   app.post('/api/verify-face', async (req: express.Request, resValue: any) => {
@@ -539,7 +539,7 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
         return `Rasm ${idx + 2} = "${f.type}" (${challengeLabels[f.type] || f.type}) uchun so'ralgan kadr.`;
       }).join('\n');
 
-      const prompt = `Siz tibbiyot ta'lim platformasi uchun ishlaydigan QAT'IY (zero-trust) biometrik yuz autentifikatsiya va jonlilik (anti-spoofing) tizimisiz. Xato qilish narxi juda yuqori — begona odamni ichkariga kiritib yubormang.
+      const prompt = `Siz tibbiyot ta'lim platformasi uchun ishlaydigan QAT'IY (zero-trust) biometrik yuz autentifikatsiya va jonlilik (anti-spoofing) tizimisiz. Xato qilish narxi juda yuqori — begona odamni ichkariga kiritmang. Shu bilan birga, haqiqiy foydalanuvchini oddiy webcam farqlari sabab rad etmang. Yuzning ko'z, qosh, burun, lab, jag' va umumiy yuz shakli kabi barqaror belgilarini birgalikda solishtiring.
 
 Rasm 1 = Foydalanuvchining ro'yxatdan o'tgan (enrolled) profil surati.
 ${frameManifest}
@@ -555,7 +555,7 @@ Sizning uch vazifangiz bor, uchalasini ham QATTIQ tekshiring:
    - Har bir "challenge" kadrida so'ralgan harakat (masalan ko'z yumish, tabassum, bosh burish) HAQIQATDA bajarilganmi tekshiring — agar kadr so'ralgan harakatni ko'rsatmasa (masalan "blink" so'ralgan, lekin ko'zlar ochiq va boshlang'ich kadr bilan farqsiz), buni RAD ETING.
    - Faqat barcha talab qilingan harakatlar tabiiy ravishda, mos kadrlarda ko'rinsa liveness TASDIQLANADI.
 
-3) ISHONCH DARAJASI: 0.0 dan 1.0 gacha, shaxsning mosligi qanchalik ishonchli ekanini bering. Har qanday shubha yoki noaniqlik bo'lsa past ball bering (0.85 dan past). Faqat aniq va shubhasiz moslik uchun 0.85+ bering.
+3) ISHONCH DARAJASI: 0.0 dan 1.0 gacha, shaxsning mosligi qanchalik ishonchli ekanini bering. Web-kamera yorug'ligi, fokus, ekspozitsiya va bosh burchagidagi tabiiy farqlar uchun ballni asossiz pasaytirmang. Bir xil shaxsning barqaror yuz belgilarini taqqoslang. Begona shaxs bo'lsa isMatch=false bo'lishi shart. Faqat yuz mosligi ishonchli bo'lsa 0.75+ confidence bering; noaniq holatda 0.75 dan past bering.
 
 Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
 {

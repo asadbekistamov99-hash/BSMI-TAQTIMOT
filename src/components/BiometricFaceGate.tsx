@@ -89,7 +89,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
           }, 10000);
 
           navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+            video: { facingMode: 'user', width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 }, frameRate: { ideal: 30, min: 15 } }
           }).then(stream => {
             clearTimeout(timeoutId);
             resolve(stream);
@@ -251,13 +251,13 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    const targetWidth = 400;
+    const targetWidth = 640;
     const aspectRatio = video.videoWidth / video.videoHeight;
     const targetHeight = Math.round(targetWidth / aspectRatio);
     canvas.width = targetWidth;
     canvas.height = targetHeight;
     ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-    return canvas.toDataURL('image/jpeg', 0.80);
+    return canvas.toDataURL('image/jpeg', 0.92);
   };
 
   // Legacy single-shot capture used only for the enrollment photo (no liveness needed there).
@@ -389,7 +389,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
       setVerificationResult(null);
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // liveness needs a bit more time (multiple frames)
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // liveness needs a bit more time (multiple frames)
 
       const response = await fetch('/api/verify-face', {
         method: 'POST',
