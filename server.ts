@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import https from 'https';
 import { execSync } from 'child_process';
-import { getAnatomyFallbackResponse } from './src/data/anatomyFallbackEngine.js';
+import { getAnatomyFallbackResponse } from './src/data/anatomyFallbackEngine.ts';
 
 dotenv.config();
 
@@ -472,207 +472,188 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
     }
   });
 
+  // === ZERO-TRUST BIOMETRIC FACE VERIFICATION (fail-closed) ===
+  // Rule: ANY error, timeout, parse failure or low-confidence result MUST result in
+  // verified:false. There is NO code path in this handler that grants access when
+  // something goes wrong. If you are tempted to add a fallback that returns
+  // isMatch:true/verified:true on error, DO NOT — that reintroduces the security hole.
+  const FACE_MATCH_THRESHOLD = 0.85;
+  const VALID_CHALLENGE_TYPES = ['blink', 'smile', 'turn_left', 'turn_right'];
+
   app.post('/api/verify-face', async (req: express.Request, resValue: any) => {
-    const { enrolledImage, capturedImage } = req.body || {};
+    const denyClosed = (status: number, reason: string) => {
+      // Single choke point: every failure path returns through here so the
+      // "fail closed" behavior can never accidentally be bypassed.
+      console.warn(`[FACE VERIFICATION] DENIED (fail-closed): ${reason}`);
+      return resValue.status(status).json({
+        verified: false,
+        isMatch: false,
+        livenessPassed: false,
+        confidence: 0,
+        reason
+      });
+    };
+
     try {
-      if (!enrolledImage || !capturedImage) {
-        return resValue.status(400).json({ error: 'Solishtirish uchun rasmlar to\'liq yuborilmadi' });
+      const { enrolledImage, frames } = req.body || {};
+
+      if (!enrolledImage || typeof enrolledImage !== 'string') {
+        return denyClosed(400, "Ro'yxatdan o'tgan surat topilmadi.");
+      }
+      if (!Array.isArray(frames) || frames.length < 2) {
+        return denyClosed(400, "Jonlilik tekshiruvi uchun yetarli kadr yuborilmadi.");
+      }
+      for (const f of frames) {
+        if (!f || typeof f.image !== 'string' || typeof f.type !== 'string') {
+          return denyClosed(400, "Kadrlar formati noto'g'ri.");
+        }
+        if (f.type !== 'baseline' && !VALID_CHALLENGE_TYPES.includes(f.type)) {
+          return denyClosed(400, "Noma'lum jonlilik buyrug'i turi.");
+        }
       }
 
-      console.log(`[FACE VERIFICATION] Initiating biometric face-matching...`);
+      console.log(`[FACE VERIFICATION] Initiating biometric liveness + face-matching with ${frames.length} frames...`);
 
-      const cleanBase64 = (img: string) => {
-        if (img.includes(',')) {
-          return img.split(',')[1];
-        }
-        return img;
-      };
-
+      const cleanBase64 = (img: string) => (img.includes(',') ? img.split(',')[1] : img);
       const detectMimeType = (img: string) => {
         if (img.includes('image/png')) return 'image/png';
         if (img.includes('image/webp')) return 'image/webp';
         return 'image/jpeg';
       };
 
-      const enrolledPart = {
-        inlineData: {
-          mimeType: detectMimeType(enrolledImage),
-          data: cleanBase64(enrolledImage)
-        }
+      const toPart = (img: string) => ({
+        inlineData: { mimeType: detectMimeType(img), data: cleanBase64(img) }
+      });
+
+      const challengeLabels: Record<string, string> = {
+        baseline: "Neytral holat (boshlang'ich kadr)",
+        blink: "Ko'zlarini yumgan/yumib ochgan holat",
+        smile: "Tabassum qilayotgan holat",
+        turn_left: "Boshini chapga burgan holat",
+        turn_right: "Boshini o'ngga burgan holat"
       };
 
-      const capturedPart = {
-        inlineData: {
-          mimeType: detectMimeType(capturedImage),
-          data: cleanBase64(capturedImage)
-        }
-      };
+      const frameParts: any[] = [];
+      const frameManifest = frames.map((f: any, idx: number) => {
+        frameParts.push(toPart(f.image));
+        return `Rasm ${idx + 2} = "${f.type}" (${challengeLabels[f.type] || f.type}) uchun so'ralgan kadr.`;
+      }).join('\n');
 
-      const prompt = `Siz tibbiyot platformasining talabalarni xavfsiz identifikatsiya qiluvchi biometrik yuz tizimisiz.
-Rasm 1 (Ro'yxatdan o'tgan profil yuzi), Rasm 2 (Talabaning veb-kamerasidan olingan rasm).
+      const prompt = `Siz tibbiyot ta'lim platformasi uchun ishlaydigan QAT'IY (zero-trust) biometrik yuz autentifikatsiya va jonlilik (anti-spoofing) tizimisiz. Xato qilish narxi juda yuqori — begona odamni ichkariga kiritib yubormang.
 
-Vazifa:
-Rasm 2 dagi foydalanuvchi bilan Rasm 1 dagi ro'yxatdan o'tgan foydalanuvchini solishtiring.
-E'tibor bering: Rasm 2 jonli veb-kameradan olingan bo'lib, xonadagi yorug'lik darajasi, veb-kamera sifati yoki ozgina burchak farq qilishi mumkin.
-Agar Rasm 2 da inson yuzi ko'rinib tursa va u ro'yxatdan o'tgan talabaga o'xshash bo'lsa yoki bitta shaxs bo'lsa, isMatch ni true deb belgilang.
-Agar Rasm 2 da butunlay boshqa begona shaxs bo'lsa, isMatch ni false qiling.
+Rasm 1 = Foydalanuvchining ro'yxatdan o'tgan (enrolled) profil surati.
+${frameManifest}
 
-Quyidagi JSON formatda javob bering:
+Sizning uch vazifangiz bor, uchalasini ham QATTIQ tekshiring:
+
+1) YUZ MOSLIGI (identity match): Rasm 1 dagi shaxs bilan yuqoridagi kadrlardagi shaxs bir xil odammi? Yorug'lik, burchak, veb-kamera sifatidagi tabiiy farqlarga tolerant bo'ling, lekin shaxs boshqa odam bo'lsa hech qachon moslikni tasdiqlamang.
+
+2) JONLILIK (liveness / anti-spoofing): Bu juda muhim. Quyidagi firibgarlik (spoofing) belgilarini qidiring va agar birortasi topilsa liveness'ni RAD ETING:
+   - Barcha kadrlar bir-biriga deyarli AYNAN bir xil ko'rinsa (harakat, burchak, ifoda umuman o'zgarmasa) — bu ekranga ko'rsatilgan video yoki bir xil statik foto bo'lishi mumkin.
+   - Qog'ozga chop etilgan fotosurat belgilari: tekis (flat) yuz, qirralar/burchaklar, qo'l barmoqlari fotosurat tutib turgani ko'rinishi.
+   - Telefon yoki monitor ekrani belgilari: ekran yaltirashi (glare), piksel/moire naqshlari, ekran chekkalari yoki ramka ko'rinishi, noaniq protsion (unnaturally flat lighting).
+   - Har bir "challenge" kadrida so'ralgan harakat (masalan ko'z yumish, tabassum, bosh burish) HAQIQATDA bajarilganmi tekshiring — agar kadr so'ralgan harakatni ko'rsatmasa (masalan "blink" so'ralgan, lekin ko'zlar ochiq va boshlang'ich kadr bilan farqsiz), buni RAD ETING.
+   - Faqat barcha talab qilingan harakatlar tabiiy ravishda, mos kadrlarda ko'rinsa liveness TASDIQLANADI.
+
+3) ISHONCH DARAJASI: 0.0 dan 1.0 gacha, shaxsning mosligi qanchalik ishonchli ekanini bering. Har qanday shubha yoki noaniqlik bo'lsa past ball bering (0.85 dan past). Faqat aniq va shubhasiz moslik uchun 0.85+ bering.
+
+Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
 {
-  "isMatch": true yoki false,
-  "confidence": 0.85 dan 0.99 gacha son,
-  "reason": "O'zbek tilida qisqa tushuntirish"
-}
-FAQAT ushbu toza JSON formatini qaytaring.`;
+  "isMatch": true yoki false (shaxs mosligi),
+  "livenessPassed": true yoki false (jonlilik va barcha challenge harakatlari tasdiqlandimi),
+  "spoofSuspected": true yoki false (foto/ekran/video firibgarlik belgisi topildimi),
+  "confidence": 0.0 dan 1.0 gacha son,
+  "reason": "O'zbek tilida qisqa, aniq tushuntirish (spoofing shubhasi bo'lsa buni aniq ayting)"
+}`;
 
       const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
-      let response = null;
-      let lastError = null;
+      const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          isMatch: { type: Type.BOOLEAN, description: "true if the identity in the frames matches the enrolled photo" },
+          livenessPassed: { type: Type.BOOLEAN, description: "true only if liveness and all requested challenge actions are confirmed" },
+          spoofSuspected: { type: Type.BOOLEAN, description: "true if there is any sign of a photo, screen or video replay attack" },
+          confidence: { type: Type.NUMBER, description: "Identity match confidence from 0.0 to 1.0" },
+          reason: { type: Type.STRING, description: "Brief explanation in Uzbek" }
+        },
+        required: ["isMatch", "livenessPassed", "spoofSuspected", "confidence", "reason"]
+      };
+
+      let response: any = null;
+      let lastError: any = null;
 
       for (const modelName of models) {
-        // Try first with responseSchema for structured safety
         try {
           console.log(`[FACE VERIFICATION] Trying model: ${modelName}...`);
           response = await safeGenerateContent(modelName, {
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  enrolledPart,
-                  capturedPart,
-                  { text: prompt }
-                ]
-              }
-            ],
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  isMatch: {
-                    type: Type.BOOLEAN,
-                    description: "true if both images represent the same person, false otherwise"
-                  },
-                  confidence: {
-                    type: Type.NUMBER,
-                    description: "Similarity score from 0.0 to 1.0"
-                  },
-                  reason: {
-                    type: Type.STRING,
-                    description: "Very brief explanation in Uzbek (1-2 sentences) about the decision"
-                  }
-                },
-                required: ["isMatch", "confidence", "reason"]
-              }
-            }
+            contents: [{
+              role: "user",
+              parts: [toPart(enrolledImage), ...frameParts, { text: prompt }]
+            }],
+            config: { responseMimeType: "application/json", responseSchema }
           }, 1, 300);
           if (response && response.text) {
             console.log(`[FACE VERIFICATION] Success with model: ${modelName}`);
             break;
           }
         } catch (err: any) {
-          console.log(`[FACE VERIFICATION] Model ${modelName} unavailable, trying next model...`);
+          console.log(`[FACE VERIFICATION] Model ${modelName} unavailable, trying next model...`, err?.message);
           lastError = err;
-
-          // Try fallback without schema
-          try {
-            response = await safeGenerateContent(modelName, {
-              contents: [
-                {
-                  role: "user",
-                  parts: [
-                    enrolledPart,
-                    capturedPart,
-                    { text: prompt + " \n\nIMPORTANT: Return a valid JSON object matching the requested schema fields (isMatch: boolean, confidence: number, reason: string)." }
-                  ]
-                }
-              ],
-              config: {
-                responseMimeType: "application/json"
-              }
-            }, 1, 300);
-            if (response && response.text) {
-              console.log(`[FACE VERIFICATION] Success without schema with model: ${modelName}`);
-              break;
-            }
-          } catch (fallbackErr: any) {
-            lastError = fallbackErr;
-          }
+          response = null;
         }
       }
 
+      // NO FALLBACK: if every model failed or returned nothing, deny access.
+      // This used to silently return isMatch:true here — that was the security hole.
       if (!response || !response.text) {
-        // High demand / temporary outage fallback for student platform continuity
-        if (enrolledImage && capturedImage && enrolledImage.length > 200 && capturedImage.length > 200) {
-          console.log('[FACE VERIFICATION] Applying reliable biometric verification fallback.');
-          return resValue.json({
-            isMatch: true,
-            confidence: 0.96,
-            reason: "Biometrik yuz tekshiruvi muvaffaqiyatli yakunlandi."
-          });
-        }
-        return resValue.json({
-          isMatch: true,
-          confidence: 0.95,
-          reason: "Biometrik yuz tekshiruvi tasdiqlandi."
-        });
+        return denyClosed(503, "Biometrik tekshiruv xizmati vaqtincha ishlamayapti. Iltimos, birozdan so'ng qayta urinib ko'ring. Xavfsizlik nuqtai nazaridan kirish rad etildi.");
       }
 
-      const text = response.text;
-      if (!text) {
-        if (enrolledImage && capturedImage && enrolledImage.length > 200 && capturedImage.length > 200) {
-          return resValue.json({
-            isMatch: true,
-            confidence: 0.95,
-            reason: "Biometrik yuz tekshiruvi tasdiqlandi."
-          });
-        }
-        throw new Error('Yuzni tekshirishda AI dan javob olinmadi');
-      }
-
+      let result: any;
       try {
-        let cleanText = text.trim();
+        let cleanText = response.text.trim();
         if (cleanText.startsWith('```')) {
           cleanText = cleanText.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
         }
-        const result = JSON.parse(cleanText);
-        console.log(`[FACE VERIFICATION] Match Result:`, result);
-        resValue.json(result);
+        result = JSON.parse(cleanText);
       } catch (parseErr) {
-        console.warn('Direct JSON parse failed, trying substring extraction. Raw text:', text);
-        const firstBrace = text.indexOf('{');
-        const lastBrace = text.lastIndexOf('}');
+        console.warn('[FACE VERIFICATION] JSON parse failed. Raw text:', response.text);
+        const firstBrace = response.text.indexOf('{');
+        const lastBrace = response.text.lastIndexOf('}');
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
           try {
-            const extractedResult = JSON.parse(text.substring(firstBrace, lastBrace + 1));
-            console.log(`[FACE VERIFICATION] Extracted Match Result:`, extractedResult);
-            resValue.json(extractedResult);
-          } catch (innerErr) {
-            resValue.json({
-              isMatch: true,
-              confidence: 0.93,
-              reason: "Biometrik yuz tasdiqlandi."
-            });
+            result = JSON.parse(response.text.substring(firstBrace, lastBrace + 1));
+          } catch {
+            return denyClosed(502, "AI javobini o'qib bo'lmadi. Xavfsizlik nuqtai nazaridan kirish rad etildi.");
           }
         } else {
-          resValue.json({
-            isMatch: true,
-            confidence: 0.93,
-            reason: "Biometrik yuz tasdiqlandi."
-          });
+          return denyClosed(502, "AI javobini o'qib bo'lmadi. Xavfsizlik nuqtai nazaridan kirish rad etildi.");
         }
       }
 
+      const isMatch = result?.isMatch === true;
+      const livenessPassed = result?.livenessPassed === true;
+      const spoofSuspected = result?.spoofSuspected === true;
+      const confidence = typeof result?.confidence === 'number' ? result.confidence : parseFloat(result?.confidence) || 0;
+      const reason = typeof result?.reason === 'string' && result.reason ? result.reason : "Tekshiruv natijasi noaniq.";
+
+      const verified = isMatch && livenessPassed && !spoofSuspected && confidence >= FACE_MATCH_THRESHOLD;
+
+      console.log(`[FACE VERIFICATION] Result: verified=${verified} isMatch=${isMatch} liveness=${livenessPassed} spoof=${spoofSuspected} confidence=${confidence}`);
+
+      return resValue.json({
+        verified,
+        isMatch: verified, // kept for frontend backward-compatibility; only true when fully verified
+        livenessPassed,
+        spoofSuspected,
+        confidence,
+        reason
+      });
+
     } catch (error: any) {
-      console.error('Face ID Verification Error:', error);
-      if (enrolledImage && capturedImage && enrolledImage.length > 200 && capturedImage.length > 200) {
-        return resValue.json({
-          isMatch: true,
-          confidence: 0.93,
-          reason: "Biometrik yuz tasdiqlandi (Avtomatik xavfsiz rejim)."
-        });
-      }
-      resValue.status(500).json({ error: error.message || 'Yuzni tekshirish jarayonida xatolik yuz berdi' });
+      console.error('[FACE VERIFICATION] Unexpected error:', error);
+      // NO FALLBACK on exceptions either — deny closed.
+      return denyClosed(500, error?.message || 'Yuzni tekshirish jarayonida kutilmagan xatolik yuz berdi. Xavfsizlik nuqtai nazaridan kirish rad etildi.');
     }
   });
 
