@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import https from 'https';
 import { execSync } from 'child_process';
-import { getAnatomyFallbackResponse } from './src/data/anatomyFallbackEngine.ts';
+import { getAnatomyFallbackResponse } from './src/data/anatomyFallbackEngine.js';
 
 dotenv.config();
 
