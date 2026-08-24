@@ -1,0 +1,282 @@
+name: Upgrade Face ID
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch Face ID to use Human embeddings
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          # Add a browser-side biometric helper. Models are loaded from the official
+          # Human CDN; embeddings are generated locally and never sent to Gemini.
+          helper = Path('src/lib/faceRecognition.ts')
+          helper.parent.mkdir(parents=True, exist_ok=True)
+          helper.write_text(r'''declare global {
+            interface Window { Human?: any; __bsmiHumanPromise?: Promise<any>; }
+          }
+
+          const HUMAN_SCRIPT = 'https://cdn.jsdelivr.net/npm/@vladmandic/human/dist/human.js';
+          const HUMAN_MODELS = 'https://cdn.jsdelivr.net/npm/@vladmandic/human/models/';
+
+          function loadScript(): Promise<any> {
+            if (window.Human) return Promise.resolve(window.Human);
+            if (window.__bsmiHumanPromise) return window.__bsmiHumanPromise;
+            window.__bsmiHumanPromise = new Promise((resolve, reject) => {
+              const existing = document.querySelector(`script[src="${HUMAN_SCRIPT}"]`) as HTMLScriptElement | null;
+              if (existing) {
+                existing.addEventListener('load', () => resolve(window.Human));
+                existing.addEventListener('error', reject);
+                return;
+              }
+              const script = document.createElement('script');
+              script.src = HUMAN_SCRIPT;
+              script.async = true;
+              script.onload = () => window.Human ? resolve(window.Human) : reject(new Error('Human AI yuklanmadi'));
+              script.onerror = () => reject(new Error('Human AI CDN yuklanmadi'));
+              document.head.appendChild(script);
+            });
+            return window.__bsmiHumanPromise;
+          }
+
+          let humanInstance: any = null;
+
+          export async function getHuman(): Promise<any> {
+            if (humanInstance) return humanInstance;
+            const HumanCtor = await loadScript();
+            humanInstance = new HumanCtor({
+              backend: 'webgl',
+              modelBasePath: HUMAN_MODELS,
+              filter: { enabled: true, equalization: true, flip: false },
+              face: {
+                enabled: true,
+                detector: { rotation: true, return: true, maxDetected: 3, minConfidence: 0.55 },
+                mesh: { enabled: true },
+                description: { enabled: true },
+                antispoof: { enabled: true },
+                liveness: { enabled: true },
+                iris: { enabled: false },
+                emotion: { enabled: false },
+              },
+              body: { enabled: false },
+              hand: { enabled: false },
+              object: { enabled: false },
+              gesture: { enabled: false },
+              segmentation: { enabled: false },
+              debug: false,
+            });
+            await humanInstance.load();
+            await humanInstance.warmup();
+            return humanInstance;
+          }
+
+          export async function extractFace(image: string | HTMLVideoElement | HTMLCanvasElement) {
+            const human = await getHuman();
+            const result = await human.detect(image);
+            const faces = Array.isArray(result?.face) ? result.face : [];
+            if (!faces.length) throw new Error('Yuz aniqlanmadi. Kameraga to‘g‘ri qarang.');
+            const valid = faces.filter((f: any) => Array.isArray(f.embedding) && f.embedding.length > 0);
+            if (!valid.length) throw new Error('Yuz embedding hosil qilinmadi. Yorug‘likni yaxshilang.');
+            valid.sort((a: any, b: any) => (b.score || 0) - (a.score || 0));
+            return valid[0];
+          }
+
+          export async function extractEmbedding(image: string | HTMLVideoElement | HTMLCanvasElement) {
+            const face = await extractFace(image);
+            return {
+              embedding: face.embedding as number[],
+              score: Number(face.score || 0),
+              real: typeof face.real === 'number' ? face.real : null,
+              live: typeof face.live === 'number' ? face.live : null,
+              rotation: face.rotation?.angle || null,
+            };
+          }
+
+          export async function compareFace(reference: number[], image: string | HTMLVideoElement | HTMLCanvasElement) {
+            const human = await getHuman();
+            const current = await extractEmbedding(image);
+            const similarity = Number(human.match.similarity(reference, current.embedding));
+            return { ...current, similarity };
+          }
+
+          export async function averageEmbedding(image: string): Promise<number[]> {
+            return (await extractEmbedding(image)).embedding;
+          }
+          
+          export {};
+          ''', encoding='utf-8')
+
+          face = Path('src/components/BiometricFaceGate.tsx')
+          text = face.read_text(encoding='utf-8')
+          if "../lib/faceRecognition" not in text:
+              text = text.replace("import { signOut } from 'firebase/auth';", "import { signOut } from 'firebase/auth';\nimport { extractEmbedding, compareFace } from '../lib/faceRecognition';")
+
+          # Enrollment: create a real face descriptor and store it with the user.
+          old = """      const userRef = doc(db, 'users', user.uid);\n      await setDoc(userRef, {\n        faceIdPhoto: photo,\n        faceIdEnrolled: true,"""
+          new = """      const biometric = await extractEmbedding(photo);\n      if (!biometric.embedding?.length) throw new Error(\"Yuz embedding hosil bo'lmadi. Qayta suratga oling.\");\n\n      const userRef = doc(db, 'users', user.uid);\n      await setDoc(userRef, {\n        faceIdPhoto: photo,\n        faceIdEmbedding: biometric.embedding,\n        faceIdEnrolled: true,"""
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          # Replace the Gemini-dependent verification function with local embedding comparison.
+          start = text.find('  const handleVerifyFace = async (frames: { type: string; image: string }[]) => {')
+          if start == -1:
+              raise SystemExit('handleVerifyFace not found')
+          end = text.find('\n  return (', start)
+          if end == -1:
+              raise SystemExit('component return not found')
+
+          replacement = r'''  const handleVerifyFace = async (frames: { type: string; image: string }[]) => {
+    if (!frames || frames.length < 3 || !enrolledPhoto) {
+      setVerificationResult({ success: false, message: "Tekshiruv uchun yetarli ma'lumot yo'q." });
+      setLivenessStage('idle');
+      return;
+    }
+
+    try {
+      setVerifying(true);
+      setVerificationResult(null);
+
+      // Use a stored embedding when available. For old accounts, generate one
+      // from the existing enrolled photo so migration does not require re-enrollment.
+      const storedEmbedding = Array.isArray(profile?.faceIdEmbedding)
+        ? profile.faceIdEmbedding
+        : Array.isArray(user?.faceIdEmbedding) ? user.faceIdEmbedding : null;
+      const reference = storedEmbedding?.length
+        ? storedEmbedding
+        : (await extractEmbedding(enrolledPhoto)).embedding;
+
+      // Compare every live challenge frame independently. We use the best two
+      // scores rather than a single frame so pose/exposure changes do not cause
+      // genuine users to fail while a different person cannot pass all frames.
+      const checks = [] as any[];
+      for (const frame of frames) {
+        checks.push(await compareFace(reference, frame.image));
+      }
+      const scores = checks.map(x => Number(x.similarity) || 0).sort((a, b) => b - a);
+      const best = scores[0] || 0;
+      const second = scores[1] || 0;
+      const third = scores[2] || 0;
+      const averageTop = (best + second) / 2;
+
+      // Human's face matcher is designed around ~0.50 as a general match.
+      // 0.60 is intentionally conservative for webcam conditions.
+      const FACE_SIMILARITY_THRESHOLD = 0.60;
+      const verified = averageTop >= FACE_SIMILARITY_THRESHOLD && third >= 0.50;
+
+      // Require a plausible live/real signal when the model supplies it. If the
+      // optional model does not return a signal, the existing multi-action
+      // challenge remains the liveness gate instead of blocking every browser.
+      const liveSignals = checks
+        .map(x => [x.real, x.live].filter((v: any) => typeof v === 'number'))
+        .flat();
+      const hasLiveSignal = liveSignals.length > 0;
+      const livePassed = !hasLiveSignal || liveSignals.filter((v: number) => v >= 0.45).length >= Math.max(1, Math.ceil(liveSignals.length * 0.5));
+      const finalVerified = verified && livePassed;
+
+      const reason = finalVerified
+        ? `Yuz embedding mosligi tasdiqlandi (${Math.round(averageTop * 100)}%).`
+        : `Yuz mosligi yetarli emas (${Math.round(averageTop * 100)}%). Kameraga to'g'ri qarang va yorug'likni yaxshilang.`;
+
+      const result = {
+        success: finalVerified,
+        isMatch: finalVerified,
+        confidence: Math.max(0, Math.min(1, averageTop)),
+        reason,
+      };
+
+      setVerificationResult(result);
+
+      try {
+        await addDoc(collection(db, 'biometric_audit'), {
+          userId: user.uid,
+          userEmail: user.email || 'noma\'lum',
+          userName: profile?.displayName || user.displayName || 'Foydalanuvchi',
+          action: 'verification',
+          status: finalVerified ? 'success' : 'failure',
+          confidence: result.confidence,
+          details: reason,
+          timestamp: serverTimestamp()
+        });
+      } catch (logErr) {
+        console.error('Biometric audit log error:', logErr);
+      }
+
+      if (finalVerified) {
+        setTimeout(() => onVerified(), 500);
+      } else {
+        setLivenessStage('idle');
+      }
+    } catch (err: any) {
+      console.error('Local face recognition failed:', err);
+      setVerificationResult({
+        success: false,
+        message: err?.message || "Yuzni aniqlashda xatolik. Kamerani tekshirib qayta urinib ko'ring."
+      });
+      setLivenessStage('idle');
+    } finally {
+      setVerifying(false);
+    }
+  };
+'''
+          text = text[:start] + replacement + text[end:]
+
+          # Enrollment must update local profile with the descriptor too.
+          text = text.replace("        faceIdPhoto: photo,\n        faceIdEnrolled: true,", "        faceIdPhoto: photo,\n        faceIdEmbedding: biometric.embedding,\n        faceIdEnrolled: true,", 1)
+
+          face.write_text(text, encoding='utf-8')
+
+          # Remove the previous Gemini face verification route body by replacing it
+          # with a small compatibility endpoint. The browser now performs the actual
+          # face embedding comparison; this endpoint is retained for old clients.
+          server = Path('server.ts')
+          s = server.read_text(encoding='utf-8')
+          route_start = s.find("  app.post('/api/verify-face'")
+          route_end = s.find("\n  app.post('/api/admin/generate-theory'", route_start)
+          if route_start == -1 or route_end == -1:
+              raise SystemExit('verify-face route markers not found')
+          compat = r'''  app.post('/api/verify-face', async (req: express.Request, resValue: any) => {
+    // Face recognition is now performed locally with @vladmandic/human embeddings.
+    // Keep this endpoint for backward compatibility with older clients, but never
+    // claim that a Gemini vision response is a biometric match.
+    return resValue.status(410).json({
+      verified: false,
+      isMatch: false,
+      livenessPassed: false,
+      confidence: 0,
+      reason: 'Face ID yangilangan: brauzerni yangilang va lokal biometrik tekshiruvdan foydalaning.'
+    });
+  });
+'''
+          s = s[:route_start] + compat + s[route_end:]
+          server.write_text(s, encoding='utf-8')
+
+          # Remove the old patch workflow so it does not keep rewriting the threshold.
+          old_workflow = Path('.github/workflows/fix-face-recognition.yml')
+          if old_workflow.exists():
+              old_workflow.unlink()
+
+      - name: Install and type-check
+        run: |
+          npm install
+          npm run lint
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/faceRecognition.ts src/components/BiometricFaceGate.tsx server.ts .github/workflows/fix-face-recognition.yml
+          git commit -m "fix: use local face embeddings for Face ID" || exit 0
+          git push
