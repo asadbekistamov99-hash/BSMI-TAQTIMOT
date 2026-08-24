@@ -1,0 +1,70 @@
+name: Apply Face Recognition Fix
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-face-recognition:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch biometric verification
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          server = Path('server.ts')
+          text = server.read_text(encoding='utf-8')
+
+          old = "const FACE_MATCH_THRESHOLD = 0.85;"
+          new = "const FACE_MATCH_THRESHOLD = 0.75; // tuned for real webcam variation; liveness is still mandatory"
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = "Har qanday shubha yoki noaniqlik bo'lsa past ball bering (0.85 dan past). Faqat aniq va shubhasiz moslik uchun 0.85+ bering."
+          new = "Web-kamera yorug'ligi, fokus, ekspozitsiya va bosh burchagidagi tabiiy farqlar uchun ballni asossiz pasaytirmang. Bir xil shaxsning barqaror yuz belgilarini taqqoslang. Begona shaxs bo'lsa isMatch=false bo'lishi shart. Faqat yuz mosligi ishonchli bo'lsa 0.75+ confidence bering; noaniq holatda 0.75 dan past bering."
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = "Xato qilish narxi juda yuqori — begona odamni ichkariga kiritib yubormang."
+          new = "Xato qilish narxi juda yuqori — begona odamni ichkariga kiritmang. Shu bilan birga, haqiqiy foydalanuvchini oddiy webcam farqlari sabab rad etmang. Yuzning ko'z, qosh, burun, lab, jag' va umumiy yuz shakli kabi barqaror belgilarini birgalikda solishtiring."
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          server.write_text(text, encoding='utf-8')
+
+          face = Path('src/components/BiometricFaceGate.tsx')
+          text = face.read_text(encoding='utf-8')
+
+          text = text.replace("width: { ideal: 640 }, height: { ideal: 480 }", "width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 }, frameRate: { ideal: 30, min: 15 }")
+          text = text.replace("const targetWidth = 400;", "const targetWidth = 640;")
+          text = text.replace("canvas.toDataURL('image/jpeg', 0.80)", "canvas.toDataURL('image/jpeg', 0.92)")
+          text = text.replace("setTimeout(() => controller.abort(), 20000)", "setTimeout(() => controller.abort(), 30000)")
+
+          face.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify changed files
+        run: |
+          grep -n "FACE_MATCH_THRESHOLD" server.ts
+          grep -n "targetWidth\|toDataURL\|getUserMedia" src/components/BiometricFaceGate.tsx | head -20
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server.ts src/components/BiometricFaceGate.tsx
+          if git diff --cached --quiet; then
+            echo "No changes needed"
+            exit 0
+          fi
+          git commit -m "fix: improve biometric face recognition reliability"
+          git push
