@@ -472,13 +472,19 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
     }
   });
 
-  // === ZERO-TRUST BIOMETRIC FACE VERIFICATION (fail-closed) ===
+  // === ZERO-TRUST BIOMETRIC FACE VERIFICATION (fail-closed, PASSIVE liveness) ===
   // Rule: ANY error, timeout, parse failure or low-confidence result MUST result in
   // verified:false. There is NO code path in this handler that grants access when
   // something goes wrong. If you are tempted to add a fallback that returns
   // isMatch:true/verified:true on error, DO NOT — that reintroduces the security hole.
-  const FACE_MATCH_THRESHOLD = 0.75; // tuned for real webcam variation; liveness is still mandatory
-  const VALID_CHALLENGE_TYPES = ['blink', 'smile', 'turn_left', 'turn_right'];
+  //
+  // The frontend never instructs the user to blink/smile/turn — it silently captures
+  // a short burst of frames while they just look at the camera. This endpoint infers
+  // liveness from natural micro-movement between frames and from spoofing artifacts
+  // (identical frames, screen glare/moire, printed-photo edges, unnaturally flat
+  // lighting), the same way a passive liveness check (e.g. OneID-style) works.
+  const FACE_MATCH_THRESHOLD = 0.85;
+  const MIN_FRAMES_REQUIRED = 3;
 
   app.post('/api/verify-face', async (req: express.Request, resValue: any) => {
     const denyClosed = (status: number, reason: string) => {
@@ -500,19 +506,16 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
       if (!enrolledImage || typeof enrolledImage !== 'string') {
         return denyClosed(400, "Ro'yxatdan o'tgan surat topilmadi.");
       }
-      if (!Array.isArray(frames) || frames.length < 2) {
+      if (!Array.isArray(frames) || frames.length < MIN_FRAMES_REQUIRED) {
         return denyClosed(400, "Jonlilik tekshiruvi uchun yetarli kadr yuborilmadi.");
       }
       for (const f of frames) {
-        if (!f || typeof f.image !== 'string' || typeof f.type !== 'string') {
+        if (!f || typeof f.image !== 'string') {
           return denyClosed(400, "Kadrlar formati noto'g'ri.");
-        }
-        if (f.type !== 'baseline' && !VALID_CHALLENGE_TYPES.includes(f.type)) {
-          return denyClosed(400, "Noma'lum jonlilik buyrug'i turi.");
         }
       }
 
-      console.log(`[FACE VERIFICATION] Initiating biometric liveness + face-matching with ${frames.length} frames...`);
+      console.log(`[FACE VERIFICATION] Initiating passive biometric liveness + face-matching with ${frames.length} frames...`);
 
       const cleanBase64 = (img: string) => (img.includes(',') ? img.split(',')[1] : img);
       const detectMimeType = (img: string) => {
@@ -525,53 +528,49 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
         inlineData: { mimeType: detectMimeType(img), data: cleanBase64(img) }
       });
 
-      const challengeLabels: Record<string, string> = {
-        baseline: "Neytral holat (boshlang'ich kadr)",
-        blink: "Ko'zlarini yumgan/yumib ochgan holat",
-        smile: "Tabassum qilayotgan holat",
-        turn_left: "Boshini chapga burgan holat",
-        turn_right: "Boshini o'ngga burgan holat"
-      };
-
       const frameParts: any[] = [];
       const frameManifest = frames.map((f: any, idx: number) => {
         frameParts.push(toPart(f.image));
-        return `Rasm ${idx + 2} = "${f.type}" (${challengeLabels[f.type] || f.type}) uchun so'ralgan kadr.`;
+        return `Rasm ${idx + 2} = kameradan taxminan ${idx === 0 ? '0' : (idx * 450)}ms momentida olingan ketma-ket kadr.`;
       }).join('\n');
 
-      const prompt = `Siz tibbiyot ta'lim platformasi uchun ishlaydigan QAT'IY (zero-trust) biometrik yuz autentifikatsiya va jonlilik (anti-spoofing) tizimisiz. Xato qilish narxi juda yuqori — begona odamni ichkariga kiritmang. Shu bilan birga, haqiqiy foydalanuvchini oddiy webcam farqlari sabab rad etmang. Yuzning ko'z, qosh, burun, lab, jag' va umumiy yuz shakli kabi barqaror belgilarini birgalikda solishtiring.
+      const prompt = `Siz tibbiyot ta'lim platformasi uchun ishlaydigan QAT'IY (zero-trust) biometrik yuz autentifikatsiya va passiv jonlilik (anti-spoofing) tizimisiz. Xato qilish narxi juda yuqori — begona odamni yoki foto/video orqali firibgarlikni ichkariga kiritib yubormang.
 
 Rasm 1 = Foydalanuvchining ro'yxatdan o'tgan (enrolled) profil surati.
 ${frameManifest}
+
+Yuqoridagi ${frames.length} ta kadr veb-kameradan qisqa vaqt oralig'ida (har biri ~450ms farq bilan), foydalanuvchiga HECH QANDAY ko'rsatma berilmasdan, u kameraga oddiy qarab turgan holatda avtomatik olingan.
 
 Sizning uch vazifangiz bor, uchalasini ham QATTIQ tekshiring:
 
 1) YUZ MOSLIGI (identity match): Rasm 1 dagi shaxs bilan yuqoridagi kadrlardagi shaxs bir xil odammi? Yorug'lik, burchak, veb-kamera sifatidagi tabiiy farqlarga tolerant bo'ling, lekin shaxs boshqa odam bo'lsa hech qachon moslikni tasdiqlamang.
 
-2) JONLILIK (liveness / anti-spoofing): Bu juda muhim. Quyidagi firibgarlik (spoofing) belgilarini qidiring va agar birortasi topilsa liveness'ni RAD ETING:
-   - Barcha kadrlar bir-biriga deyarli AYNAN bir xil ko'rinsa (harakat, burchak, ifoda umuman o'zgarmasa) — bu ekranga ko'rsatilgan video yoki bir xil statik foto bo'lishi mumkin.
-   - Qog'ozga chop etilgan fotosurat belgilari: tekis (flat) yuz, qirralar/burchaklar, qo'l barmoqlari fotosurat tutib turgani ko'rinishi.
-   - Telefon yoki monitor ekrani belgilari: ekran yaltirashi (glare), piksel/moire naqshlari, ekran chekkalari yoki ramka ko'rinishi, noaniq protsion (unnaturally flat lighting).
-   - Har bir "challenge" kadrida so'ralgan harakat (masalan ko'z yumish, tabassum, bosh burish) HAQIQATDA bajarilganmi tekshiring — agar kadr so'ralgan harakatni ko'rsatmasa (masalan "blink" so'ralgan, lekin ko'zlar ochiq va boshlang'ich kadr bilan farqsiz), buni RAD ETING.
-   - Faqat barcha talab qilingan harakatlar tabiiy ravishda, mos kadrlarda ko'rinsa liveness TASDIQLANADI.
+2) PASSIV JONLILIK (liveness / anti-spoofing): Bu juda muhim. Haqiqiy jonli odam hech qachon bir necha kadr davomida 100% bir xil turmaydi — ko'zlarida, yuz mushaklarida, boshining holatida yoki yorug'likda mikroskopik tabiiy o'zgarishlar bo'ladi. Quyidagi firibgarlik (spoofing) belgilarini qidiring va agar birortasi topilsa liveness'ni RAD ETING:
+   - Barcha kadrlar bir-biriga PIKSEL DARAJASIDA deyarli AYNAN bir xil ko'rinsa (hech qanday tabiiy mikro-harakat yo'q) — bu qo'lda ushlab turilgan statik fotosurat yoki to'xtatilgan video kadri bo'lishi mumkin.
+   - Qog'ozga chop etilgan fotosurat belgilari: tekis (flat) yuz, qog'oz qirralari/burchaklari, uni ushlab turgan qo'l yoki barmoqlar ko'rinishi.
+   - Telefon yoki monitor ekrani belgilari: ekran yaltirashi (glare), piksel/moire naqshlari, ekran chekkalari yoki ramka ko'rinishi, ekranga xos notabiy tekis yorug'lik.
+   - Agar hamma narsa tabiiy ko'rinsa va kadrlar orasida haqiqiy jonli odamga xos tabiiy mikro-farqlar (nafas, ko'z holati, engil bosh tebranishi) sezilsa, liveness TASDIQLANADI.
 
-3) ISHONCH DARAJASI: 0.0 dan 1.0 gacha, shaxsning mosligi qanchalik ishonchli ekanini bering. Web-kamera yorug'ligi, fokus, ekspozitsiya va bosh burchagidagi tabiiy farqlar uchun ballni asossiz pasaytirmang. Bir xil shaxsning barqaror yuz belgilarini taqqoslang. Begona shaxs bo'lsa isMatch=false bo'lishi shart. Faqat yuz mosligi ishonchli bo'lsa 0.75+ confidence bering; noaniq holatda 0.75 dan past bering.
+3) ISHONCH DARAJASI: 0.0 dan 1.0 gacha, shaxsning mosligi qanchalik ishonchli ekanini bering. Har qanday shubha yoki noaniqlik bo'lsa past ball bering (0.85 dan past). Faqat aniq va shubhasiz moslik uchun 0.85+ bering.
 
 Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
 {
   "isMatch": true yoki false (shaxs mosligi),
-  "livenessPassed": true yoki false (jonlilik va barcha challenge harakatlari tasdiqlandimi),
+  "livenessPassed": true yoki false (passiv jonlilik tasdiqlandimi, spoofing belgisi yo'qmi),
   "spoofSuspected": true yoki false (foto/ekran/video firibgarlik belgisi topildimi),
   "confidence": 0.0 dan 1.0 gacha son,
   "reason": "O'zbek tilida qisqa, aniq tushuntirish (spoofing shubhasi bo'lsa buni aniq ayting)"
 }`;
 
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+      // Only two fast models are tried for this endpoint (unlike other endpoints)
+      // to stay comfortably inside the serverless function's time budget even
+      // when sending several images per request.
+      const models = ["gemini-2.5-flash", "gemini-flash-latest"];
       const responseSchema = {
         type: Type.OBJECT,
         properties: {
           isMatch: { type: Type.BOOLEAN, description: "true if the identity in the frames matches the enrolled photo" },
-          livenessPassed: { type: Type.BOOLEAN, description: "true only if liveness and all requested challenge actions are confirmed" },
+          livenessPassed: { type: Type.BOOLEAN, description: "true only if passive liveness is confirmed with no spoofing signs" },
           spoofSuspected: { type: Type.BOOLEAN, description: "true if there is any sign of a photo, screen or video replay attack" },
           confidence: { type: Type.NUMBER, description: "Identity match confidence from 0.0 to 1.0" },
           reason: { type: Type.STRING, description: "Brief explanation in Uzbek" }
