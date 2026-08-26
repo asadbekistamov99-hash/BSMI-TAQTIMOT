@@ -533,14 +533,18 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
         return `Rasm ${idx + 2} = kameradan taxminan ${idx === 0 ? '0' : (idx * 700)}ms momentida olingan ketma-ket kadr.`;
       }).join('\n');
 
-      const prompt = `Siz tibbiyot ta'lim platformasi uchun ishlaydigan QAT'IY (zero-trust) biometrik yuz autentifikatsiya va passiv jonlilik (anti-spoofing) tizimisiz. Xato qilish narxi juda yuqori — begona odamni yoki foto/video orqali firibgarlikni ichkariga kiritib yubormang. Ammo shu bilan birga, haqiqiy, jonli talabalarni bekorga rad etib, ularning kirishiga to'sqinlik qilmang — bu ham jiddiy muammo.
+      const prompt = `Siz tibbiyot ta'lim platformasi uchun ishlaydigan QAT'IY (zero-trust) biometrik yuz autentifikatsiya va passiv jonlilik (anti-spoofing) tizimisiz. Xato qilish narxi juda yuqori — begona odamni, bo'sh kadrni yoki foto/video orqali firibgarlikni ichkariga kiritib yubormang. Ammo shu bilan birga, haqiqiy, jonli talabalarni bekorga rad etib, ularning kirishiga to'sqinlik qilmang — bu ham jiddiy muammo.
 
 Rasm 1 = Foydalanuvchining ro'yxatdan o'tgan (enrolled) profil surati.
 ${frameManifest}
 
 Yuqoridagi ${frames.length} ta kadr veb-kameradan ~2.5-3 soniyalik oraliqda (har biri ~700ms farq bilan), foydalanuvchiga HECH QANDAY ko'rsatma berilmasdan, u kameraga oddiy qarab turgan holatda avtomatik olingan.
 
-Sizning uch vazifangiz bor:
+Sizning to'rtta vazifangiz bor, BIRINCHISINI ALBATTA ENG AVVAL TEKSHIRING:
+
+0) YUZ MAVJUDLIGI (face presence) — ENG MUHIM SHART: Har bir kadrni alohida diqqat bilan ko'rib chiqing. Kadrlarning HAMMASIDA aniq, tanib bo'ladigan inson yuzi ko'rinishi SHART. Agar kadrlarning BIRORTASIDA HAM aniq inson yuzi ko'rinmasa — bo'sh xona, bo'sh stul, devor, qorong'i/xira tasvir, yuzning faqat qisman ko'rinishi, yuz kameradan juda uzoq yoki noaniq bo'lsa — bunda faceDetected=false, isMatch=false, livenessPassed=false, confidence=0 qiling va boshqa hech narsani tahlil qilmang. Bu shart bajarilmasa, qolgan vazifalarni BAJARMANG.
+
+Faqat faceDetected=true bo'lgandagina quyidagi vazifalarni bajaring:
 
 1) YUZ MOSLIGI (identity match): Rasm 1 dagi shaxs bilan yuqoridagi kadrlardagi shaxs bir xil odammi? Yorug'lik, burchak, veb-kamera sifatidagi tabiiy farqlarga tolerant bo'ling, lekin shaxs boshqa odam bo'lsa hech qachon moslikni tasdiqlamang.
 
@@ -554,10 +558,11 @@ Sizning uch vazifangiz bor:
 
 Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
 {
-  "isMatch": true yoki false (shaxs mosligi),
-  "livenessPassed": true yoki false (faqat ANIQ spoofing dalili topilsa false qiling, aks holda true),
+  "faceDetected": true yoki false (barcha kadrlarda aniq inson yuzi ko'rinadimi),
+  "isMatch": true yoki false (shaxs mosligi; faceDetected=false bo'lsa avtomatik false),
+  "livenessPassed": true yoki false (faqat ANIQ spoofing dalili topilsa false qiling, aks holda true; faceDetected=false bo'lsa avtomatik false),
   "spoofSuspected": true yoki false (faqat ANIQ foto/ekran belgisi topilsa true qiling),
-  "confidence": 0.0 dan 1.0 gacha son,
+  "confidence": 0.0 dan 1.0 gacha son (faceDetected=false bo'lsa 0),
   "reason": "O'zbek tilida qisqa, aniq tushuntirish"
 }`;
 
@@ -568,13 +573,14 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
       const responseSchema = {
         type: Type.OBJECT,
         properties: {
+          faceDetected: { type: Type.BOOLEAN, description: "true only if a clear human face is visible in every frame" },
           isMatch: { type: Type.BOOLEAN, description: "true if the identity in the frames matches the enrolled photo" },
           livenessPassed: { type: Type.BOOLEAN, description: "true only if passive liveness is confirmed with no spoofing signs" },
           spoofSuspected: { type: Type.BOOLEAN, description: "true if there is any sign of a photo, screen or video replay attack" },
           confidence: { type: Type.NUMBER, description: "Identity match confidence from 0.0 to 1.0" },
           reason: { type: Type.STRING, description: "Brief explanation in Uzbek" }
         },
-        required: ["isMatch", "livenessPassed", "spoofSuspected", "confidence", "reason"]
+        required: ["faceDetected", "isMatch", "livenessPassed", "spoofSuspected", "confidence", "reason"]
       };
 
       let response: any = null;
@@ -629,19 +635,26 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
         }
       }
 
+      // faceDetected defaults to false (fail-closed) unless the AI explicitly confirms it.
+      const faceDetected = result?.faceDetected === true;
       const isMatch = result?.isMatch === true;
       const livenessPassed = result?.livenessPassed === true;
       const spoofSuspected = result?.spoofSuspected === true;
       const confidence = typeof result?.confidence === 'number' ? result.confidence : parseFloat(result?.confidence) || 0;
-      const reason = typeof result?.reason === 'string' && result.reason ? result.reason : "Tekshiruv natijasi noaniq.";
+      const reason = typeof result?.reason === 'string' && result.reason
+        ? result.reason
+        : (!faceDetected ? "Kadrlarda aniq inson yuzi topilmadi." : "Tekshiruv natijasi noaniq.");
 
-      const verified = isMatch && livenessPassed && !spoofSuspected && confidence >= FACE_MATCH_THRESHOLD;
+      // faceDetected is checked first and independently: no face in frame means
+      // automatic denial regardless of what isMatch/confidence the model returned.
+      const verified = faceDetected && isMatch && livenessPassed && !spoofSuspected && confidence >= FACE_MATCH_THRESHOLD;
 
-      console.log(`[FACE VERIFICATION] Result: verified=${verified} isMatch=${isMatch} liveness=${livenessPassed} spoof=${spoofSuspected} confidence=${confidence}`);
+      console.log(`[FACE VERIFICATION] Result: verified=${verified} faceDetected=${faceDetected} isMatch=${isMatch} liveness=${livenessPassed} spoof=${spoofSuspected} confidence=${confidence}`);
 
       return resValue.json({
         verified,
         isMatch: verified, // kept for frontend backward-compatibility; only true when fully verified
+        faceDetected,
         livenessPassed,
         spoofSuspected,
         confidence,
