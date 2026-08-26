@@ -1,6 +1,5 @@
 import express from 'express';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import dotenv from 'dotenv';
@@ -483,7 +482,7 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
   // liveness from natural micro-movement between frames and from spoofing artifacts
   // (identical frames, screen glare/moire, printed-photo edges, unnaturally flat
   // lighting), the same way a passive liveness check (e.g. OneID-style) works.
-  const FACE_MATCH_THRESHOLD = 0.75; // tuned for real webcam variation; liveness is still mandatory
+  const FACE_MATCH_THRESHOLD = 0.85;
   const MIN_FRAMES_REQUIRED = 3;
 
   app.post('/api/verify-face', async (req: express.Request, resValue: any) => {
@@ -551,7 +550,7 @@ Sizning uch vazifangiz bor, uchalasini ham QATTIQ tekshiring:
    - Telefon yoki monitor ekrani belgilari: ekran yaltirashi (glare), piksel/moire naqshlari, ekran chekkalari yoki ramka ko'rinishi, ekranga xos notabiy tekis yorug'lik.
    - Agar hamma narsa tabiiy ko'rinsa va kadrlar orasida haqiqiy jonli odamga xos tabiiy mikro-farqlar (nafas, ko'z holati, engil bosh tebranishi) sezilsa, liveness TASDIQLANADI.
 
-3) ISHONCH DARAJASI: 0.0 dan 1.0 gacha, shaxsning mosligi qanchalik ishonchli ekanini bering. Web-kamera yorug'ligi, fokus, ekspozitsiya va bosh burchagidagi tabiiy farqlar uchun ballni asossiz pasaytirmang. Bir xil shaxsning barqaror yuz belgilarini taqqoslang. Begona shaxs bo'lsa isMatch=false bo'lishi shart. Faqat yuz mosligi ishonchli bo'lsa 0.75+ confidence bering; noaniq holatda 0.75 dan past bering.
+3) ISHONCH DARAJASI: 0.0 dan 1.0 gacha, shaxsning mosligi qanchalik ishonchli ekanini bering. Har qanday shubha yoki noaniqlik bo'lsa past ball bering (0.85 dan past). Faqat aniq va shubhasiz moslik uchun 0.85+ bering.
 
 Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
 {
@@ -1453,8 +1452,16 @@ Sizning vazifangiz:
     res.status(404).json({ error: `API yo'nalishi topilmadi: ${req.originalUrl}` });
   });
 
-  // Vite middleware for development
+  // Vite middleware for development ONLY.
+  // 'vite' (and its bundled 'rollup') must NEVER be statically imported at the top
+  // of this file: rollup ships optional platform-specific native binaries, and a
+  // well-known npm bug (github.com/npm/cli/issues/4828) can leave the wrong one
+  // installed on Vercel's Linux build image, crashing the ENTIRE serverless
+  // function with FUNCTION_INVOCATION_FAILED on every request — not just dev ones.
+  // A dynamic import() here means Vercel's production bundle never touches vite/
+  // rollup at all, since this branch never executes when NODE_ENV === 'production'.
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
