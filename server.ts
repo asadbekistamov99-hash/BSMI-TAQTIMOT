@@ -482,7 +482,7 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
   // liveness from natural micro-movement between frames and from spoofing artifacts
   // (identical frames, screen glare/moire, printed-photo edges, unnaturally flat
   // lighting), the same way a passive liveness check (e.g. OneID-style) works.
-  const FACE_MATCH_THRESHOLD = 0.75; // tuned for real webcam variation; liveness is still mandatory
+  const FACE_MATCH_THRESHOLD = 0.85;
   const MIN_FRAMES_REQUIRED = 3;
 
   app.post('/api/verify-face', async (req: express.Request, resValue: any) => {
@@ -530,35 +530,35 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
       const frameParts: any[] = [];
       const frameManifest = frames.map((f: any, idx: number) => {
         frameParts.push(toPart(f.image));
-        return `Rasm ${idx + 2} = kameradan taxminan ${idx === 0 ? '0' : (idx * 450)}ms momentida olingan ketma-ket kadr.`;
+        return `Rasm ${idx + 2} = kameradan taxminan ${idx === 0 ? '0' : (idx * 700)}ms momentida olingan ketma-ket kadr.`;
       }).join('\n');
 
-      const prompt = `Siz tibbiyot ta'lim platformasi uchun ishlaydigan QAT'IY (zero-trust) biometrik yuz autentifikatsiya va passiv jonlilik (anti-spoofing) tizimisiz. Xato qilish narxi juda yuqori — begona odamni yoki foto/video orqali firibgarlikni ichkariga kiritib yubormang.
+      const prompt = `Siz tibbiyot ta'lim platformasi uchun ishlaydigan QAT'IY (zero-trust) biometrik yuz autentifikatsiya va passiv jonlilik (anti-spoofing) tizimisiz. Xato qilish narxi juda yuqori — begona odamni yoki foto/video orqali firibgarlikni ichkariga kiritib yubormang. Ammo shu bilan birga, haqiqiy, jonli talabalarni bekorga rad etib, ularning kirishiga to'sqinlik qilmang — bu ham jiddiy muammo.
 
 Rasm 1 = Foydalanuvchining ro'yxatdan o'tgan (enrolled) profil surati.
 ${frameManifest}
 
-Yuqoridagi ${frames.length} ta kadr veb-kameradan qisqa vaqt oralig'ida (har biri ~450ms farq bilan), foydalanuvchiga HECH QANDAY ko'rsatma berilmasdan, u kameraga oddiy qarab turgan holatda avtomatik olingan.
+Yuqoridagi ${frames.length} ta kadr veb-kameradan ~2.5-3 soniyalik oraliqda (har biri ~700ms farq bilan), foydalanuvchiga HECH QANDAY ko'rsatma berilmasdan, u kameraga oddiy qarab turgan holatda avtomatik olingan.
 
-Sizning uch vazifangiz bor, uchalasini ham QATTIQ tekshiring:
+Sizning uch vazifangiz bor:
 
 1) YUZ MOSLIGI (identity match): Rasm 1 dagi shaxs bilan yuqoridagi kadrlardagi shaxs bir xil odammi? Yorug'lik, burchak, veb-kamera sifatidagi tabiiy farqlarga tolerant bo'ling, lekin shaxs boshqa odam bo'lsa hech qachon moslikni tasdiqlamang.
 
-2) PASSIV JONLILIK (liveness / anti-spoofing): Bu juda muhim. Haqiqiy jonli odam hech qachon bir necha kadr davomida 100% bir xil turmaydi — ko'zlarida, yuz mushaklarida, boshining holatida yoki yorug'likda mikroskopik tabiiy o'zgarishlar bo'ladi. Quyidagi firibgarlik (spoofing) belgilarini qidiring va agar birortasi topilsa liveness'ni RAD ETING:
-   - Barcha kadrlar bir-biriga PIKSEL DARAJASIDA deyarli AYNAN bir xil ko'rinsa (hech qanday tabiiy mikro-harakat yo'q) — bu qo'lda ushlab turilgan statik fotosurat yoki to'xtatilgan video kadri bo'lishi mumkin.
-   - Qog'ozga chop etilgan fotosurat belgilari: tekis (flat) yuz, qog'oz qirralari/burchaklari, uni ushlab turgan qo'l yoki barmoqlar ko'rinishi.
-   - Telefon yoki monitor ekrani belgilari: ekran yaltirashi (glare), piksel/moire naqshlari, ekran chekkalari yoki ramka ko'rinishi, ekranga xos notabiy tekis yorug'lik.
-   - Agar hamma narsa tabiiy ko'rinsa va kadrlar orasida haqiqiy jonli odamga xos tabiiy mikro-farqlar (nafas, ko'z holati, engil bosh tebranishi) sezilsa, liveness TASDIQLANADI.
+2) PASSIV JONLILIK (liveness / anti-spoofing): MUHIM QOIDA — real odam kameraga tik, tinch o'tirganda, ayniqsa yaxshi yoritilgan xonada, ~2.5-3 soniya ichida kadrlar orasida farq JUDA KICHIK yoki deyarli sezilmas bo'lishi TABIIY holat — bu spoofing dalili EMAS. Faqat quyidagi ANIQ, ijobiy (pozitiv) firibgarlik belgilaridan kamida bittasi haqiqatan ko'rinsa livenessPassed=false va spoofSuspected=true qiling:
+   - Qog'ozga chop etilgan fotosurat belgilari: qog'oz qirralari/burchaklari, uni ushlab turgan qo'l yoki barmoqlar ko'rinishi, notekis egilgan sirt.
+   - Telefon yoki monitor ekrani belgilari: ekran yaltirashi (glare), piksel/moire naqshlari, ekran chekkalari yoki ramka ko'rinishi, orqa fonda ekranga xos aniq to'rtburchak chegara.
+   - Kadrlarda tasvir umuman harakatsiz (nafaqat yuz, balki fon, kamera shovqini va hattoki kompressiya artefaktlari ham) piksel-piksel AYNAN bir xil bo'lsa (bu ekrandan takroran ko'rsatilgan statik screenshot ekanini bildiradi).
+   Agar bunday ANIQ belgi topilmasa — hattoki kadrlar juda o'xshash bo'lsa ham — buni spoofing deb hisoblamang, livenessPassed=true qiling. Shubha uchun asossiz ravishda rad etish xato hisoblanadi.
 
-3) ISHONCH DARAJASI: 0.0 dan 1.0 gacha, shaxsning mosligi qanchalik ishonchli ekanini bering. Web-kamera yorug'ligi, fokus, ekspozitsiya va bosh burchagidagi tabiiy farqlar uchun ballni asossiz pasaytirmang. Bir xil shaxsning barqaror yuz belgilarini taqqoslang. Begona shaxs bo'lsa isMatch=false bo'lishi shart. Faqat yuz mosligi ishonchli bo'lsa 0.75+ confidence bering; noaniq holatda 0.75 dan past bering.
+3) ISHONCH DARAJASI: 0.0 dan 1.0 gacha, shaxsning mosligi qanchalik ishonchli ekanini bering. Web-kamera yorug'ligi, fokus, ekspozitsiya va bosh burchagidagi tabiiy farqlar uchun ballni asossiz pasaytirmang. Faqat shaxs boshqa odam bo'lsa yoki tasvir juda xira/noaniq bo'lsa past ball bering.
 
 Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
 {
   "isMatch": true yoki false (shaxs mosligi),
-  "livenessPassed": true yoki false (passiv jonlilik tasdiqlandimi, spoofing belgisi yo'qmi),
-  "spoofSuspected": true yoki false (foto/ekran/video firibgarlik belgisi topildimi),
+  "livenessPassed": true yoki false (faqat ANIQ spoofing dalili topilsa false qiling, aks holda true),
+  "spoofSuspected": true yoki false (faqat ANIQ foto/ekran belgisi topilsa true qiling),
   "confidence": 0.0 dan 1.0 gacha son,
-  "reason": "O'zbek tilida qisqa, aniq tushuntirish (spoofing shubhasi bo'lsa buni aniq ayting)"
+  "reason": "O'zbek tilida qisqa, aniq tushuntirish"
 }`;
 
       // Only two fast models are tried for this endpoint (unlike other endpoints)
