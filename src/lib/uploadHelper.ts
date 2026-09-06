@@ -81,8 +81,10 @@ export async function uploadImageFile(
 
 /**
  * Robust file uploader for Anatomical Presentations (PPTX & PDF)
- * 1. Primary: Direct application server upload to /api/upload (supports up to 150MB, zero external storage dependency)
- * 2. Fallback: Firebase Storage if user is authenticated and cloud storage is reachable
+ * On localhost: server /api/upload first (fast, disk-backed), Firebase Storage as fallback.
+ * On any deployed/serverless host (production, e.g. Vercel): Firebase Storage is PRIMARY,
+ * because the server's local disk there is ephemeral and does not persist uploaded files
+ * across requests/instances — using it as primary caused "Faylni yuklab bo'lmadi (404)".
  */
 export async function uploadPresentationFile(
   file: File,
@@ -97,22 +99,32 @@ export async function uploadPresentationFile(
     throw new Error("Fayl hajmi 150 MB dan oshmasligi kerak. Iltimos, kichikroq fayl tanlang yoki Google Drive havolasidan foydalaning.");
   }
 
-  // 1. Try Server /api/upload with real-time XMLHttpRequest progress
-  try {
-    const serverResult = await uploadViaServerApi(file, onProgress);
-    if (serverResult?.url) {
-      return {
-        url: serverResult.url,
-        fileName: file.name,
-        fileType,
-        fileSize: file.size
-      };
+  // IMPORTANT: On Vercel (and any serverless host), the server's local disk is
+  // EPHEMERAL — a file written by /api/upload during one invocation is not
+  // guaranteed to exist on the container that later handles /api/files/:filename.
+  // That mismatch is exactly what caused "Faylni yuklab bo'lmadi (404)" in
+  // production. Firebase Storage is real persistent storage, so it must be the
+  // PRIMARY path whenever we're not on a stable local/dev server.
+  const isServerless = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+
+  if (!isServerless) {
+    // Local development: server disk is fine and faster, try it first.
+    try {
+      const serverResult = await uploadViaServerApi(file, onProgress);
+      if (serverResult?.url) {
+        return {
+          url: serverResult.url,
+          fileName: file.name,
+          fileType,
+          fileSize: file.size
+        };
+      }
+    } catch (serverErr) {
+      console.warn("[UPLOAD] Server /api/upload attempt failed, trying Firebase storage fallback...", serverErr);
     }
-  } catch (serverErr) {
-    console.warn("[UPLOAD] Server /api/upload attempt failed, trying Firebase storage fallback...", serverErr);
   }
 
-  // 2. Fallback: Firebase Storage
+  // 1. Primary in production: Firebase Storage (persists across all instances/deploys)
   try {
     const sanitized = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const storageRef = ref(storage, `presentations/${Date.now()}_${sanitized}`);
@@ -149,10 +161,28 @@ export async function uploadPresentationFile(
     }
   } catch (firebaseErr: any) {
     console.warn("[UPLOAD] Firebase storage upload failed:", firebaseErr);
-    throw new Error(
-      "Faylni yuklashda xatolik yuz berdi. Iltimos, fayl hajmini tekshiring yoki Google Drive / tashqi havola orqali biriktiring."
-    );
   }
+
+  // Last-resort fallback (production): server disk. Note this will NOT persist
+  // reliably on serverless hosting — only reached if Firebase Storage itself is
+  // unreachable/misconfigured.
+  try {
+    const serverResult = await uploadViaServerApi(file, onProgress);
+    if (serverResult?.url) {
+      return {
+        url: serverResult.url,
+        fileName: file.name,
+        fileType,
+        fileSize: file.size
+      };
+    }
+  } catch (serverErr) {
+    console.warn("[UPLOAD] Server /api/upload fallback also failed:", serverErr);
+  }
+
+  throw new Error(
+    "Faylni yuklashda xatolik yuz berdi. Iltimos, fayl hajmini tekshiring yoki Google Drive / tashqi havola orqali biriktiring."
+  );
 
   throw new Error("Faylni yuklab bo'lmadi.");
 }
