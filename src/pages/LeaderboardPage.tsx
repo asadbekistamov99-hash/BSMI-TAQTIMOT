@@ -6,7 +6,7 @@ import {
   PlusCircle, LogIn, Key, Copy, Check, Info, LogOut, X,
   GraduationCap, Hash, ArrowRight, UserPlus, CheckCircle2,
   Calendar, Gift, ChevronRight, Target, Brain, Stethoscope, 
-  HelpCircle, Zap, RefreshCw, Layers
+  HelpCircle, Zap, RefreshCw, Layers, Presentation
 } from 'lucide-react';
 import { 
   collection, doc, getDocs, getDoc, setDoc, updateDoc, 
@@ -1113,11 +1113,11 @@ export default function LeaderboardPage({ user }: { user?: any }) {
                   Lotincha Lug‘at
                 </button>
                 <button
-                  onClick={() => navigate('/ai-assistant')}
+                  onClick={() => navigate('/presentation')}
                   className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition-all border border-slate-700 flex items-center gap-2 cursor-pointer"
                 >
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  AI Tibbiy Yordamchi
+                  <Presentation className="w-4 h-4 text-amber-400" />
+                  Anatomik Taqdimotlar
                 </button>
               </div>
             </div>

@@ -273,9 +273,33 @@
         "createdBy": { "type": "string" }
       },
       "required": ["id", "title", "system", "pins"]
+    },
+    "latin_term": {
+      "title": "Latin Glossary Term",
+      "description": "Anatomical Latin glossary term with multi-language translations and topic classification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "latin": { "type": "string" },
+        "uzbek": { "type": "string" },
+        "russian": { "type": "string" },
+        "english": { "type": "string" },
+        "semester": { "type": "number", "description": "Semester 1, 2, or 3" },
+        "topicOrder": { "type": "number", "description": "Topic number 1 to 13" },
+        "description": { "type": "string" },
+        "pronunciation": { "type": "string" },
+        "isDeleted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["latin", "uzbek"]
     }
   },
   "firestore": {
+    "latin_terms": {
+      "schema": "latin_term",
+      "description": "Collection of anatomical Latin glossary terms"
+    },
     "pin_quizzes": {
       "schema": "pin_quiz",
       "description": "Collection of anatomical Pin Test specimens and numbered pins"

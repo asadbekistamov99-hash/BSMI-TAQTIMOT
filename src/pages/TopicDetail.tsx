@@ -5,14 +5,21 @@ import { db, auth } from '../lib/firebase';
 import { Topic, AtlasEntry } from '../types';
 import { dbService } from '../lib/dbService';
 import { SEMESTER_1_TOPICS, SEMESTER_2_TOPICS } from '../constants';
+import { SEMESTER_1_DETAILED_TOPICS } from '../data/semester1TopicsData';
+import { SEMESTER_2_DETAILED_TOPICS } from '../data/semester2TopicsData';
 import { SEMESTER_3_DETAILED_TOPICS } from '../data/semester3TopicsData';
+import { getGlossaryTermsByTopic } from '../data/topicGlossaryData';
 import { motion } from 'motion/react';
-import { Book, Play, Image as ImageIcon, Languages, ChevronRight, ClipboardCheck, Lock, Sparkles, Clock, Maximize2, Minimize2, ZoomIn, ZoomOut, X, Type, BookOpen, Search, CheckCircle, Edit3, Trash2, History, Download, Bold, Italic, List, Heading, Code, Check, Stethoscope, Printer } from 'lucide-react';
+import { Book, Play, Image as ImageIcon, Languages, ChevronRight, ClipboardCheck, Lock, Sparkles, Clock, Maximize2, Minimize2, ZoomIn, ZoomOut, X, Type, BookOpen, Search, CheckCircle, Edit3, Trash2, History, Download, Bold, Italic, List, Heading, Code, Check, Stethoscope, Printer, BookA, Bookmark, Presentation, FileText, RefreshCw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import PaymentModal from '../components/PaymentModal';
 import CreativeAnatomyDiagram from '../components/CreativeAnatomyDiagram';
+import { getDiagramKey } from '../lib/diagramHelper';
 import AnatomyClinicalCases from '../components/AnatomyClinicalCases';
 import ExportTopicPdfModal from '../components/ExportTopicPdfModal';
+import TopicGlossaryViewer from '../components/TopicGlossaryViewer';
+import TopicReferencesViewer from '../components/TopicReferencesViewer';
+import TopicTheoryReader from '../components/TopicTheoryReader';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
 import { parseDate } from '../lib/dateUtils';
@@ -91,11 +98,8 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
   const [readTheme, setReadTheme] = useState<'light' | 'warm' | 'dark'>('warm');
   const [fontFamily, setFontFamily] = useState<'sans' | 'serif'>('sans');
 
-  // Study Guide States & Loader
-  const [activeTab, setActiveTab] = useState<'theory' | 'video_lessons' | 'study_guide' | 'clinical_cases'>('theory');
-  const [studyGuide, setStudyGuide] = useState<string>('');
-  const [studyLoading, setStudyLoading] = useState<boolean>(false);
-  const [studyError, setStudyError] = useState<string | null>(null);
+  // Navigation Tab State
+  const [activeTab, setActiveTab] = useState<'theory' | 'video_lessons' | 'glossary' | 'references'>('theory');
 
   // Video Lecture State
   const [selectedVidIndex, setSelectedVidIndex] = useState(0);
@@ -125,6 +129,37 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
 
   // Completion Status Tracking state
   const [isCompleted, setIsCompleted] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Helper to reliably compute the topic's term count across all sources
+  const getTopicTermCount = (t: Topic | null) => {
+    if (!t) return 0;
+    const termSet = new Set<string>();
+    
+    if (Array.isArray(t.terms)) {
+      t.terms.forEach(item => {
+        if (item?.latin) termSet.add(item.latin.trim().toLowerCase());
+      });
+    }
+    
+    if (Array.isArray(t.latinTerms)) {
+      t.latinTerms.forEach(raw => {
+        if (typeof raw === 'string') {
+          const latin = raw.split(/[\(\-—:]/)[0].trim().toLowerCase();
+          if (latin) termSet.add(latin);
+        }
+      });
+    }
+
+    const curriculum = getGlossaryTermsByTopic(t.semester, t.order || 1);
+    if (Array.isArray(curriculum)) {
+      curriculum.forEach(item => {
+        if (item?.latin) termSet.add(item.latin.trim().toLowerCase());
+      });
+    }
+
+    return Math.max(termSet.size, curriculum?.length || 0, t.terms?.length || 0, t.latinTerms?.length || 0);
+  };
 
   // Dynamic AI Translation States
   const [translatedTheory, setTranslatedTheory] = useState<string>('');
@@ -204,6 +239,27 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
       setIsTranslating(false);
     }
   };
+
+  const isUserAdmin = Boolean(isAdmin || (user as any)?.isAdmin || user?.email === 'asadbekistamov99@gmail.com');
+
+  const handleDiagramReplacementUpdate = (key: string, replacement: any) => {
+    setTopic((prev: any) => {
+      if (!prev) return prev;
+      const nextReplacements = { ...(prev.diagramReplacements || {}) };
+      if (replacement) {
+        nextReplacements[key] = replacement;
+      } else {
+        delete nextReplacements[key];
+      }
+      return {
+        ...prev,
+        diagramReplacements: nextReplacements
+      };
+    });
+  };
+
+  // Lecture mode state: whether to display custom uploaded file (PDF/PPTX) or text theory
+  const [lectureDisplayMode, setLectureDisplayMode] = useState<'custom_file' | 'text'>('custom_file');
 
   // Notes and Annotations states
   const [noteText, setNoteText] = useState('');
@@ -434,57 +490,6 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
   };
 
   useEffect(() => {
-    if (!topic || activeTab !== 'study_guide') return;
-
-    const fetchGuide = async () => {
-      const cacheKey = `study_guide_${topic.id}_${language}`;
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        setStudyGuide(cached);
-        return;
-      }
-
-      setStudyLoading(true);
-      setStudyError(null);
-      setStudyGuide('');
-
-      try {
-        const theoryText = getLocalized(topic.theory) || (typeof topic.theory === 'string' ? topic.theory : '');
-        const response = await fetch('/api/generate-study-guide', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            topicTitle: getLocalized(topic.title),
-            theoryText: theoryText.substring(0, 15000),
-            language,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-
-        const data = await response.json();
-        if (data.studyGuide) {
-          setStudyGuide(data.studyGuide);
-          localStorage.setItem(cacheKey, data.studyGuide);
-        } else {
-          throw new Error(data.error || 'Empty guide generated');
-        }
-      } catch (err: any) {
-        console.error("Failed to generate study guide:", err);
-        setStudyError(language === 'uz' ? "AI qo'llanmasini yaratish imkoni bo'lmadi. Iltimos qayta urinib ko'ring." : "Не удалось сгенерировать учебное пособие с помощью ИИ. Пожалуйста, попробуйте еще раз.");
-      } finally {
-        setStudyLoading(false);
-      }
-    };
-
-    fetchGuide();
-  }, [activeTab, language, topic?.id]);
-
-  useEffect(() => {
     if (isFullscreen) {
       document.body.style.overflow = 'hidden';
     } else {
@@ -525,37 +530,72 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
             }
           } else if (id.startsWith('sem_1_top_') || id.startsWith('sem1_topic_')) {
             const index = parseInt(id.replace('sem_1_top_', '').replace('sem1_topic_', ''), 10) - 1;
-            if (index >= 0 && index < SEMESTER_1_TOPICS.length) {
-              topicData = {
-                id,
-                semester: 1,
-                order: index + 1,
-                title: { uz: `${index + 1}-Mavzu: ${SEMESTER_1_TOPICS[index]}`, en: `Topic ${index + 1}: ${SEMESTER_1_TOPICS[index]}`, ru: `Тема ${index + 1}: ${SEMESTER_1_TOPICS[index]}` },
-                theory: { uz: `${SEMESTER_1_TOPICS[index]} bo'yicha batafsil darslik.`, en: '', ru: '' },
-                latinTerms: [],
-                image: "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?q=80&w=2564&auto=format&fit=crop",
-                videos: []
-              };
+            if (index >= 0 && index < SEMESTER_1_DETAILED_TOPICS.length) {
+              topicData = SEMESTER_1_DETAILED_TOPICS[index];
             }
           } else if (id.startsWith('sem_2_top_') || id.startsWith('sem2_topic_')) {
             const index = parseInt(id.replace('sem_2_top_', '').replace('sem2_topic_', ''), 10) - 1;
-            if (index >= 0 && index < SEMESTER_2_TOPICS.length) {
-              topicData = {
-                id,
-                semester: 2,
-                order: index + 1,
-                title: { uz: `${index + 1}-Mavzu: ${SEMESTER_2_TOPICS[index]}`, en: `Topic ${index + 1}: ${SEMESTER_2_TOPICS[index]}`, ru: `Тема ${index + 1}: ${SEMESTER_2_TOPICS[index]}` },
-                theory: { uz: `${SEMESTER_2_TOPICS[index]} bo'yicha batafsil darslik.`, en: '', ru: '' },
-                latinTerms: [],
-                image: "https://images.unsplash.com/photo-1559757175-5700dde675bc?q=80&w=2670&auto=format&fit=crop",
-                videos: []
-              };
+            if (index >= 0 && index < SEMESTER_2_DETAILED_TOPICS.length) {
+              topicData = SEMESTER_2_DETAILED_TOPICS[index];
             }
+          }
+        }
+
+        // Detailed medical theory enrichment if retrieved record was brief or placeholder
+        if (topicData) {
+          const sem = topicData.semester;
+          const ord = topicData.order || 1;
+          const detailedSource = sem === 1 ? SEMESTER_1_DETAILED_TOPICS : sem === 2 ? SEMESTER_2_DETAILED_TOPICS : sem === 3 ? SEMESTER_3_DETAILED_TOPICS : [];
+          const detailedMatch = detailedSource.find(d => d.order === ord);
+          if (detailedMatch && (!topicData.theory?.uz || topicData.theory.uz.length < 150)) {
+            topicData = {
+              ...topicData,
+              theory: detailedMatch.theory,
+              title: topicData.title?.uz ? topicData.title : detailedMatch.title
+            };
           }
         }
         
         if (topicData) {
+          // Robust enrichment: combine existing terms with complete curriculum glossary
+          const curTerms = getGlossaryTermsByTopic(topicData.semester, topicData.order || 1);
+          if (curTerms && curTerms.length > 0) {
+            const existingTermKeys = new Set<string>();
+            const enrichedTerms = Array.isArray(topicData.terms) ? [...topicData.terms] : [];
+            enrichedTerms.forEach(t => {
+              if (t?.latin) existingTermKeys.add(t.latin.trim().toLowerCase());
+            });
+
+            curTerms.forEach(ct => {
+              const key = ct.latin.trim().toLowerCase();
+              if (!existingTermKeys.has(key)) {
+                enrichedTerms.push(ct as any);
+                existingTermKeys.add(key);
+              }
+            });
+            topicData.terms = enrichedTerms;
+
+            const existingLatinKeys = new Set<string>();
+            const enrichedLatin = Array.isArray(topicData.latinTerms) ? [...topicData.latinTerms] : [];
+            enrichedLatin.forEach(raw => {
+              if (typeof raw === 'string') {
+                const k = raw.split(/[\(\-—:]/)[0].trim().toLowerCase();
+                if (k) existingLatinKeys.add(k);
+              }
+            });
+
+            curTerms.forEach(ct => {
+              const key = ct.latin.trim().toLowerCase();
+              if (!existingLatinKeys.has(key)) {
+                enrichedLatin.push(`${ct.latin} (${ct.uzbek})`);
+                existingLatinKeys.add(key);
+              }
+            });
+            topicData.latinTerms = enrichedLatin;
+          }
+
           setTopic(topicData);
+          setLoadError(null);
 
           // Fetch related atlas entries too
           try {
@@ -637,8 +677,9 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
             }
           }
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error fetching topic/payment:", error);
+        setLoadError(error?.message || "Mavzuni yuklashda xatolik yuz berdi");
       } finally {
         setLoading(false);
       }
@@ -657,9 +698,43 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
 
   if (!topic) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-20 text-center">
-        <h1 className="text-2xl font-bold text-slate-900">{t('topic.locked_alert')}</h1>
-        <Link to="/" className="text-indigo-600 mt-4 inline-block">{t('quiz.home')}</Link>
+      <div className="max-w-2xl mx-auto px-4 py-20 text-center">
+        <div className="w-16 h-16 bg-rose-50 border border-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-sm">
+          <RefreshCw className="w-8 h-8" />
+        </div>
+        <h1 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">
+          {loadError || t('topic.locked_alert')}
+        </h1>
+        <p className="text-sm text-slate-500 mb-8 max-w-md mx-auto leading-relaxed">
+          {language === 'uz' 
+            ? "Mavzuni yuklashda nosozlik yuz berdi. Sahifadan chiqib ketmasdan, joyingizni saqlagan holda qayta yuklab ko'rishingiz mumkin." 
+            : language === 'ru'
+              ? "Произошла ошибка загрузки темы. Вы можете повторить попытку без потери текущей позиции."
+              : "An error occurred while loading this topic. You can retry loading without losing your place."}
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-indigo-600/25 flex items-center gap-2 cursor-pointer"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>{language === 'uz' ? 'Qayta urinish' : language === 'ru' ? 'Повторить' : 'Retry'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+          >
+            <span>{language === 'uz' ? 'Oldingi sahifa' : language === 'ru' ? 'Назад' : 'Go back'}</span>
+          </button>
+          <Link 
+            to="/" 
+            className="px-6 py-3 text-slate-500 hover:text-slate-800 font-bold text-xs uppercase tracking-wider transition-colors"
+          >
+            {t('quiz.home')}
+          </Link>
+        </div>
       </div>
     );
   }
@@ -759,19 +834,22 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
     .map(p => p.trim())
     .filter(p => p.length > 5 && !p.startsWith('#') && !p.includes('CreativeAnatomyDiagram') && !p.includes('```'));
 
-  const studyGuideParagraphs = studyGuide
-    ? studyGuide
-        .split(/\n\n+/)
-        .map(p => p.trim())
-        .filter(p => p.length > 5 && !p.startsWith('#') && !p.includes('```'))
-    : [];
-
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const isSearching = normalizedQuery.length >= 2;
 
   const matchedLatin = isSearching
     ? (topic.latinTerms || []).filter(term => 
         term.toLowerCase().includes(normalizedQuery)
+      )
+    : [];
+
+  const matchedTerms = isSearching
+    ? (topic.terms || []).filter(term => 
+        (term.latin || '').toLowerCase().includes(normalizedQuery) ||
+        (term.uzbek || term.uz || '').toLowerCase().includes(normalizedQuery) ||
+        (term.russian || term.ru || '').toLowerCase().includes(normalizedQuery) ||
+        (term.english || term.en || '').toLowerCase().includes(normalizedQuery) ||
+        (term.description || '').toLowerCase().includes(normalizedQuery)
       )
     : [];
 
@@ -789,11 +867,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
     ? theoryParagraphs.filter(p => p.toLowerCase().includes(normalizedQuery))
     : [];
 
-  const matchedGuideParas = isSearching
-    ? studyGuideParagraphs.filter(p => p.toLowerCase().includes(normalizedQuery))
-    : [];
-
-  const totalResultsCount = matchedLatin.length + matchedAtlas.length + matchedTheoryParas.length + matchedGuideParas.length;
+  const totalResultsCount = matchedLatin.length + matchedTerms.length + matchedAtlas.length + matchedTheoryParas.length;
 
   const topicTitle = getLocalized(topic.title) || 'Anatomiya Mavzusi';
   const topicShortDesc = theoryText 
@@ -836,21 +910,6 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
           {/* Main Content Area */}
           <div className="lg:col-span-2 space-y-10">
-            {/* Main Image */}
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="rounded-[32px] overflow-hidden shadow-2xl border-8 border-white aspect-video relative group bg-indigo-50"
-            >
-              <img 
-                src={topic.image || "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=1200&auto=format"} 
-                alt={getLocalized(topic.title)}
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-brand-primary/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            </motion.div>
-
             {/* Theory Card */}
             <div id="theory-card-top" className="bg-white p-10 md:p-14 rounded-[32px] border border-brand-border shadow-xl shadow-slate-200/50">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10 pb-6 border-b border-brand-border">
@@ -880,41 +939,63 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     </span>
                   </button>
                   <button
-                    onClick={() => setActiveTab('clinical_cases')}
+                    onClick={() => setActiveTab('glossary')}
                     className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-                      activeTab === 'clinical_cases'
-                        ? 'bg-white text-[#dc2626] shadow-md border-b-2 border-red-500'
-                        : 'text-brand-muted hover:text-[#dc2626]'
+                      activeTab === 'glossary'
+                        ? 'bg-white text-indigo-700 shadow-md border-b-2 border-indigo-600'
+                        : 'text-brand-muted hover:text-indigo-700'
                     }`}
                   >
-                    <Stethoscope className="w-4 h-4" />
+                    <BookA className="w-4 h-4 text-indigo-600" />
                     <span>
-                      {language === 'uz' ? "Klinik Cases" : language === 'ru' ? 'Клинические кейсы' : 'Clinical Cases'}
+                      {language === 'uz' ? "Lug'atlar" : language === 'ru' ? 'Глоссарий' : 'Glossary'}
                     </span>
+                    {getTopicTermCount(topic) > 0 && (
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                        activeTab === 'glossary' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200/80 text-slate-600'
+                      }`}>
+                        {getTopicTermCount(topic)}
+                      </span>
+                    )}
                   </button>
                   <button
-                    onClick={() => setActiveTab('study_guide')}
+                    onClick={() => setActiveTab('references')}
                     className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-                      activeTab === 'study_guide'
-                        ? 'bg-white text-brand-primary shadow-md'
+                      activeTab === 'references'
+                        ? 'bg-white text-brand-primary shadow-md border-b-2 border-brand-accent'
                         : 'text-brand-muted hover:text-brand-primary'
                     }`}
                   >
-                    <Sparkles className="w-4 h-4 text-indigo-600" />
+                    <Bookmark className="w-4 h-4 text-amber-600" />
                     <span>
-                      {language === 'uz' ? "O'quv qo'llanmasi" : language === 'ru' ? 'Учебный гид' : 'Study Guide'}
+                      {language === 'uz' ? "Foydalanilgan adabiyotlar" : language === 'ru' ? 'Использованная литература' : 'References'}
                     </span>
                   </button>
                 </div>
-                <div className="flex items-center gap-2 self-start sm:self-auto">
+                <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
                   <button
                     type="button"
                     onClick={() => setShowExportModal(true)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-95 shadow-md border border-slate-700 cursor-pointer"
-                    title="Mavzu konspektini PDF qilib saqlash yoki chop etish"
+                    className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-black uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-95 shadow-xs cursor-pointer"
+                    title="Mavzuni PDF konspekt qilib yuklab olish yoki taqdimotiga o'tish"
                   >
-                    <Printer className="w-4 h-4 text-blue-400" />
-                    <span className="hidden sm:inline">PDF Konspekt</span>
+                    <FileText className="w-4 h-4 text-blue-600" />
+                    <span>PDF Konspekt</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (topic) {
+                        navigate(`/presentation?topicId=${topic.id}&semester=${topic.semester}&order=${topic.order}`);
+                      } else {
+                        navigate('/presentation');
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-95 shadow-md shadow-amber-600/25 border border-amber-500/40 cursor-pointer"
+                    title="Ushbu mavzuning PowerPoint (.pptx) taqdimotiga o'tish"
+                  >
+                    <Presentation className="w-4 h-4 text-amber-200" />
+                    <span>Taqdimot</span>
                   </button>
                   <button
                     type="button"
@@ -1097,27 +1178,42 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     </div>
                   )}
 
-                  {/* Matching Study Guide Snippets */}
-                  {matchedGuideParas.length > 0 && (
+                  {/* Matching Glossary Terms */}
+                  {matchedTerms.length > 0 && (
                     <div className="space-y-4">
                       <h4 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-brand-accent" />
-                        {language === 'uz' ? "O'quv Qo'llanmasi Matnidan" : language === 'ru' ? 'Из текста учебного гида' : 'From AI Study Guide'}
+                        <BookA className="w-4 h-4 text-indigo-500" />
+                        {language === 'uz' ? "Lug'atlar / Terminlardan" : language === 'ru' ? 'Из глоссария терминов' : 'From Glossary Terms'}
                       </h4>
-                      <div className="space-y-3">
-                        {matchedGuideParas.map((p, i) => (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {matchedTerms.map((t, i) => (
                           <div 
-                            key={i} 
-                            className="p-6 bg-brand-accent/5 border border-brand-accent/20 rounded-2xl text-left"
+                            key={t.id || i} 
+                            className="p-5 bg-indigo-50/40 border border-indigo-100 rounded-2xl text-left space-y-2"
                           >
-                            <div className="flex items-center justify-between mb-3">
-                              <span className="text-[9px] font-black bg-indigo-50 border border-indigo-100 text-indigo-650 px-2 py-0.5 rounded-md uppercase tracking-wider">
-                                {language === 'uz' ? "AI O'quv qo'llanmasi" : language === 'ru' ? 'Учебный гид ИИ' : 'AI Study Guide'}
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">
+                                Lotincha termin
                               </span>
                             </div>
-                            <p className="text-sm font-medium text-brand-primary leading-relaxed">
-                              <HighlightedText text={p} highlight={searchQuery} />
-                            </p>
+                            <h5 className="font-serif italic text-base font-bold text-slate-900">
+                              <HighlightedText text={t.latin} highlight={searchQuery} />
+                            </h5>
+                            {(t.uzbek || t.uz) && (
+                              <p className="text-xs font-bold text-brand-primary">
+                                UZB: <HighlightedText text={t.uzbek || t.uz || ''} highlight={searchQuery} />
+                              </p>
+                            )}
+                            {(t.russian || t.ru) && (
+                              <p className="text-xs font-medium text-slate-600">
+                                RUS: <HighlightedText text={t.russian || t.ru || ''} highlight={searchQuery} />
+                              </p>
+                            )}
+                            {t.description && (
+                              <p className="text-xs text-slate-500 pt-1 border-t border-indigo-100/60 leading-relaxed">
+                                <HighlightedText text={t.description} highlight={searchQuery} />
+                              </p>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -1128,6 +1224,44 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                 <>
                   {activeTab === 'theory' ? (
                     <>
+                      {/* Topic Presentation Quick Access Banner */}
+                      {Boolean(
+                        topic?.pptxUrl || 
+                        topic?.pdfUrl || 
+                        topic?.customLectureFile?.fileUrl || 
+                        (topic?.lectureType && topic.lectureType !== 'text')
+                      ) && (
+                        <div className="mb-8 p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-indigo-500/30 shadow-xl">
+                          <div className="flex items-center gap-3.5">
+                            <span className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center text-xl shrink-0">
+                              <Presentation className="w-6 h-6" />
+                            </span>
+                            <div>
+                              <h4 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                                <span>PowerPoint (.pptx) Taqdimot mavjud</span>
+                              </h4>
+                              <p className="text-xs text-slate-300 mt-0.5">
+                                Ushbu mavzuning to'liq taqdimotini slaydma-slayd, kinoteatr va lazer ko'rsatkich rejimida tomosha qiling.
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (topic) {
+                                navigate(`/presentation?topicId=${topic.id}&semester=${topic.semester}&order=${topic.order}`);
+                              } else {
+                                navigate('/presentation');
+                              }
+                            }}
+                            className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-2xl text-xs uppercase tracking-wider transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0 shadow-lg shadow-amber-500/20 flex items-center gap-2"
+                          >
+                            <span>Taqdimotga O'tish</span>
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+
                       {/* AI Translation Banner */}
                       {checkNeedsTranslation() && (
                         <div className="mb-8 p-6 bg-brand-bg border border-brand-accent/30 rounded-3xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
@@ -1202,40 +1336,55 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                           </div>
                         </div>
                       ) : (
-                        <div className="prose prose-slate max-w-none prose-headings:text-brand-primary prose-p:text-brand-muted prose-p:text-lg prose-p:leading-relaxed prose-li:text-brand-muted prose-strong:text-brand-primary prose-strong:font-bold">
-                          <ReactMarkdown
-                            components={{
-                              code({ className, children, ...props }) {
-                                const codeString = String(children).replace(/\n$/, '');
-                                const isBlock = codeString.includes('\n');
-                                
-                                if (className?.includes('language-') || isBlock) {
-                                    return <CreativeAnatomyDiagram value={codeString} />;
-                                }
-                                return <code className={className} {...props}>{children}</code>;
-                              }
-                            }}
-                          >
-                            {translatedTheory || getLocalized(topic.theory) || (typeof topic.theory === 'string' ? topic.theory : '')}
-                          </ReactMarkdown>
-                        </div>
+                        <TopicTheoryReader
+                          rawTheoryText={translatedTheory || getLocalized(topic.theory) || (typeof topic.theory === 'string' ? topic.theory : '')}
+                          topicId={topic?.id}
+                          isUserAdmin={isUserAdmin}
+                          diagramReplacements={topic?.diagramReplacements}
+                          onUpdateDiagramReplacement={(diagKey, newRep) => handleDiagramReplacementUpdate(diagKey, newRep)}
+                          getDiagramKey={getDiagramKey}
+                          language={language}
+                        />
                       )}
 
-                  {/* Latin Terms within Theory Card */}
-                  {topic.latinTerms && topic.latinTerms.length > 0 && (
-                    <div className="mt-16 pt-12 border-t border-brand-border">
-                      <div className="flex items-center gap-3 mb-8 text-brand-primary">
-                        <Languages className="w-8 h-8 text-brand-accent" />
-                        <h2 className="text-2xl font-black tracking-tight uppercase">{t('topic.latin_terms')}</h2>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {topic.latinTerms.map((term, i) => (
-                          <div key={i} className="p-5 bg-brand-bg rounded-2xl border border-brand-border text-brand-primary font-bold italic group hover:border-brand-accent transition-all">
-                            <span className="text-[10px] block text-brand-muted not-italic font-black mb-1">TERMIN {i+1}</span>
-                            {term}
+                  {/* Transition to Lug'atlar (Glossary) section */}
+                  {(getTopicTermCount(topic) > 0) && (
+                    <div className="mt-14 p-6 sm:p-7 bg-gradient-to-br from-indigo-50/70 via-slate-50 to-white border border-indigo-100 rounded-[28px] flex flex-col sm:flex-row items-center justify-between gap-5 shadow-xs">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/25 shrink-0">
+                          <BookA className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600">
+                              {language === 'uz' ? "Anatomik Lug'at" : language === 'ru' ? "Анатомический глоссарий" : "Anatomy Glossary"}
+                            </span>
+                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-black">
+                              {getTopicTermCount(topic)} ta termin
+                            </span>
                           </div>
-                        ))}
+                          <h4 className="text-base font-black text-brand-primary tracking-tight">
+                            {language === 'uz' ? "Mavzuga oid lotincha terminlar lug'at bo'limiga ko'chirildi" : language === 'ru' ? "Латинские термины перенесены в раздел глоссария" : "Latin terms are organized in the Glossary tab"}
+                          </h4>
+                          <p className="text-xs text-brand-muted font-medium">
+                            {language === 'uz' 
+                              ? "Atamalarning to'g'ri audio talaffuzi, o'zbekcha, ruscha va inglizcha tarjimalarini lug'at bo'limida o'rganing." 
+                              : "Explore accurate Latin pronunciation and multilingual translations in the dedicated Glossary section."}
+                          </p>
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('glossary');
+                          const el = document.getElementById('theory-card-top');
+                          el?.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        className="w-full sm:w-auto px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-indigo-600/20 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                      >
+                        <BookA className="w-4 h-4" />
+                        <span>{language === 'uz' ? "Lug'atlarni ochish" : language === 'ru' ? "Открыть глоссарий" : "Open Glossary"}</span>
+                      </button>
                     </div>
                   )}
 
@@ -1393,99 +1542,23 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     </div>
                   )}
                 </div>
-              ) : activeTab === 'clinical_cases' ? (
-                <AnatomyClinicalCases topicTitle={getLocalized(topic.title)} topicId={topic.id} />
+              ) : activeTab === 'glossary' ? (
+                <TopicGlossaryViewer
+                  topicTitle={getLocalized(topic.title)}
+                  topicId={topic.id}
+                  terms={topic.terms}
+                  latinTerms={topic.latinTerms}
+                  semester={topic.semester}
+                  topicOrder={topic.order}
+                  theory={getLocalized(topic.theory) || (typeof topic.theory === 'string' ? topic.theory : '')}
+                />
               ) : (
-                <div className="space-y-8">
-                  {studyLoading ? (
-                    <div className="py-20 flex flex-col items-center justify-center text-center">
-                      <div className="relative mb-6">
-                        <div className="absolute inset-x-0 mx-auto rounded-full bg-indigo-100 animate-ping opacity-75 w-16 h-16"></div>
-                        <div className="relative w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center text-brand-accent shadow-xl border border-indigo-500/10 mx-auto">
-                          <Sparkles className="w-8 h-8 animate-pulse text-brand-accent" />
-                        </div>
-                      </div>
-                      
-                      <h3 className="text-xl font-black text-brand-primary uppercase tracking-tight mb-2">
-                        {language === 'uz' ? 'AI O‘QUV QO‘LLANMASI YARATILMOQDA...' : language === 'ru' ? 'СОЗДАНИЕ УЧЕБНОГО ГИДА ИИ...' : 'GENERATING AI STUDY GUIDE...'}
-                      </h3>
-                      <p className="text-sm font-medium text-brand-muted max-w-sm mb-8 leading-relaxed mx-auto">
-                        {language === 'uz' 
-                          ? 'Darslik nazariy matni tahlil qilinmoqda, eslab qolish texnikalari, mnemonikalar va klinik bog‘liqliklar shakllantirilmoqda...' 
-                          : language === 'ru'
-                            ? 'Анализ теоретического текста, сбор мнемотехник, ассоциаций и клинических связей...'
-                            : 'Analyzing textbook content, compiling mnemonic aids, associations, and clinical correlations...'}
-                      </p>
-
-                      <div className="w-full max-w-xl space-y-4 mx-auto">
-                        <div className="h-6 bg-slate-100 rounded-lg animate-pulse w-3/4 mx-auto"></div>
-                        <div className="h-4 bg-slate-100/80 rounded-lg animate-pulse w-5/6 mx-auto"></div>
-                        <div className="h-4 bg-slate-100/60 rounded-lg animate-pulse w-2/3 mx-auto"></div>
-                        <div className="h-4 bg-slate-100/40 rounded-lg animate-pulse w-3/4 mx-auto"></div>
-                      </div>
-                    </div>
-                  ) : studyError ? (
-                    <div className="py-16 text-center">
-                      <div className="w-16 h-16 bg-rose-50 border border-rose-100 rounded-2xl flex items-center justify-center mx-auto mb-6 text-rose-500">
-                        <Languages className="w-8 h-8" />
-                      </div>
-                      <h4 className="text-lg font-black text-rose-600 uppercase tracking-tight mb-2">Xatolik yuz berdi</h4>
-                      <p className="text-sm text-brand-muted max-w-md mx-auto mb-8 leading-relaxed">{studyError}</p>
-                      <button
-                        onClick={() => {
-                          const cacheKey = `study_guide_${topic.id}_${language}`;
-                          localStorage.removeItem(cacheKey);
-                          setStudyGuide('');
-                          setActiveTab('theory');
-                          setTimeout(() => {
-                            setActiveTab('study_guide');
-                          }, 50);
-                        }}
-                        className="px-8 py-3 bg-brand-primary text-brand-accent font-black rounded-xl text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all cursor-pointer"
-                      >
-                        Qayta urinish
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-8">
-                      <div className="p-6 bg-indigo-50/50 border border-indigo-100 rounded-2xl flex items-start gap-4 text-left">
-                        <div className="w-10 h-10 bg-brand-primary rounded-xl flex items-center justify-center text-brand-accent shrink-0">
-                          <Sparkles className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-black text-brand-primary uppercase tracking-wider mb-1">
-                            {language === 'uz' ? 'AI Tahlili Shaxsiy Qo‘llanmasi' : language === 'ru' ? 'Персональный гид на базе ИИ' : 'AI-Synthesized Smart Companion'}
-                          </h4>
-                          <p className="text-xs font-semibold text-brand-muted leading-relaxed">
-                            {language === 'uz'
-                              ? 'Ushbu o‘quv qo‘llanmasi darslik nazariyasidan kelib chiqib, yodlashni osonlashtirish uchun maxsus ishlab chiqildi.'
-                              : language === 'ru'
-                                ? 'Этот гид разработан на основе учебной теории для облегчения запоминания сложных понятий.'
-                                : 'This digital reference is dynamically synthesized to streamline memorization of clinical topics.'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="prose prose-slate max-w-none prose-headings:text-brand-primary prose-p:text-brand-muted prose-p:text-lg prose-p:leading-relaxed prose-li:text-brand-muted prose-strong:text-brand-primary prose-strong:font-bold">
-                        <ReactMarkdown
-                          components={{
-                            code({ className, children, ...props }) {
-                              const codeString = String(children).replace(/\n$/, '');
-                              const isBlock = codeString.includes('\n');
-                              
-                              if (className?.includes('language-') || isBlock) {
-                                return <CreativeAnatomyDiagram value={codeString} />;
-                              }
-                              return <code className={className} {...props}>{children}</code>;
-                            }
-                          }}
-                        >
-                          {studyGuide}
-                        </ReactMarkdown>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <TopicReferencesViewer
+                  topicTitle={getLocalized(topic.title)}
+                  topicId={topic.id}
+                  references={topic.references}
+                  semester={topic.semester}
+                />
               )}
                 </>
               )}
@@ -2017,16 +2090,36 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                         <span>{t('topic.theory')}</span>
                       </button>
                       <button
-                        onClick={() => setActiveTab('study_guide')}
+                        onClick={() => setActiveTab('glossary')}
                         className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-                          activeTab === 'study_guide'
+                          activeTab === 'glossary'
+                            ? readTheme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'bg-white text-indigo-700 shadow-md'
+                            : 'text-brand-muted hover:text-indigo-700'
+                        }`}
+                      >
+                        <BookA className="w-4 h-4 text-indigo-500" />
+                        <span>
+                          {language === 'uz' ? "Lug'atlar" : language === 'ru' ? 'Глоссарий' : 'Glossary'}
+                        </span>
+                        {getTopicTermCount(topic) > 0 && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                            activeTab === 'glossary' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200/80 text-slate-600'
+                          }`}>
+                            {getTopicTermCount(topic)}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('references')}
+                        className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                          activeTab === 'references'
                             ? readTheme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'bg-white text-brand-primary shadow-md'
                             : 'text-brand-muted hover:text-brand-primary'
                         }`}
                       >
-                        <Sparkles className="w-4 h-4 text-indigo-550" />
+                        <Bookmark className="w-4 h-4 text-amber-500" />
                         <span>
-                          {language === 'uz' ? "O'quv qo'llanmasi" : language === 'ru' ? 'Учебный гид' : 'Study Guide'}
+                          {language === 'uz' ? "Adabiyotlar" : language === 'ru' ? 'Литература' : 'References'}
                         </span>
                       </button>
                     </div>
@@ -2149,20 +2242,30 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                         </div>
                       )}
 
-                      {/* Study Guide Matches in Reader */}
-                      {matchedGuideParas.length > 0 && (
+                      {/* Glossary Matches in Reader */}
+                      {matchedTerms.length > 0 && (
                         <div className="space-y-3">
-                          <span className="text-[10px] font-black tracking-widest opacity-60 uppercase">{language === 'uz' ? "O'quv qo'llanmasidan" : 'Из учебного гида'}</span>
-                          {matchedGuideParas.map((p, i) => (
+                          <span className="text-[10px] font-black tracking-widest opacity-60 uppercase">{language === 'uz' ? "Lug'atlardan" : "Из глоссария"}</span>
+                          {matchedTerms.map((t, i) => (
                             <div 
-                              key={i} 
+                              key={t.id || i} 
                               className={`p-5 rounded-xl border leading-relaxed ${
                                 readTheme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-200' : readTheme === 'warm' ? 'bg-[#EADFCF]/35 border-[#EADFCF] text-[#2D241A]' : 'bg-slate-50 border-slate-250 text-slate-800'
-                              } text-sm md:text-base`}
+                              } text-sm md:text-base space-y-1`}
                             >
-                              <p>
-                                <HighlightedText text={p} highlight={searchQuery} />
-                              </p>
+                              <div className="font-serif italic font-bold">
+                                <HighlightedText text={t.latin} highlight={searchQuery} />
+                              </div>
+                              {(t.uzbek || t.uz) && (
+                                <div className="text-xs font-semibold">
+                                  UZ: <HighlightedText text={t.uzbek || t.uz || ''} highlight={searchQuery} />
+                                </div>
+                              )}
+                              {t.description && (
+                                <p className="text-xs opacity-80 pt-1">
+                                  <HighlightedText text={t.description} highlight={searchQuery} />
+                                </p>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -2212,7 +2315,17 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                                     const isBlock = codeString.includes('\n');
                                     
                                     if (className?.includes('language-') || isBlock) {
-                                      return <CreativeAnatomyDiagram value={codeString} />;
+                                      const diagKey = getDiagramKey(codeString);
+                                      const replacement = topic?.diagramReplacements?.[diagKey] || null;
+                                      return (
+                                        <CreativeAnatomyDiagram 
+                                          value={codeString}
+                                          topicId={topic?.id}
+                                          isAdmin={isUserAdmin}
+                                          replacement={replacement}
+                                          onUpdateReplacement={(newRep) => handleDiagramReplacementUpdate(diagKey, newRep)}
+                                        />
+                                      );
                                     }
                                     return <code className={className} {...props}>{children}</code>;
                                   }
@@ -2223,34 +2336,26 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                             </>
                           )}
                         </div>
+                      ) : activeTab === 'glossary' ? (
+                        <div className="text-left">
+                          <TopicGlossaryViewer
+                            topicTitle={getLocalized(topic.title)}
+                            topicId={topic.id}
+                            terms={topic.terms}
+                            latinTerms={topic.latinTerms}
+                            semester={topic.semester}
+                            topicOrder={topic.order}
+                            theory={getLocalized(topic.theory) || (typeof topic.theory === 'string' ? topic.theory : '')}
+                          />
+                        </div>
                       ) : (
-                        <div className="space-y-8 text-left">
-                          {studyLoading ? (
-                            <div className="py-20 flex flex-col items-center justify-center text-center">
-                              <Sparkles className="w-8 h-8 animate-spin text-brand-accent mb-4" />
-                              <p className="text-sm font-semibold text-brand-muted">
-                                {language === 'uz' ? "O'quv qo'llanmasi yuklanmoqda..." : language === 'ru' ? "Учебный гид загружается..." : "Loading study guide..."}
-                              </p>
-                            </div>
-                          ) : studyError ? (
-                            <div className="py-16 text-center text-rose-500 font-bold">{studyError}</div>
-                          ) : (
-                            <ReactMarkdown
-                              components={{
-                                code({ className, children, ...props }) {
-                                  const codeString = String(children).replace(/\n$/, '');
-                                  const isBlock = codeString.includes('\n');
-                                  
-                                  if (className?.includes('language-') || isBlock) {
-                                    return <CreativeAnatomyDiagram value={codeString} />;
-                                  }
-                                  return <code className={className} {...props}>{children}</code>;
-                                }
-                              }}
-                            >
-                              {studyGuide}
-                            </ReactMarkdown>
-                          )}
+                        <div className="text-left">
+                          <TopicReferencesViewer
+                            topicTitle={getLocalized(topic.title)}
+                            topicId={topic.id}
+                            references={topic.references}
+                            semester={topic.semester}
+                          />
                         </div>
                       )}
                     </>

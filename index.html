@@ -10,8 +10,49 @@
     <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    <meta name="theme-color" content="#020617" />
+    <meta name="theme-color" content="#1E293B" />
     <title>BSMI ANATOMY | Modern Learning Platform</title>
+    <script>
+      (function() {
+        try {
+          var r = document.documentElement;
+          r.style.setProperty('--brand-primary', '#1E293B');
+          r.style.setProperty('--color-brand-primary', '#1E293B');
+          r.style.setProperty('--brand-accent', '#cc0f0f');
+          r.style.setProperty('--color-brand-accent', '#cc0f0f');
+          r.style.setProperty('--brand-bg', '#F0F2F5');
+          r.style.setProperty('--brand-card', '#FFFFFF');
+          var cached = localStorage.getItem('bsmi_app_design');
+          if (cached) {
+            var d = JSON.parse(cached);
+            if (d.primaryColor) {
+              r.style.setProperty('--brand-primary', d.primaryColor);
+              r.style.setProperty('--color-brand-primary', d.primaryColor);
+            }
+            if (d.accentColor) {
+              r.style.setProperty('--brand-accent', d.accentColor);
+              r.style.setProperty('--color-brand-accent', d.accentColor);
+            }
+            if (d.backgroundColor) {
+              r.style.setProperty('--brand-bg', d.backgroundColor);
+              r.style.setProperty('--color-brand-bg', d.backgroundColor);
+            }
+            if (d.cardColor) {
+              r.style.setProperty('--brand-card', d.cardColor);
+              r.style.setProperty('--color-brand-card', d.cardColor);
+            }
+            if (d.textColor) {
+              r.style.setProperty('--brand-text', d.textColor);
+              r.style.setProperty('--color-brand-text', d.textColor);
+            }
+            if (d.mutedColor) {
+              r.style.setProperty('--brand-muted', d.mutedColor);
+              r.style.setProperty('--color-brand-muted', d.mutedColor);
+            }
+          }
+        } catch(e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

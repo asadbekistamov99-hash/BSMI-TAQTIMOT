@@ -51,7 +51,7 @@ const defaultSettings: SystemSettings = {
   footerAddress: '',
   design: {
     primaryColor: '#1E293B',
-    accentColor: '#38BDF8',
+    accentColor: '#cc0f0f',
     backgroundColor: '#F0F2F5',
     cardColor: '#FFFFFF',
     textColor: '#1A202C',
@@ -72,7 +72,22 @@ const defaultSettings: SystemSettings = {
 };
 
 export function useSettings() {
-  const [settings, setSettings] = useState<SystemSettings>(defaultSettings);
+  const [settings, setSettings] = useState<SystemSettings>(() => {
+    try {
+      const cached = localStorage.getItem('bsmi_app_design');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return {
+          ...defaultSettings,
+          design: {
+            ...defaultSettings.design,
+            ...parsed
+          }
+        };
+      }
+    } catch (e) {}
+    return defaultSettings;
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -182,13 +197,24 @@ export function useSettings() {
 
 
   const applyDesignSettings = (design: NonNullable<SystemSettings['design']>) => {
+    try {
+      localStorage.setItem('bsmi_app_design', JSON.stringify(design));
+    } catch (e) {}
+
     const root = document.documentElement;
+    root.style.setProperty('--brand-primary', design.primaryColor);
     root.style.setProperty('--color-brand-primary', design.primaryColor);
+    root.style.setProperty('--brand-accent', design.accentColor);
     root.style.setProperty('--color-brand-accent', design.accentColor);
+    root.style.setProperty('--brand-bg', design.backgroundColor);
     root.style.setProperty('--color-brand-bg', design.backgroundColor);
+    root.style.setProperty('--brand-card', design.cardColor);
     root.style.setProperty('--color-brand-card', design.cardColor);
+    root.style.setProperty('--brand-text', design.textColor);
     root.style.setProperty('--color-brand-text', design.textColor);
+    root.style.setProperty('--brand-muted', design.mutedColor);
     root.style.setProperty('--color-brand-muted', design.mutedColor);
+    root.style.setProperty('--brand-radius', design.borderRadius);
     root.style.setProperty('--radius-brand', design.borderRadius);
     root.style.setProperty('--font-brand', design.fontFamily);
     

@@ -822,9 +822,6 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
             </div>
 
             <Link to="/latin-glossary" className="text-xs xl:text-sm font-black text-brand-muted hover:text-brand-accent transition-colors tracking-tight whitespace-nowrap">{t('nav.glossary')}</Link>
-            <Link to="/ai-assistant" className="text-xs xl:text-sm font-black text-amber-600 hover:text-amber-700 transition-colors flex items-center gap-1.5 px-2.5 py-1.5 xl:px-3 xl:py-2 bg-amber-50/70 border border-amber-100 rounded-lg tracking-tight whitespace-nowrap">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" /> {t('nav.ai_assistant')}
-            </Link>
             <Link to="/presentation" className="text-xs xl:text-sm font-black text-rose-600 hover:text-rose-700 transition-colors flex items-center gap-1.5 px-2.5 py-1.5 xl:px-3 xl:py-2 bg-rose-50 border border-rose-100 rounded-lg tracking-tight whitespace-nowrap">
               <Video className="w-3.5 h-3.5 text-rose-500" /> {language === 'uz' ? 'TAQDIMOT' : language === 'ru' ? 'ПРЕЗЕНТАЦИЯ' : 'PRESENTATION'}
             </Link>
@@ -1016,9 +1013,6 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
             </div>
           </div>
           <Link to="/latin-glossary" onClick={() => setIsOpen(false)} className="block text-base font-bold text-slate-600">{t('nav.glossary')}</Link>
-          <Link to="/ai-assistant" onClick={() => setIsOpen(false)} className="flex items-center gap-2 text-base font-bold text-amber-600 bg-amber-50 px-3 py-2 rounded-xl">
-            <Sparkles className="w-4 h-4 text-amber-500" /> {t('nav.ai_assistant')}
-          </Link>
           <Link to="/presentation" onClick={() => setIsOpen(false)} className="flex items-center gap-2 text-base font-bold text-rose-600 bg-rose-50 px-3 py-2 rounded-xl">
             <Video className="w-4 h-4 text-rose-500" /> {language === 'uz' ? 'Taqdimot Rejimi' : language === 'ru' ? 'Режим Презентации' : 'Presentation Mode'}
           </Link>

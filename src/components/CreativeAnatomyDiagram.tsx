@@ -1,8 +1,28 @@
-import { useState, useMemo } from 'react';
-import { Sparkles, Code, Info, Check, CornerRightDown } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { 
+  Sparkles, 
+  Code, 
+  Info, 
+  Check, 
+  CornerRightDown, 
+  Image as ImageIcon, 
+  Upload, 
+  Edit, 
+  ZoomIn, 
+  X, 
+  Eye, 
+  RefreshCw 
+} from 'lucide-react';
+import { DiagramReplacement, getDiagramKey, detectDiagramTitle } from '../lib/diagramHelper';
+import ReplaceDiagramModal from './ReplaceDiagramModal';
 
 interface CreativeAnatomyDiagramProps {
   value: string;
+  topicId?: string;
+  diagramIndex?: number;
+  isAdmin?: boolean;
+  replacement?: DiagramReplacement | null;
+  onUpdateReplacement?: (replacement: DiagramReplacement | null) => void;
 }
 
 interface DiagramPart {
@@ -13,9 +33,35 @@ interface DiagramPart {
   clinical: string;
 }
 
-export default function CreativeAnatomyDiagram({ value }: CreativeAnatomyDiagramProps) {
+export default function CreativeAnatomyDiagram({ 
+  value,
+  topicId,
+  diagramIndex,
+  isAdmin = false,
+  replacement,
+  onUpdateReplacement
+}: CreativeAnatomyDiagramProps) {
   const [showRaw, setShowRaw] = useState(false);
   const [selectedPart, setSelectedPart] = useState<string | null>(null);
+
+  // Replacement state
+  const [activeReplacement, setActiveReplacement] = useState<DiagramReplacement | null>(replacement || null);
+  const [viewMode, setViewMode] = useState<'image' | 'diagram'>(replacement?.imageUrl ? 'image' : 'diagram');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+
+  useEffect(() => {
+    if (replacement !== undefined) {
+      setActiveReplacement(replacement);
+      if (replacement?.imageUrl) {
+        setViewMode('image');
+      }
+    }
+  }, [replacement]);
+
+  // Stable diagram key and title
+  const diagramKey = useMemo(() => getDiagramKey(value, diagramIndex), [value, diagramIndex]);
+  const diagramTitle = useMemo(() => detectDiagramTitle(value), [value]);
 
   // Normalize input
   const normalizedValue = value.trim();
@@ -523,29 +569,152 @@ export default function CreativeAnatomyDiagram({ value }: CreativeAnatomyDiagram
       {/* Header bar of the custom visualizer */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-tr from-brand-accent/20 to-indigo-500/20 rounded-xl">
-            <Sparkles className="h-5 w-5 text-indigo-600 animate-pulse" />
+          <div className={`p-2 rounded-xl ${
+            activeReplacement && viewMode === 'image'
+              ? 'bg-emerald-100 text-emerald-700'
+              : 'bg-gradient-to-tr from-brand-accent/20 to-indigo-500/20 text-indigo-600'
+          }`}>
+            {activeReplacement && viewMode === 'image' ? (
+              <ImageIcon className="h-5 w-5 animate-pulse" />
+            ) : (
+              <Sparkles className="h-5 w-5 animate-pulse" />
+            )}
           </div>
           <div>
-            <h4 className="text-sm font-black text-brand-primary uppercase tracking-wider block">
-              {diagramType === 'flowchart' ? 'Oqim Tarmoqlari Visualizatori' : '3D Interaktiv Anatomik Atlas'}
-            </h4>
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-black text-brand-primary uppercase tracking-wider block">
+                {activeReplacement && viewMode === 'image' 
+                  ? (activeReplacement.title || diagramTitle) 
+                  : (diagramType === 'flowchart' ? 'Oqim Tarmoqlari Visualizatori' : '3D Interaktiv Anatomik Atlas')}
+              </h4>
+              {activeReplacement && (
+                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase rounded-md flex items-center gap-1 tracking-wider">
+                  <Check className="w-3 h-3 text-emerald-600" /> Atlas Rasmi
+                </span>
+              )}
+            </div>
             <span className="text-[10px] text-slate-500 font-medium block">
-              {diagramType === 'flowchart' ? 'Tizimli sxemaning toza grafik modeli' : "A'zoning barcha qirra va yuzalarini tanlab organining borgan sari o'rganing"}
+              {activeReplacement && viewMode === 'image'
+                ? "Haqiqiy tibbiy atlas tasviri va anatomik preparat fotosurati"
+                : (diagramType === 'flowchart' ? 'Tizimli sxemaning toza grafik modeli' : "A'zoning barcha qirra va yuzalarini tanlab organining borgan sari o'rganing")}
             </span>
           </div>
         </div>
-        <button 
-          onClick={() => setShowRaw(true)} 
-          className="self-start sm:self-auto flex items-center gap-1.5 rounded-xl border border-slate-300 px-3.5 py-1.5 text-xs font-bold text-slate-600 bg-white hover:bg-slate-50 active:scale-95 transition-all shadow-sm cursor-pointer"
-        >
-          <Code className="h-4 w-4 text-slate-400" />
-          Kod/ASCII holda ko'rish
-        </button>
+
+        {/* Header Actions */}
+        <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+          {/* Toggle between Image and Diagram if replacement exists */}
+          {activeReplacement?.imageUrl && (
+            <button
+              type="button"
+              onClick={() => setViewMode(viewMode === 'image' ? 'diagram' : 'image')}
+              className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 transition-all shadow-xs cursor-pointer"
+            >
+              {viewMode === 'image' ? (
+                <>
+                  <Code className="h-3.5 w-3.5" />
+                  Asl sxemani ko'rish
+                </>
+              ) : (
+                <>
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  Atlas rasmini ko'rish
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Code/ASCII View button */}
+          <button 
+            type="button"
+            onClick={() => setShowRaw(true)} 
+            className="flex items-center gap-1.5 rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-600 bg-white hover:bg-slate-50 active:scale-95 transition-all shadow-sm cursor-pointer"
+          >
+            <Code className="h-3.5 w-3.5 text-slate-400" />
+            ASCII
+          </button>
+
+          {/* Admin Image Replacement Button */}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all shadow-sm cursor-pointer ${
+                activeReplacement
+                  ? 'bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200'
+              }`}
+              title="Admin huquqi: Ushbu sxemani haqiqiy rasmga almashtirish"
+            >
+              {activeReplacement ? (
+                <>
+                  <Edit className="h-3.5 w-3.5" />
+                  Rasmni o'zgartirish
+                </>
+              ) : (
+                <>
+                  <Upload className="h-3.5 w-3.5" />
+                  Rasmga almashtirish (Admin)
+                </>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="p-6 md:p-8">
-        {diagramType === 'flowchart' ? (
+        {/* Active Replacement Banner in Diagram mode */}
+        {activeReplacement?.imageUrl && viewMode === 'diagram' && (
+          <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5 text-emerald-800 text-xs font-bold">
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Ushbu mavzu uchun haqiqiy tibbiy atlas rasmi yuklangan.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setViewMode('image')}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer shrink-0"
+            >
+              Rasmni ochish
+            </button>
+          </div>
+        )}
+
+        {/* 1. Real Medical Image View */}
+        {activeReplacement?.imageUrl && viewMode === 'image' ? (
+          <div className="space-y-4">
+            <div className="relative group overflow-hidden rounded-3xl bg-slate-950 border border-slate-200/80 shadow-inner flex items-center justify-center min-h-[350px]">
+              <img
+                src={activeReplacement.imageUrl}
+                alt={activeReplacement.caption || diagramTitle}
+                referrerPolicy="no-referrer"
+                className="w-full max-h-[600px] object-contain cursor-zoom-in transition-transform duration-300 group-hover:scale-[1.01]"
+                onClick={() => setIsLightboxOpen(true)}
+              />
+
+              {/* Hover overlay hint */}
+              <div 
+                onClick={() => setIsLightboxOpen(true)}
+                className="absolute top-4 right-4 bg-slate-900/80 hover:bg-slate-900 text-white px-3.5 py-2 rounded-2xl backdrop-blur-md cursor-pointer shadow-lg transition-all flex items-center gap-2 text-xs font-bold border border-white/10"
+              >
+                <ZoomIn className="w-4 h-4 text-emerald-400" /> Kattalashtirish
+              </div>
+            </div>
+
+            {/* Caption & Metadata */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                <p className="text-xs text-slate-700 font-semibold">
+                  {activeReplacement.caption || diagramTitle}
+                </p>
+              </div>
+              <span className="text-[10px] font-mono text-slate-400 font-bold uppercase tracking-wider">
+                Atlas Tasviri
+              </span>
+            </div>
+          </div>
+        ) : diagramType === 'flowchart' ? (
           renderFlowchart()
         ) : diagramType === 'default' ? (
           // Default styling fallback for other codeblocks
@@ -1285,6 +1454,59 @@ export default function CreativeAnatomyDiagram({ value }: CreativeAnatomyDiagram
           </div>
         )}
       </div>
+
+      {/* Lightbox Modal for Image Fullscreen Viewing */}
+      {isLightboxOpen && activeReplacement?.imageUrl && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setIsLightboxOpen(false)}
+        >
+          <div 
+            className="relative max-w-5xl w-full max-h-[95vh] flex flex-col items-center justify-center"
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setIsLightboxOpen(false)}
+              className="absolute -top-12 right-0 p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all cursor-pointer"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img
+              src={activeReplacement.imageUrl}
+              alt={activeReplacement.caption || diagramTitle}
+              referrerPolicy="no-referrer"
+              className="max-h-[85vh] w-auto max-w-full object-contain rounded-2xl shadow-2xl border border-white/10"
+            />
+            {activeReplacement.caption && (
+              <p className="text-white text-center text-sm font-semibold mt-4 px-4 py-2 bg-slate-900/80 rounded-xl backdrop-blur-xs max-w-xl">
+                {activeReplacement.caption}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Admin Replace Diagram Modal */}
+      {isAdmin && isModalOpen && (
+        <ReplaceDiagramModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          topicId={topicId || ''}
+          diagramKey={diagramKey}
+          diagramTitle={diagramTitle}
+          diagramCode={value}
+          currentReplacement={activeReplacement}
+          onSuccess={(newReplacement) => {
+            setActiveReplacement(newReplacement);
+            if (newReplacement?.imageUrl) {
+              setViewMode('image');
+            } else {
+              setViewMode('diagram');
+            }
+            onUpdateReplacement?.(newReplacement);
+          }}
+        />
+      )}
     </div>
   );
 }

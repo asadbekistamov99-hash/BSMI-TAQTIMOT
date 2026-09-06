@@ -246,7 +246,7 @@ export default function Home({ isAdmin: isAdminProp, user }: { isAdmin?: boolean
         keywords="odam anatomiyasi, tibbiyot instituti, bsmi anatomiya, anatomiya testlari, 3d anatomiya, osteologiya, miologiya, splanxnologiya, nevrologiya"
       />
       {/* Hero Section */}
-      <section className="relative py-24 overflow-hidden bg-brand-primary border-b border-slate-800">
+      <section className="relative py-24 overflow-hidden bg-[#1E293B] bg-brand-primary border-b border-slate-800">
         <div className="absolute inset-0 opacity-20">
           <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_20%_30%,_var(--tw-gradient-stops))] from-brand-accent/20 via-transparent to-transparent"></div>
         </div>
@@ -254,9 +254,9 @@ export default function Home({ isAdmin: isAdminProp, user }: { isAdmin?: boolean
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center max-w-4xl mx-auto">
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
+              transition={{ duration: 0.2 }}
             >
               <h1 className="text-4xl md:text-6xl font-extrabold text-white tracking-tight mb-8 leading-tight">
                 {(() => {
@@ -275,7 +275,7 @@ export default function Home({ isAdmin: isAdminProp, user }: { isAdmin?: boolean
                 {settings.homeHeroDesc || t('home.hero_desc')}
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
-                <Link to="/semester/1" className="w-full sm:w-auto px-10 py-5 bg-brand-accent hover:bg-brand-accent/90 text-brand-primary font-bold rounded-xl transition-all shadow-xl shadow-brand-accent/20 flex items-center justify-center gap-2 text-base">
+                <Link to="/semester/1" className="w-full sm:w-auto px-10 py-5 bg-[#cc0f0f] bg-brand-accent hover:opacity-95 text-white font-bold rounded-xl transition-all shadow-xl shadow-brand-accent/20 flex items-center justify-center gap-2 text-base">
                   {settings.homeHeroBtnStart || t('home.start_sem1')} <ChevronRight className="w-5 h-5" />
                 </Link>
                 <Link to="/atlas" className="w-full sm:w-auto px-10 py-5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all border border-slate-700 flex items-center justify-center gap-2 text-base">

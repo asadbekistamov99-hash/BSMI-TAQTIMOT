@@ -242,6 +242,24 @@ export function mergeTopicGroup(topicsList: any[]): MergedTopic {
     chosenId = topicsList[0].id;
   }
 
+  // 6. Presentation & Lecture Files (PPTX, PDF, Custom File)
+  let pptxUrl = '';
+  let pdfUrl = '';
+  let lectureType: 'text' | 'pdf' | 'pptx' = 'text';
+  let customLectureFile = null;
+
+  for (const t of topicsList) {
+    if (!pptxUrl && t.pptxUrl) pptxUrl = t.pptxUrl;
+    if (!pdfUrl && t.pdfUrl) pdfUrl = t.pdfUrl;
+    if (t.customLectureFile && !customLectureFile) customLectureFile = t.customLectureFile;
+    if (t.lectureType && t.lectureType !== 'text') lectureType = t.lectureType;
+  }
+
+  if (!lectureType) {
+    if (pptxUrl || customLectureFile?.fileType === 'pptx') lectureType = 'pptx';
+    else if (pdfUrl || customLectureFile?.fileType === 'pdf') lectureType = 'pdf';
+  }
+
   return {
     id: chosenId,
     semester,
@@ -262,7 +280,11 @@ export function mergeTopicGroup(topicsList: any[]): MergedTopic {
       ru: Array.from(ruVideos),
       en: Array.from(enVideos)
     },
-    image
+    image,
+    pptxUrl,
+    pdfUrl,
+    lectureType,
+    customLectureFile
   };
 }
 

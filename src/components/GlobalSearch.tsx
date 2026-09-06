@@ -103,20 +103,10 @@ export default function GlobalSearch() {
       icon: <Globe className="w-4 h-4 text-amber-500" />
     },
     {
-      id: 'page-ai',
-      type: 'page',
-      title: language === 'uz' ? 'Professor AI Yordamchi' : language === 'ru' ? 'ИИ Ассистент Профессор' : 'Professor AI Assistant',
-      subtitle: language === 'uz' ? 'Tibbiy va anatomik sun’iy intellekt konsultatsiyasi' : 'AI anatomy tutor',
-      badge: 'AI Tutor',
-      badgeColor: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300',
-      path: '/ai-assistant',
-      icon: <Brain className="w-4 h-4 text-cyan-500" />
-    },
-    {
       id: 'page-presentation',
       type: 'page',
-      title: language === 'uz' ? 'Interaktiv Taqdimot Rejimi' : language === 'ru' ? 'Интерактивная Презентация' : 'Interactive Presentation Mode',
-      subtitle: language === 'uz' ? 'Ma’ruza va dars namoyishi rejimida o‘rganish' : 'Lecture slideshow mode',
+      title: language === 'uz' ? 'Anatomik Taqdimotlar (PPTX / PDF)' : language === 'ru' ? 'Анатомические Презентации' : 'Anatomy Presentations',
+      subtitle: language === 'uz' ? 'Barcha semestrlar bo‘yicha ma’ruza slaydlar va taqdimotlar' : 'Lecture presentations & slides',
       badge: 'Taqdimot',
       badgeColor: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
       path: '/presentation',

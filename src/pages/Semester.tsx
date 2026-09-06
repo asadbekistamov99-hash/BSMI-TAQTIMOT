@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { Topic, MidtermFile, Semester as SemesterType } from '../types';
 import { dbService, isSupabaseEnabled } from '../lib/dbService';
 import { SEMESTER_1_TOPICS, SEMESTER_2_TOPICS, SEMESTER_3_TOPICS } from '../constants';
+import { SEMESTER_1_DETAILED_TOPICS } from '../data/semester1TopicsData';
+import { SEMESTER_2_DETAILED_TOPICS } from '../data/semester2TopicsData';
 import { SEMESTER_3_DETAILED_TOPICS } from '../data/semester3TopicsData';
 import { ChevronRight, PlayCircle, FileText, CheckCircle2, Lock, Sparkles, Clock, Award, Download, X, Loader2, CreditCard, ShieldCheck, AlertCircle } from 'lucide-react';
 import PaymentModal from '../components/PaymentModal';
@@ -200,40 +202,40 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
     };
 
     const getFallbackTopics = (sem: number): Topic[] => {
-      if (sem === 3) {
-        return SEMESTER_3_DETAILED_TOPICS;
-      }
-      const list = sem === 1 ? SEMESTER_1_TOPICS : sem === 2 ? SEMESTER_2_TOPICS : [];
-      return list.map((title, idx) => ({
-        id: `sem_${sem}_top_${idx + 1}`,
-        semester: sem,
-        order: idx + 1,
-        title: { uz: title, ru: title, en: title },
-        theory: {
-          uz: `${title} mavzusi bo‘yicha nazariy ma'lumotlar tez orada to'liq yuklanadi.`,
-          ru: `Теоретические материалы по теме ${title} скоро будут загружены.`,
-          en: `Theoretical materials for ${title} will be uploaded soon.`
-        },
-        latinTerms: [],
-        videos: []
-      }));
+      if (sem === 1) return SEMESTER_1_DETAILED_TOPICS;
+      if (sem === 2) return SEMESTER_2_DETAILED_TOPICS;
+      if (sem === 3) return SEMESTER_3_DETAILED_TOPICS;
+      return [];
     };
 
     const fetchTopics = async () => {
       setLoading(true);
       try {
         const realTopics = await dbService.getTopics(semesterId);
+        const detailedList = getFallbackTopics(semesterId);
         
         if (realTopics.length === 0) {
           if (isAdmin && (semesterId === 1 || semesterId === 2 || semesterId === 3)) {
             await seedTopics(semesterId);
             const freshTopics = await dbService.getTopics(semesterId);
-            setTopics(freshTopics.length > 0 ? freshTopics : getFallbackTopics(semesterId));
+            setTopics(freshTopics.length > 0 ? freshTopics : detailedList);
           } else {
-            setTopics(getFallbackTopics(semesterId));
+            setTopics(detailedList);
           }
         } else {
-          setTopics(realTopics);
+          // Merge with detailed medical curriculum if real topic has sparse/placeholder theory
+          const enrichedRealTopics = realTopics.map(t => {
+            const match = detailedList.find(d => d.order === t.order);
+            if (match && (!t.theory?.uz || t.theory.uz.length < 150)) {
+              return {
+                ...t,
+                theory: match.theory,
+                title: t.title?.uz ? t.title : match.title
+              };
+            }
+            return t;
+          });
+          setTopics(enrichedRealTopics);
         }
       } catch (error) {
         console.error("Error loading topics:", error);
@@ -274,46 +276,22 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
   }, [semesterId, user, isAdmin]);
 
   const seedTopics = async (sem: number) => {
-    if (sem === 3) {
-      for (const t of SEMESTER_3_DETAILED_TOPICS) {
-        try {
-          await dbService.saveTopic(null, {
-            semester: 3,
-            order: t.order,
-            title: t.title,
-            theory: t.theory,
-            latinTerms: t.latinTerms || [],
-            image: t.image || "https://images.unsplash.com/photo-1559757175-5700dde675bc?q=80&w=2670&auto=format&fit=crop",
-            videos: t.videos || []
-          });
-        } catch (err) {
-          console.warn("Topic seeding failed for sem 3 index", t.order, err);
-        }
-      }
-      return;
-    }
+    const list = sem === 1 ? SEMESTER_1_DETAILED_TOPICS : sem === 2 ? SEMESTER_2_DETAILED_TOPICS : sem === 3 ? SEMESTER_3_DETAILED_TOPICS : [];
+    if (!list || list.length === 0) return;
 
-    const topicsToSeed = sem === 1 ? SEMESTER_1_TOPICS : sem === 2 ? SEMESTER_2_TOPICS : [];
-    if (!topicsToSeed || topicsToSeed.length === 0) return;
-    
-    for (let index = 0; index < topicsToSeed.length; index++) {
-      const title = topicsToSeed[index];
+    for (const t of list) {
       try {
         await dbService.saveTopic(null, {
           semester: sem,
-          order: index + 1,
-          title: { uz: title, ru: title, en: title },
-          theory: {
-            uz: `Bu mavzu bo‘yicha nazariy ma'lumotlar tez orada yuklanadi. ${title} haqida batafsil o'rganish uchun darslikdan foydalaning.`,
-            en: `Theoretical contents for ${title} will be uploaded soon. Please consult textbooks for further details.`,
-            ru: `Теоретические материалы к разделу ${title} будут добавлены в ближайшее время. Сверяйтесь с атласом.`
-          },
-          latinTerms: [],
-          image: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?q=80&w=2670&auto=format&fit=crop",
-          videos: []
+          order: t.order,
+          title: t.title,
+          theory: t.theory,
+          latinTerms: t.latinTerms || [],
+          image: t.image || "https://images.unsplash.com/photo-1559757175-5700dde675bc?q=80&w=2670&auto=format&fit=crop",
+          videos: t.videos || []
         });
       } catch (err) {
-        console.warn("Topic seeding failed for index", index, err);
+        console.warn(`Topic seeding failed for sem ${sem} index`, t.order, err);
       }
     }
   };

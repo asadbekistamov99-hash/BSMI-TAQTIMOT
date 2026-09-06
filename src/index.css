@@ -1,19 +1,38 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
+:root {
+  --brand-primary: #1E293B;
+  --color-brand-primary: #1E293B;
+  --brand-accent: #cc0f0f;
+  --color-brand-accent: #cc0f0f;
+  --brand-bg: #F0F2F5;
+  --color-brand-bg: #F0F2F5;
+  --brand-card: #FFFFFF;
+  --color-brand-card: #FFFFFF;
+  --brand-text: #1A202C;
+  --color-brand-text: #1A202C;
+  --brand-muted: #64748B;
+  --color-brand-muted: #64748B;
+  --brand-border: #E2E8F0;
+  --brand-radius: 32px;
+  --radius-brand: 32px;
+  --font-brand: "Plus Jakarta Sans";
+}
+
 @theme {
   --font-sans: var(--font-brand, "Plus Jakarta Sans"), ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   
-  --color-brand-primary: var(--color-brand-primary, #1E293B);
-  --color-brand-accent: var(--color-brand-accent, #38BDF8);
-  --color-brand-bg: var(--color-brand-bg, #F0F2F5);
-  --color-brand-card: var(--color-brand-card, #FFFFFF);
-  --color-brand-text: var(--color-brand-text, #1A202C);
-  --color-brand-muted: var(--color-brand-muted, #64748B);
+  --color-brand-primary: var(--brand-primary, #1E293B);
+  --color-brand-accent: var(--brand-accent, #cc0f0f);
+  --color-brand-bg: var(--brand-bg, #F0F2F5);
+  --color-brand-card: var(--brand-card, #FFFFFF);
+  --color-brand-text: var(--brand-text, #1A202C);
+  --color-brand-muted: var(--brand-muted, #64748B);
   --color-brand-border: #E2E8F0;
   
-  --radius-brand: var(--radius-brand, 32px);
+  --radius-brand: var(--brand-radius, 32px);
 }
 
 @layer base {
@@ -48,4 +67,21 @@
 .rotate-y-180 {
   transform: rotateY(180deg);
 }
+
+/* Security & Anti-Screenshot / Print Protection */
+@media print {
+  body {
+    display: none !important;
+  }
+}
+
+.protected-presentation {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
 

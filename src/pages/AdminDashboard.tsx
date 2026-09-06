@@ -14,6 +14,12 @@ import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase
 import mammoth from 'mammoth';
 import '@google/model-viewer';
 import ThreeDModelsManager from '../components/ThreeDModelsManager';
+import LatinTermsManager from '../components/LatinTermsManager';
+import TopicLectureEditor from '../components/TopicLectureEditor';
+import TopicTermsEditor from '../components/TopicTermsEditor';
+import TopicReferencesEditor from '../components/TopicReferencesEditor';
+import TopicDiagramsEditor from '../components/TopicDiagramsEditor';
+import AdminPresentationsManager from '../components/AdminPresentationsManager';
 import { 
   Megaphone,
   LayoutDashboard, 
@@ -181,7 +187,8 @@ import {
   ZoomIn,
   ZoomOut,
   Minus,
-  Fingerprint
+  Fingerprint,
+  Presentation as PresentationIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
@@ -197,7 +204,7 @@ const getSafeAdminTitle = (title: any): string => {
   return String(title);
 };
 
-type Tab = 'dashboard' | 'users' | 'payments' | 'topics' | 'semesters' | 'content' | 'latin' | 'atlas' | 'models' | 'videos' | 'quizzes' | 'midterm' | 'ai' | 'languages' | 'notifications' | 'settings' | 'design' | 'logs' | 'backup' | 'analytics' | 'support' | 'help' | 'biometric_audit';
+type Tab = 'dashboard' | 'users' | 'payments' | 'topics' | 'presentations' | 'semesters' | 'content' | 'latin' | 'atlas' | 'models' | 'videos' | 'quizzes' | 'midterm' | 'ai' | 'languages' | 'notifications' | 'settings' | 'design' | 'logs' | 'backup' | 'analytics' | 'support' | 'help' | 'biometric_audit';
 
 function ConnectionStatus() {
   const [status, setStatus] = useState({ 
@@ -795,8 +802,9 @@ export default function AdminDashboard({ onLogout }: { onLogout?: () => void }) 
     { id: 'payments', label: 'To\'lovlar', icon: <CreditCard size={20} /> },
     { id: 'semesters', label: 'Semestrlar', icon: <Layers size={20} /> },
     { id: 'topics', label: 'Mavzular ro\'yxati', icon: <BookOpen size={20} /> },
+    { id: 'presentations', label: 'Taqdimotlar (PPTX / PDF)', icon: <PresentationIcon size={20} /> },
     { id: 'content', label: 'Darslik (Theory)', icon: <Layers size={20} /> },
-    { id: 'latin', label: 'Lotinchaga terminlar', icon: <Globe size={20} /> },
+    { id: 'latin', label: 'Lotincha Lug\'at (Terminlar)', icon: <Globe size={20} /> },
     { id: 'models', label: '3D Modellar & Atlas', icon: <Box size={20} /> },
     { id: 'videos', label: 'Video Ma\'ruzalar', icon: <Play size={20} /> },
     { id: 'quizzes', label: 'Testlar (1000+)', icon: <ClipboardList size={20} /> },
@@ -1114,6 +1122,7 @@ export default function AdminDashboard({ onLogout }: { onLogout?: () => void }) 
               {activeTab === 'biometric_audit' && <BiometricAuditManager searchQuery={searchQuery} requestConfirm={requestConfirm} />}
               {activeTab === 'semesters' && <SemesterManager requestConfirm={requestConfirm} />}
               {activeTab === 'topics' && <TopicManager searchQuery={searchQuery} authUser={authUser} requestConfirm={requestConfirm} />}
+              {activeTab === 'presentations' && <AdminPresentationsManager searchQuery={searchQuery} authUser={authUser} requestConfirm={requestConfirm} />}
               {activeTab === 'content' && <ContentManager searchQuery={searchQuery} />}
               {activeTab === 'quizzes' && <QuizManager searchQuery={searchQuery} requestConfirm={requestConfirm} />}
               {activeTab === 'models' && <ThreeDModelsManager searchQuery={searchQuery} requestConfirm={requestConfirm} />}
@@ -1341,6 +1350,40 @@ function DashboardOverview({ setActiveTab, authUser, lang, setLang }: { setActiv
           color="text-emerald-600"
           iconBg="bg-emerald-600 shadow-emerald-200"
         />
+      </div>
+
+      {/* Quick Access to Presentations Section */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-brand-accent/10 to-transparent p-8 sm:p-10 rounded-[40px] border border-amber-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 animate-fade-in">
+        <div className="flex items-center gap-5">
+          <div className="w-16 h-16 rounded-3xl bg-amber-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/20 shrink-0">
+            <PresentationIcon className="w-8 h-8" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-3 py-0.5 bg-amber-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full">
+                Yangi Bo'lim
+              </span>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                39 ta Mavzu • Barcha Semestrlar
+              </span>
+            </div>
+            <h3 className="text-xl font-black text-slate-900 tracking-tight">
+              Anatomik Taqdimotlar (PPTX & PDF) Boshqaruvi
+            </h3>
+            <p className="text-xs text-slate-500 mt-1 font-medium max-w-xl">
+              Har bir mavzuga alohida PowerPoint (.pptx) yoki PDF taqdimot fayllarini yuklang, mavjudlarini o'zgartiring va talabalarga xavfsiz namoyish eting.
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('presentations')}
+          className="px-6 py-4 bg-slate-900 hover:bg-brand-accent hover:text-brand-primary text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-md shrink-0 cursor-pointer flex items-center gap-2 self-start md:self-auto"
+        >
+          <PresentationIcon className="w-4 h-4" />
+          <span>Taqdimotlarni Boshqarish</span>
+        </button>
       </div>
 
       {/* 3-Language Control Center Section */}
@@ -2351,8 +2394,16 @@ function ContentManager({ searchQuery }: { searchQuery: string }) {
 
   const handleSave = async () => {
     await updateDoc(doc(db, 'topics', editing.id), {
-      theory: editing.theory
+      theory: editing.theory,
+      lectureType: editing.lectureType || 'text',
+      customLectureFile: editing.customLectureFile || null,
+      pdfUrl: editing.pdfUrl || '',
+      pptxUrl: editing.pptxUrl || '',
+      terms: editing.terms || [],
+      references: editing.references || [],
+      latinTerms: editing.latinTerms || []
     });
+    alert("Mavzu konspekti, lug'atlar va adabiyotlar muvaffaqiyatli saqlandi!");
     setEditing(null);
     fetchTopics();
   };
@@ -2360,40 +2411,80 @@ function ContentManager({ searchQuery }: { searchQuery: string }) {
   return (
     <div className="space-y-8">
       <div className="bg-white p-8 rounded-[32px] border border-slate-200 flex items-center justify-between">
-        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Mavzular Kontentini Tahrirlash</h3>
-        <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Darsliklar va Nazariya</p>
+        <div>
+          <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Mavzular Kontentini Tahrirlash</h3>
+          <p className="text-slate-400 text-xs mt-1">Darslik konspektini matn, PDF yoki PowerPoint (.pptx) taqdimotga almashtirish</p>
+        </div>
+        <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
+          Darsliklar va Nazariya
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-1 bg-white rounded-[32px] border border-slate-200 overflow-hidden">
-          <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+          <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
             <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mavzular Ro'yxati</h4>
+            <span className="text-[10px] font-bold text-slate-400">{topics.length} ta mavzu</span>
           </div>
-          <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
-            {topics.map(t => (
-              <button 
-                key={t.id} 
-                onClick={() => setEditing({...t, theory: t.theory || {}})}
-                className={`w-full p-6 text-left hover:bg-slate-50 transition-all ${editing?.id === t.id ? 'bg-brand-accent/5 border-l-4 border-brand-accent' : ''}`}
-              >
-                <span className="text-[9px] font-black text-brand-accent uppercase block mb-1">Semestr {t.semester} • #{t.order}</span>
-                <span className="font-bold text-slate-800 line-clamp-1">{getSafeAdminTitle(t.title)}</span>
-              </button>
-            ))}
+          <div className="divide-y divide-slate-100 max-h-[650px] overflow-y-auto">
+            {topics.map(t => {
+              const isPdf = t.lectureType === 'pdf' || t.customLectureFile?.fileType === 'pdf' || Boolean(t.pdfUrl);
+              const isPptx = t.lectureType === 'pptx' || t.customLectureFile?.fileType === 'pptx' || Boolean(t.pptxUrl);
+
+              return (
+                <button 
+                  key={t.id} 
+                  onClick={() => setEditing({
+                    ...t, 
+                    theory: t.theory || {},
+                    lectureType: t.lectureType || (isPptx ? 'pptx' : isPdf ? 'pdf' : 'text'),
+                    customLectureFile: t.customLectureFile || null,
+                    pdfUrl: t.pdfUrl || '',
+                    pptxUrl: t.pptxUrl || '',
+                    terms: t.terms || [],
+                    references: t.references || [],
+                    latinTerms: t.latinTerms || []
+                  })}
+                  className={`w-full p-5 text-left hover:bg-slate-50 transition-all ${editing?.id === t.id ? 'bg-brand-accent/5 border-l-4 border-brand-accent' : ''}`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-[9px] font-black text-brand-accent uppercase">
+                      Semestr {t.semester} • #{t.order}
+                    </span>
+                    {isPdf && (
+                      <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-200">
+                        📑 PDF
+                      </span>
+                    )}
+                    {isPptx && (
+                      <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-amber-50 text-amber-600 border border-amber-200">
+                        📊 PPTX
+                      </span>
+                    )}
+                  </div>
+                  <span className="font-bold text-slate-800 line-clamp-1 text-sm">{getSafeAdminTitle(t.title)}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <div className="lg:col-span-2 bg-white rounded-[32px] border border-slate-200 p-8">
           {editing ? (
             <div className="space-y-8">
-              <div className="flex items-center justify-between">
-                <h4 className="text-lg font-black text-slate-800 uppercase tracking-tight">{getSafeAdminTitle(editing.title)}</h4>
-                <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                <div>
+                  <span className="text-[9px] font-black text-brand-accent uppercase tracking-widest block mb-1">
+                    Semestr {editing.semester} • #{editing.order}
+                  </span>
+                  <h4 className="text-xl font-black text-slate-800 uppercase tracking-tight">{getSafeAdminTitle(editing.title)}</h4>
+                </div>
+                <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl">
                   {(['uz', 'en', 'ru', 'hi', 'ar'] as const).map(l => (
                     <button 
                       key={l}
                       onClick={() => setLang(l)}
-                      className={`w-8 h-8 rounded-lg text-[10px] font-black uppercase transition-all ${lang === l ? 'bg-brand-primary text-white' : 'bg-slate-100 text-slate-400'}`}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${lang === l ? 'bg-brand-primary text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
                     >
                       {l}
                     </button>
@@ -2401,20 +2492,81 @@ function ContentManager({ searchQuery }: { searchQuery: string }) {
                 </div>
               </div>
 
-              <textarea 
-                rows={15} 
-                value={editing.theory[lang] || ''}
-                onChange={e => setEditing({
-                  ...editing,
-                  theory: { ...editing.theory, [lang]: e.target.value }
-                })}
-                className="w-full p-6 bg-slate-50 rounded-2xl border-2 border-slate-200 outline-none focus:border-brand-accent transition-all font-mono text-sm leading-relaxed"
-                placeholder={`${lang.toUpperCase()} tilidagi matnni kiriting...`}
+              {/* PDF or PPTX Lecture Switcher & Uploader */}
+              <TopicLectureEditor
+                topicId={editing.id}
+                semester={editing.semester || 1}
+                order={editing.order || 1}
+                topicTitle={getSafeAdminTitle(editing.title)}
+                lectureType={editing.lectureType || 'text'}
+                customLectureFile={editing.customLectureFile || null}
+                pdfUrl={editing.pdfUrl || ''}
+                pptxUrl={editing.pptxUrl || ''}
+                onChange={(lectureData) => {
+                  setEditing({
+                    ...editing,
+                    ...lectureData
+                  });
+                }}
               />
 
-              <div className="flex justify-end gap-4">
-                <button onClick={() => setEditing(null)} className="px-8 py-4 font-black text-[10px] uppercase text-slate-400">Bekor qilish</button>
-                <button onClick={handleSave} className="px-10 py-4 bg-brand-primary text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-brand-primary/20">Saqlash</button>
+              {/* Text theory editor section */}
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                    <BookOpen size={15} className="text-brand-primary" />
+                    Matnli Darslik / Nazariya ({lang.toUpperCase()})
+                  </label>
+                  {editing.lectureType !== 'text' && (
+                    <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
+                      Hozirda {editing.lectureType.toUpperCase()} rejimi faol (talabalar asosiy o'quv materiali sifatida faylni ko'rishadi)
+                    </span>
+                  )}
+                </div>
+
+                <textarea 
+                  rows={12} 
+                  value={editing.theory[lang] || ''}
+                  onChange={e => setEditing({
+                    ...editing,
+                    theory: { ...editing.theory, [lang]: e.target.value }
+                  })}
+                  className="w-full p-6 bg-slate-50 rounded-2xl border-2 border-slate-200 outline-none focus:border-brand-accent focus:bg-white transition-all font-mono text-sm leading-relaxed"
+                  placeholder={`${lang.toUpperCase()} tilidagi matnni kiriting... (Markdown qo'llab-quvvatlanadi)`}
+                />
+              </div>
+
+              {/* Topic Terms (Lug'atlar) Editor in ContentManager */}
+              <div className="pt-2">
+                <TopicTermsEditor
+                  terms={editing.terms || []}
+                  latinTerms={editing.latinTerms || []}
+                  onChange={(updatedTerms, updatedLatinTerms) => {
+                    setEditing({
+                      ...editing,
+                      terms: updatedTerms,
+                      latinTerms: updatedLatinTerms
+                    });
+                  }}
+                />
+              </div>
+
+              {/* Topic References (Foydalanilgan adabiyotlar) Editor in ContentManager */}
+              <div className="pt-2">
+                <TopicReferencesEditor
+                  references={editing.references || []}
+                  onChange={(updatedReferences) => {
+                    setEditing({
+                      ...editing,
+                      references: updatedReferences
+                    });
+                  }}
+                />
+              </div>
+
+              <div className="flex justify-end gap-4 pt-4 border-t border-slate-100">
+                <button onClick={() => setEditing(null)} className="px-8 py-4 font-black text-xs uppercase tracking-wider text-slate-400 hover:text-slate-600">Bekor qilish</button>
+                <button onClick={handleSave} className="px-10 py-4 bg-brand-primary text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-primary/20 hover:bg-slate-800 transition-all cursor-pointer">Saqlash</button>
               </div>
             </div>
           ) : (
@@ -2423,7 +2575,7 @@ function ContentManager({ searchQuery }: { searchQuery: string }) {
                 <BookOpen size={40} />
               </div>
               <h4 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Tahrirlash uchun mavzu tanlang</h4>
-              <p className="text-slate-400 text-xs mt-2 max-w-sm">Chap tarafdagi ro'yxatdan kerakli mavzuni tanlab, uning nazariy qismini bir necha tilda tahrirlashingiz mumkin.</p>
+              <p className="text-slate-400 text-xs mt-2 max-w-sm">Chap tarafdagi ro'yxatdan kerakli mavzuni tanlab, uning nazariy qismini matn, PDF yoki PowerPoint (.pptx) taqdimotga almashtirishingiz mumkin.</p>
             </div>
           )}
         </div>
@@ -4596,1371 +4748,8 @@ function NotificationManager({ requestConfirm }: { requestConfirm: any }) {
   );
 }
 
-// --- Latin Terms Manager ---
-function LatinTermsManager({ searchQuery: globalSearch, authUser, requestConfirm }: { searchQuery: string, authUser: any, requestConfirm: any }) {
-  const [terms, setTerms] = useState<any[]>([]);
-  const [editing, setEditing] = useState<any>(null);
-  const [isSeeding, setIsSeeding] = useState(false);
-  const [localSearch, setLocalSearch] = useState('');
+// LatinTermsManager is imported from ../components/LatinTermsManager
 
-  useEffect(() => {
-    fetchTerms();
-  }, []);
-
-  const fetchTerms = async () => {
-    try {
-      const snapshot = await getDocs(query(collection(db, 'latin_terms'), orderBy('latin', 'asc')));
-      setTerms(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    } catch (error) {
-      console.error(error);
-      handleFirestoreError(error, OperationType.LIST, 'latin_terms');
-    }
-  };
-
-  const filteredTerms = terms.filter(t => 
-    t.latin.toLowerCase().includes(localSearch.toLowerCase()) || 
-    t.uzbek.toLowerCase().includes(localSearch.toLowerCase())
-  );
-
-  const seedTerms = async () => {
-    const ESSENTIAL_TERMS = [
-      // General/Orientation
-      { latin: "Caput", uzbek: "Bosh" },
-      { latin: "Collum", uzbek: "Bo'yin" },
-      { latin: "Thorax", uzbek: "Ko'krak qafasi" },
-      { latin: "Abdomen", uzbek: "Qorin" },
-      { latin: "Pelvis", uzbek: "Chanoq" },
-      { latin: "Membrum superius", uzbek: "Yuqori qo'l-oyoq" },
-      { latin: "Membrum inferius", uzbek: "Pastki qo'l-oyoq" },
-      { latin: "Dorsum", uzbek: "Orqa" },
-      { latin: "Superior", uzbek: "Yuqori" },
-      { latin: "Inferior", uzbek: "Pastki" },
-      { latin: "Anterior", uzbek: "Oldingi" },
-      { latin: "Posterior", uzbek: "Orqa" },
-      { latin: "Medialis", uzbek: "Medial (o'rta chiziqqa yaqin)" },
-      { latin: "Lateralis", uzbek: "Lateral (o'rta chiziqdan uzoq)" },
-      { latin: "Dexter", uzbek: "O'ng" },
-      { latin: "Sinister", uzbek: "Chap" },
-      { latin: "Superficialis", uzbek: "Yuzaki" },
-      { latin: "Profundus", uzbek: "Chuqur" },
-      { latin: "Proximalis", uzbek: "Proksimal (gavdaga yaqin)" },
-      { latin: "Distalis", uzbek: "Distal (gavdadan uzoq)" },
-      { latin: "Sagittalis", uzbek: "Sagittal (oldingi-orqa yo'nalish)" },
-      { latin: "Frontalis", uzbek: "Frontal (peshona yo'nalishi)" },
-      { latin: "Horizontalis", uzbek: "Gorizontal" },
-
-      // Organs
-      { latin: "Cor", uzbek: "Yurak" },
-      { latin: "Pulmo", uzbek: "O'pka" },
-      { latin: "Hepar", uzbek: "Jigar" },
-      { latin: "Gaster (Ventriculus)", uzbek: "Oshqozon" },
-      { latin: "Ren", uzbek: "Buyrak" },
-      { latin: "Lien (Splen)", uzbek: "Taloq" },
-      { latin: "Pancreas", uzbek: "Oshqozon osti bezi" },
-      { latin: "Vesica biliaris", uzbek: "O't pufagi" },
-      { latin: "Intestinum tenue", uzbek: "Ingichka ichak" },
-      { latin: "Intestinum crassum", uzbek: "Yo'g'on ichak" },
-      { latin: "Esophagus", uzbek: "Qizilo'ngach" },
-      { latin: "Trachea", uzbek: "Traxeya" },
-      { latin: "Larynx", uzbek: "Hiqildoq" },
-      { latin: "Pharynx", uzbek: "Halqum" },
-      { latin: "Glandula thyroidea", uzbek: "Qalqonsimon bez" },
-      { latin: "Thymus", uzbek: "Ayrisimon bez" },
-      { latin: "Ureter", uzbek: "Siydik yo'li" },
-      { latin: "Vesica urinaria", uzbek: "Siydik pufagi" },
-      { latin: "Urethra", uzbek: "Siydik chiqarish kanali" },
-
-      // Skeletal System
-      { latin: "Os", uzbek: "Suyak" },
-      { latin: "Skeleton", uzbek: "Skelet" },
-      { latin: "Vertebra", uzbek: "Umurtqa" },
-      { latin: "Columna vertebralis", uzbek: "Umurtqa pog'onasi" },
-      { latin: "Costa", uzbek: "Qovurg'a" },
-      { latin: "Sternum", uzbek: "To'sh suyagi" },
-      { latin: "Cranium", uzbek: "Kalla" },
-      { latin: "Os frontale", uzbek: "Peshona suyagi" },
-      { latin: "Os parietale", uzbek: "Tepa suyagi" },
-      { latin: "Os temporale", uzbek: "Chakka suyagi" },
-      { latin: "Os occipitale", uzbek: "Ensa suyagi" },
-      { latin: "Os sphenoidale", uzbek: "Asosiy (ponasimon) suyak" },
-      { latin: "Os ethmoidale", uzbek: "G'alvirsimon suyak" },
-      { latin: "Maxilla", uzbek: "Yuqori jag'" },
-      { latin: "Mandibula", uzbek: "Pastki jag'" },
-      { latin: "Os zygomaticum", uzbek: "Yonoq suyagi" },
-      { latin: "Os nasale", uzbek: "Burun suyagi" },
-      { latin: "Os lacrimale", uzbek: "Ko'z yosh suyagi" },
-      { latin: "Vomer", uzbek: "Dimog' suyagi" },
-      { latin: "Scapula", uzbek: "Kurak suyagi" },
-      { latin: "Clavicula", uzbek: "O'mrov suyagi" },
-      { latin: "Humerus", uzbek: "Yelka suyagi" },
-      { latin: "Radius", uzbek: "Bilak suyagi" },
-      { latin: "Ulna", uzbek: "Tirsak suyagi" },
-      { latin: "Ossa carpi", uzbek: "Kaft usti suyaklari" },
-      { latin: "Ossa metacarpi", uzbek: "Kaft suyaklari" },
-      { latin: "Phalanges", uzbek: "Barmoq suyaklari" },
-      { latin: "Os coxae", uzbek: "Chanoq suyagi" },
-      { latin: "Os ilium", uzbek: "Yonbosh suyak" },
-      { latin: "Os ischii", uzbek: "O'tirg'ich suyagi" },
-      { latin: "Os pubis", uzbek: "Qov suyagi" },
-      { latin: "Femur", uzbek: "Son suyagi" },
-      { latin: "Patella", uzbek: "Tizza qopqog'i" },
-      { latin: "Tibia", uzbek: "Katta boldir suyagi" },
-      { latin: "Fibula", uzbek: "Kichik boldir suyagi" },
-      { latin: "Ossa tarsi", uzbek: "Oyoq kaft usti suyaklari" },
-      { latin: "Talus", uzbek: "Oshiq suyak" },
-      { latin: "Calcaneus", uzbek: "Tovon suyagi" },
-
-      // Nervous System
-      { latin: "Systema nervosum", uzbek: "Asab tizimi" },
-      { latin: "Encephalon", uzbek: "Bosh miya" },
-      { latin: "Cerebrum", uzbek: "Katta miya" },
-      { latin: "Cerebellum", uzbek: "Miyacha" },
-      { latin: "Medulla oblongata", uzbek: "Uzunchoq miya" },
-      { latin: "Pons", uzbek: "Ko'prik" },
-      { latin: "Mesencephalon", uzbek: "O'rta miya" },
-      { latin: "Diencephalon", uzbek: "Oraliq miya" },
-      { latin: "Thalamus", uzbek: "Ko'rish do'mboqlari" },
-      { latin: "Hypothalamus", uzbek: "Gipotalamus" },
-      { latin: "Medulla spinalis", uzbek: "Orqa miya" },
-      { latin: "Nervus", uzbek: "Asab" },
-      { latin: "Nervus opticus", uzbek: "Ko'ruv asabi" },
-      { latin: "Nervus vagus", uzbek: "Adashgan asab" },
-      { latin: "Nervus ischiadicus", uzbek: "O'tirg'ich asabi" },
-      { latin: "Plexus", uzbek: "Chigal" },
-      { latin: "Ganglion", uzbek: "Tugun" },
-
-      // Cardiovascular System
-      { latin: "Arteria", uzbek: "Arteriya" },
-      { latin: "Vena", uzbek: "Vena" },
-      { latin: "Vas", uzbek: "Qon tomir" },
-      { latin: "Aorta", uzbek: "Aorta" },
-      { latin: "Atrium", uzbek: "Yurak bo'lmachasi" },
-      { latin: "Ventriculus cordis", uzbek: "Yurak qorinchasi" },
-      { latin: "Valvula", uzbek: "Klapan" },
-      { latin: "Endocardium", uzbek: "Yurak ichki pardasi" },
-      { latin: "Myocardium", uzbek: "Yurak mushak pardasi" },
-      { latin: "Pericardium", uzbek: "Yurak oldi xaltasi" },
-      { latin: "Capillare", uzbek: "Kapilyar" },
-
-      // Muscular System
-      { latin: "Musculus", uzbek: "Mushak" },
-      { latin: "Tendo", uzbek: "Pay" },
-      { latin: "Fascia", uzbek: "Fastsiya" },
-      { latin: "Musculus biceps brachii", uzbek: "Yelkaning ikki boshli mushagi" },
-      { latin: "Musculus triceps brachii", uzbek: "Yelkaning uch boshli mushagi" },
-      { latin: "Musculus pectoralis major", uzbek: "Katta ko'krak mushagi" },
-      { latin: "Musculus deltoideus", uzbek: "Deltoidsimon mushak" },
-      { latin: "Musculus rectus abdominis", uzbek: "Qorinning to'g'ri mushagi" },
-      { latin: "Musculus gluteus maximus", uzbek: "Katta dumba mushagi" },
-      { latin: "Diaphragma", uzbek: "Diafragma" },
-
-      // General Terms
-      { latin: "Anatomia", uzbek: "Anatomiya" },
-      { latin: "Physiologia", uzbek: "Fiziologiya" },
-      { latin: "Corpus", uzbek: "Tana" },
-      { latin: "Organum", uzbek: "A'zo" },
-      { latin: "Pars", uzbek: "Qism" },
-      { latin: "Basis", uzbek: "Asos" },
-      { latin: "Apex", uzbek: "Uchi" },
-      { latin: "Canalis", uzbek: "Kanal" },
-      { latin: "Cavitas", uzbek: "Bo'shliq" },
-      { latin: "Foramen", uzbek: "Teshik" },
-      { latin: "Fossa", uzbek: "Chuqurcha" },
-      { latin: "Processus", uzbek: "O'simta" },
-      { latin: "Sulcus", uzbek: "Egat" },
-      { latin: "Spina", uzbek: "Qirra/O'simta" },
-      { latin: "Incisura", uzbek: "O'yiq" },
-      { latin: "Angulus", uzbek: "Burchak" },
-      { latin: "Margo", uzbek: "Qirra" },
-      { latin: "Facies", uzbek: "Yuza/Yuz" },
-      { latin: "Linea", uzbek: "Chiziq" },
-      { latin: "Crista", uzbek: "Taroq" },
-      { latin: "Tuber", uzbek: "Do'mboq" },
-      { latin: "Tuberculum", uzbek: "Do'mboqcha" },
-
-      // Senses
-      { latin: "Oculus", uzbek: "Ko'z" },
-      { latin: "Retina", uzbek: "To'r parda" },
-      { latin: "Cornea", uzbek: "Shox parda" },
-      { latin: "Iris", uzbek: "Kamalak parda" },
-      { latin: "Pupilla", uzbek: "Qorachiq" },
-      { latin: "Lens", uzbek: "Gavhar" },
-      { latin: "Auris", uzbek: "Quloq" },
-      { latin: "Tympanum", uzbek: "Nog'ora parda" },
-      { latin: "Cochlea", uzbek: "Chig'anoq" },
-      { latin: "Nasus", uzbek: "Burun" },
-      { latin: "Lingua", uzbek: "Til" },
-      { latin: "Cutis", uzbek: "Teri" },
-
-      // Digestion/Mouth
-      { latin: "Os (Oris)", uzbek: "Og'iz" },
-      { latin: "Labium", uzbek: "Lab" },
-      { latin: "Dens", uzbek: "Tish" },
-      { latin: "Palatum", uzbek: "Tanglay" },
-      { latin: "Uvula", uzbek: "Tilcha" },
-      { latin: "Gingiva", uzbek: "Milk" },
-      { latin: "Glandula parotidea", uzbek: "Quloq oldi so'lak bezi" },
-
-      // More bones/Joints
-      { latin: "Articulatio", uzbek: "Bo'g'im" },
-      { latin: "Capsula articularis", uzbek: "Bo'g'im xaltasi" },
-      { latin: "Ligamentum", uzbek: "Boylam" },
-      { latin: "Synovia", uzbek: "Bo'g'im ichki suyuqligi" },
-      { latin: "Meniscus", uzbek: "Menisk" },
-
-      // Medical terms
-      { latin: "Aura", uzbek: "Aura (sezish)" },
-      { latin: "Benignus", uzbek: "Xavfsiz" },
-      { latin: "Malignus", uzbek: "Xavfli" },
-      { latin: "Diagnosis", uzbek: "Tashxis" },
-      { latin: "Dolor", uzbek: "Og'riq" },
-      { latin: "Febris", uzbek: "Isitma" },
-      { latin: "Inflammatio", uzbek: "Yallig'lanish" },
-      { latin: "Infectio", uzbek: "Infeksiya" },
-      { latin: "Morbus", uzbek: "Kasallik" },
-      { latin: "Pus", uzbek: "Yiring" },
-      { latin: "Sanguis", uzbek: "Qon" },
-      { latin: "Urina", uzbek: "Siydik" },
-      { latin: "Vomitus", uzbek: "Qusish" },
-      { latin: "Vulnus", uzbek: "Jarohat" },
-      { latin: "Salus", uzbek: "Salomatlik" },
-      { latin: "Curatio", uzbek: "Davolash" },
-      { latin: "Remedium", uzbek: "Dori" },
-      { latin: "Chirurgia", uzbek: "Jarrohlik" },
-      { latin: "Medicus", uzbek: "Shifokor" },
-      { latin: "Aegrotus", uzbek: "Bemor" },
-      { latin: "Vita", uzbek: "Hayot" },
-      { latin: "Mors", uzbek: "O'lim" },
-      { latin: "Fractura", uzbek: "Sinish" },
-      { latin: "Luxatio", uzbek: "Chiqqan (bo'g'im)" },
-      { latin: "Vulnus sclopetarium", uzbek: "O'q tegish jarohati" },
-      { latin: "Symptoma", uzbek: "Belgi / Simptom" },
-      { latin: "Syndromum", uzbek: "Sindrom" },
-      { latin: "Therapia", uzbek: "Terapiya" },
-      { latin: "Sanatio", uzbek: "Sog'lomlashtirish" },
-      { latin: "Incisio", uzbek: "Kesish" },
-      { latin: "Excisio", uzbek: "Kesib tashlash" },
-      { latin: "Extractio", uzbek: "Tortib olish" },
-      { latin: "Punctio", uzbek: "Punksiya (teshib ko'rish)" },
-      { latin: "Regio", uzbek: "Soha" },
-      { latin: "Regio abdominalis", uzbek: "Qorin sohasi" },
-      { latin: "Regio cervicalis", uzbek: "Bo'yin sohasi" },
-      { latin: "Regio pectoralis", uzbek: "Ko'krak sohasi" },
-      { latin: "Spatium", uzbek: "Bo'shliq / Oraliq" },
-      { latin: "Tractus", uzbek: "Yo'l / Trakt" },
-      { latin: "Systema", uzbek: "Tizim" },
-      { latin: "Glandula", uzbek: "Bez" },
-      { latin: "Glandula submandibularis", uzbek: "Jag' osti so'lak bezi" },
-      { latin: "Glandula sublingualis", uzbek: "Til osti so'lak bezi" },
-      { latin: "Mesenterium", uzbek: "Muzarika (ichak tutqichi)" },
-      { latin: "Omentum", uzbek: "Charvi" },
-      { latin: "Duodenum", uzbek: "O'n ikki barmoqli ichak" },
-      { latin: "Jejunum", uzbek: "Och ichak" },
-      { latin: "Ileum", uzbek: "Yonbosh ichak" },
-      { latin: "Cecum", uzbek: "Ko'r ichak" },
-      { latin: "Appendix vermiformis", uzbek: "Chuvalchangsimon o'simta" },
-      { latin: "Colon", uzbek: "Chambar ichak" },
-      { latin: "Rectum", uzbek: "To'g'ri ichak" },
-      { latin: "Anus", uzbek: "Orqa chiqaruv teshigi" },
-      { latin: "Bronchus", uzbek: "Bronx" },
-      { latin: "Alveolus", uzbek: "Alveola" },
-      { latin: "Pleura visceralis", uzbek: "O'pka plevrasi" },
-      { latin: "Pleura parietalis", uzbek: "Devor plevrasi" },
-      { latin: "Mediastinum", uzbek: "Ko'ks oralig'i" },
-      // MORE BONES & PARTS
-      { latin: "Cranium cerebrale", uzbek: "Miya qutisi" },
-      { latin: "Cranium viscerale", uzbek: "Yuz qismi (kalla)" },
-      { latin: "Calvaria", uzbek: "Kalla gumbazi" },
-      { latin: "Basis cranii", uzbek: "Kalla asosi" },
-      { latin: "Os hyoideum", uzbek: "Til osti suyagi" },
-      { latin: "Ossicula auditus", uzbek: "Eshituv suyakchalari" },
-      { latin: "Malleus", uzbek: "Bolg'acha" },
-      { latin: "Incus", uzbek: "Sandoncha" },
-      { latin: "Stapes", uzbek: "Uzangicha" },
-      { latin: "Vertebrae cervicales", uzbek: "Bo'yin umurtqalari" },
-      { latin: "Vertebrae thoracicae", uzbek: "Ko'krak umurtqalari" },
-      { latin: "Vertebrae lumbales", uzbek: "Bel umurtqalari" },
-      { latin: "Vertebra sacralis", uzbek: "Dumg'aza umurtqasi" },
-      { latin: "Os sacrum", uzbek: "Dumg'aza suyagi" },
-      { latin: "Os coccygis", uzbek: "Dum suyagi" },
-      { latin: "Atlas", uzbek: "Atlant (I bo'yin umurtqasi)" },
-      { latin: "Axis", uzbek: "O'q umurtqa (II bo'yin umurtqasi)" },
-      { latin: "Vertebra prominens", uzbek: "Bo'rtib chiqqan umurtqa (VII)" },
-      { latin: "Corpus vertebrae", uzbek: "Umurtqa tanasi" },
-      { latin: "Arcus vertebrae", uzbek: "Umurtqa yoyi" },
-      { latin: "Pediculus arcus vertebrae", uzbek: "Umurtqa yoyi oyoqchasi" },
-      { latin: "Processus spinosus", uzbek: "Tikanli o'simta" },
-      { latin: "Processus transversus", uzbek: "Ko'ndalang o'simta" },
-      { latin: "Processus articularis", uzbek: "Bo'g'im o'simtasi" },
-      { latin: "Manubrium sterni", uzbek: "To'sh dastasi" },
-      { latin: "Corpus sterni", uzbek: "To'sh tanasi" },
-      { latin: "Processus xiphoideus", uzbek: "Qilichsimon o'simta" },
-      { latin: "Angulus sterni", uzbek: "To'sh burchagi" },
-      { latin: "Ossa digitorum", uzbek: "Barmoq suyaklari" },
-      { latin: "Phalanx proximalis", uzbek: "Proksimal falanga" },
-      { latin: "Phalanx media", uzbek: "O'rta falanga" },
-      { latin: "Phalanx distalis", uzbek: "Distal falanga" },
-      { latin: "Sesamoidea", uzbek: "Kunanjutsimon suyaklar" },
-      { latin: "Symphysis pubica", uzbek: "Qov simfizi" },
-      { latin: "Acetabulum", uzbek: "Urug'don kosasi" },
-      { latin: "Trochanter major", uzbek: "Katta ko'st" },
-      { latin: "Trochanter minor", uzbek: "Kichik ko'st" },
-      { latin: "Epicondylus", uzbek: "Bo'rtiq usti" },
-      { latin: "Condylus", uzbek: "Bo'rtiq" },
-      { latin: "Malleolus lateralis", uzbek: "Tashqi to'piq" },
-      { latin: "Malleolus medialis", uzbek: "Ichki to'piq" },
-      { latin: "Tuberositas", uzbek: "G'adir-budurlik" },
-
-      // MORE MUSCLES
-      { latin: "Musculus trapezius", uzbek: "Trapeziyasiimon mushak" },
-      { latin: "Musculus latissimus dorsi", uzbek: "Orqaning eng keng mushagi" },
-      { latin: "Musculus levator scapulae", uzbek: "Kurakni ko'taruvchi mushak" },
-      { latin: "Musculus rhomboideus", uzbek: "Rombisimon mushak" },
-      { latin: "Musculus serratus anterior", uzbek: "Oldingi tishsimon mushak" },
-      { latin: "Musculus obliquus externus", uzbek: "Qorinning tashqi qiyshiq mushagi" },
-      { latin: "Musculus obliquus internus", uzbek: "Qorinning ichki qiyshiq mushagi" },
-      { latin: "Musculus transversus abdominis", uzbek: "Qorinning ko'ndalang mushagi" },
-      { latin: "Musculus quadratus lumborum", uzbek: "Belning kvadrat mushagi" },
-      { latin: "Musculus psoas major", uzbek: "Katta bel mushagi" },
-      { latin: "Musculus iliaca", uzbek: "Yonbosh mushagi" },
-      { latin: "Musculus sartorius", uzbek: "Tikuvchi mushak" },
-      { latin: "Musculus quadriceps femoris", uzbek: "Sonning to'rt boshli mushagi" },
-      { latin: "Musculus gracilis", uzbek: "Nozik mushak" },
-      { latin: "Musculus gastrocnemius", uzbek: "Boldir mushagi" },
-      { latin: "Musculus soleus", uzbek: "Kambalasimon mushak" },
-      { latin: "Musculus tibialis anterior", uzbek: "Oldingi katta boldir mushagi" },
-      { latin: "Musculus masseter", uzbek: "Chaynov mushagi" },
-      { latin: "Musculus temporalis", uzbek: "Chakka mushagi" },
-      { latin: "Musculus orbicularis oculi", uzbek: "Ko'zning aylanma mushagi" },
-      { latin: "Musculus orbicularis oris", uzbek: "Og'izning aylanma mushagi" },
-      { latin: "Musculus buccinator", uzbek: "Lunj mushagi" },
-      { latin: "Platysma", uzbek: "Bo'yinning teri osti mushagi" },
-      { latin: "Musculus sternocleidomastoideus", uzbek: "To'sh-o'mrov-so'rg'ichsimon mushak" },
-
-      // MORE NERVOUS SYSTEM & BRAIN
-      { latin: "Nervi craniales", uzbek: "Kalla-miya asablari" },
-      { latin: "Nervus olfactorius (I)", uzbek: "Hid bilish asabi" },
-      { latin: "Nervus opticus (II)", uzbek: "Ko'ruv asabi" },
-      { latin: "Nervus oculomotorius (III)", uzbek: "Ko'zni harakatlantiruvchi asab" },
-      { latin: "Nervus trochlearis (IV)", uzbek: "G'altaksimon asab" },
-      { latin: "Nervus trigeminus (V)", uzbek: "Uchshoxli asab" },
-      { latin: "Nervus abducens (VI)", uzbek: "Uzoqlashtiruvchi asab" },
-      { latin: "Nervus facialis (VII)", uzbek: "Yuz asabi" },
-      { latin: "Nervus vestibulocochlearis (VIII)", uzbek: "Dahshiz-chig'anoq asabi" },
-      { latin: "Nervus glossopharyngeus (IX)", uzbek: "Til-halqum asabi" },
-      { latin: "Nervus vagus (X)", uzbek: "Adashgan asab" },
-      { latin: "Nervus accessorius (XI)", uzbek: "Qo'shimcha asab" },
-      { latin: "Nervus hypoglossus (XII)", uzbek: "Til osti asabi" },
-      { latin: "Substantia grisea", uzbek: "Kulrang modda" },
-      { latin: "Substantia alba", uzbek: "Oq modda" },
-      { latin: "Cortex cerebri", uzbek: "Miya po'stlog'i" },
-      { latin: "Gyrus", uzbek: "Egatchalar usti (qatlam)" },
-      { latin: "Sulcus centralis", uzbek: "Markaziy egat" },
-      { latin: "Lobus frontalis", uzbek: "Peshona bo'lagi" },
-      { latin: "Lobus parietalis", uzbek: "Tepa bo'lagi" },
-      { latin: "Lobus temporalis", uzbek: "Chakka bo'lagi" },
-      { latin: "Lobus occipitalis", uzbek: "Ensa bo'lagi" },
-      { latin: "Insula", uzbek: "Orolcha" },
-      { latin: "Corpus callosum", uzbek: "Qadoqsimon tana" },
-      { latin: "Fornix", uzbek: "Gumbaz" },
-      { latin: "Ventriculus lateralis", uzbek: "Yon qorincha" },
-      { latin: "Ventriculus tertius", uzbek: "Uchinchi qorincha" },
-      { latin: "Ventriculus quartus", uzbek: "To'rtinchi qorincha" },
-      { latin: "Aquaeductus mesencephali", uzbek: "O'rta miya suv yo'li" },
-      { latin: "Chiasma opticum", uzbek: "Ko'ruv asablari xochlashuvi" },
-      { latin: "Hypophysis (Glandula pituitaria)", uzbek: "Gipofiz" },
-      { latin: "Infundibulum", uzbek: "Voronka" },
-      { latin: "Corpus pineale (Epiphysis)", uzbek: "Epifiz (G'urrasimon tana)" },
-      { latin: "Arachnoidea mater", uzbek: "O'rgimchaksimon parda" },
-      { latin: "Dura mater", uzbek: "Qattiq parda" },
-      { latin: "Pia mater", uzbek: "Yumshoq parda" },
-      { latin: "Spatium subarachnoideum", uzbek: "O'rgimchak to'ri osti bo'shlig'i" },
-      { latin: "Liquor cerebrospinalis", uzbek: "Miya-orqa miya suyuqligi" },
-
-      // MORE SPLANCHNOLOGY (Internal Organs)
-      { latin: "Isthmus faucium", uzbek: "Halqum torbog'i" },
-      { latin: "Tonsilla palatina", uzbek: "Tanglay murtagi" },
-      { latin: "Pylorus", uzbek: "Me'da chiqish qismi" },
-      { latin: "Cardia", uzbek: "Me'da kirish qismi" },
-      { latin: "Fundus ventriculi", uzbek: "Me'da tubi" },
-      { latin: "Curvatura major", uzbek: "Katta egirlik" },
-      { latin: "Curvatura minor", uzbek: "Kichik egirlik" },
-      { latin: "Plicae gastricae", uzbek: "Me'da burmalari" },
-      { latin: "Ductus choledochus", uzbek: "Umumiy o't yo'li" },
-      { latin: "Ductus hepaticus communis", uzbek: "Umumiy jigar yo'li" },
-      { latin: "Ductus cysticus", uzbek: "O't pufagi yo'li" },
-      { latin: "Porta hepatis", uzbek: "Jigar darvozasi" },
-      { latin: "Lobus dexter hepatis", uzbek: "Jigarning o'ng bo'lagi" },
-      { latin: "Lobus sinister hepatis", uzbek: "Jigarning chap bo'lagi" },
-      { latin: "Ductus pancreaticus", uzbek: "Oshqozon osti bezi yo'li" },
-      { latin: "Cauda pancreatis", uzbek: "Oshqozon osti bezi dumi" },
-      { latin: "Caput pancreatis", uzbek: "Oshqozon osti bezi boshi" },
-      { latin: "Pelvis renalis", uzbek: "Buyrak jomi" },
-      { latin: "Calyx renalis", uzbek: "Buyrak kosachasi" },
-      { latin: "Cortex renalis", uzbek: "Buyrak po'stloq moddasi" },
-      { latin: "Medulla renalis", uzbek: "Buyrak mag'iz moddasi" },
-      { latin: "Nephron", uzbek: "Nefron" },
-      { latin: "Ovarium", uzbek: "Tuxumdon" },
-      { latin: "Tuba uterina", uzbek: "Bachadon nayi" },
-      { latin: "Uterus", uzbek: "Bachadon" },
-      { latin: "Cervix uteri", uzbek: "Bachadon bo'yni" },
-      { latin: "Vagina", uzbek: "Qin" },
-      { latin: "Testis", uzbek: "Moyak" },
-      { latin: "Epididymis", uzbek: "Moyak ortig'i" },
-      { latin: "Prostata", uzbek: "Prostata bezi" },
-      { latin: "Scrotum", uzbek: "Yorg'oq" },
-      { latin: "Penis", uzbek: "Olat" },
-      { latin: "Urethra masculina", uzbek: "Erkaklar siydik chiqarish kanali" },
-      { latin: "Urethra feminina", uzbek: "Ayollar siydik chiqarish kanali" },
-
-      // MORE ANGIOLOGY (Vessels)
-      { latin: "Arteria carotis communis", uzbek: "Umumiy uyqu arteriyasi" },
-      { latin: "Arteria carotis externa", uzbek: "Tashqi uyqu arteriyasi" },
-      { latin: "Arteria carotis interna", uzbek: "Ichki uyqu arteriyasi" },
-      { latin: "Arteria subclavia", uzbek: "O'mrov osti arteriyasi" },
-      { latin: "Arteria axillaris", uzbek: "Qo'ltiq osti arteriyasi" },
-      { latin: "Arteria brachialis", uzbek: "Yelka arteriyasi" },
-      { latin: "Arteria radialis", uzbek: "Bilak arteriyasi" },
-      { latin: "Arteria ulnaris", uzbek: "Tirsak arteriyasi" },
-      { latin: "Artois abdominalis", uzbek: "Qorin aortasi" },
-      { latin: "Arteria iliaca communis", uzbek: "Umumiy yonbosh arteriyasi" },
-      { latin: "Arteria femoralis", uzbek: "Son arteriyasi" },
-      { latin: "Arteria poplitea", uzbek: "Tizza osti arteriyasi" },
-      { latin: "Arteria tibialis anterior", uzbek: "Oldingi katta boldir arteriyasi" },
-      { latin: "Arteria tibialis posterior", uzbek: "Orqa katta boldir arteriyasi" },
-      { latin: "Vena cava superior", uzbek: "Yuqori kavak vena" },
-      { latin: "Vena cava inferior", uzbek: "Pastki kavak vena" },
-      { latin: "Vena portae", uzbek: "Darvoza venasi" },
-      { latin: "Vena jugularis", uzbek: "Bo'yinturuq venasi" },
-      { latin: "Vena saphena magna", uzbek: "Oyoqning katta teri osti venasi" },
-      { latin: "Circulus arteriosus cerebri", uzbek: "Miyaning arterial doirasi" },
-
-      // MORE GENERAL ANATOMICAL ADJECTIVES
-      { latin: "Longus", uzbek: "Uzun" },
-      { latin: "Brevis", uzbek: "Kalta" },
-      { latin: "Magnus", uzbek: "Katta" },
-      { latin: "Parvus", uzbek: "Kichik" },
-      { latin: "Major", uzbek: "Kattaroq" },
-      { latin: "Minor", uzbek: "Kichikroq" },
-      { latin: "Maximus", uzbek: "Eng katta" },
-      { latin: "Minimus", uzbek: "Eng kichik" },
-      { latin: "Longissimus", uzbek: "Eng uzun" },
-      { latin: "Latissimus", uzbek: "Eng keng" },
-      { latin: "Obliquus", uzbek: "Qiyshiq" },
-      { latin: "Transversus", uzbek: "Ko'ndalang" },
-      { latin: "Rectus", uzbek: "To'g'ri" },
-      { latin: "Serratus", uzbek: "Tishsimon" },
-      { latin: "Orbicularis", uzbek: "Aylanma" },
-      { latin: "Quadratus", uzbek: "Kvadrat" },
-      { latin: "Deltoideus", uzbek: "Deltoidsimon" },
-      { latin: "Rhomboideus", uzbek: "Rombisimon" },
-      { latin: "Gracilis", uzbek: "Nozik" },
-      { latin: "Sartorius", uzbek: "Tikuvchi" },
-      { latin: "Biceps", uzbek: "Ikki boshli" },
-      { latin: "Triceps", uzbek: "Uch boshli" },
-      { latin: "Quadriceps", uzbek: "To'rt boshli" },
-      { latin: "Profundus", uzbek: "Chuqur" },
-      { latin: "Superficialis", uzbek: "Yuzaki" },
-      { latin: "Internus", uzbek: "Ichki" },
-      { latin: "Externus", uzbek: "Tashqi" },
-      { latin: "Medius", uzbek: "O'rta" },
-      { latin: "Intermedius", uzbek: "O'rtadagi" },
-
-      // MORE MEDICAL/CLINICAL
-      { latin: "Abscessus", uzbek: "Abssess (yiringlash)" },
-      { latin: "Acne", uzbek: "Husnbuzar" },
-      { latin: "Acute", uzbek: "O'tkir" },
-      { latin: "Chronicus", uzbek: "Surunkali" },
-      { latin: "Anemia", uzbek: "Kamqonlik" },
-      { latin: "Aneurysma", uzbek: "Anevrizma" },
-      { latin: "Angina", uzbek: "Bo'g'ilish (angina)" },
-      { latin: "Apnoe", uzbek: "Nafas to'xtashi" },
-      { latin: "Arrhythmia", uzbek: "Aritmiya" },
-      { latin: "Asphyxia", uzbek: "Asfiksiya" },
-      { latin: "Asthma", uzbek: "Astma" },
-      { latin: "Atrophia", uzbek: "Atrofiya" },
-      { latin: "Bronchitis", uzbek: "Bronxit" },
-      { latin: "Carcinoma", uzbek: "Saratonga oid o'sma" },
-      { latin: "Carditis", uzbek: "Yurak yallig'lanishi" },
-      { latin: "Cataracta", uzbek: "Katarakta" },
-      { latin: "Colitis", uzbek: "Yo'g'on ichak yallig'lanishi" },
-      { latin: "Coma", uzbek: "Koma" },
-      { latin: "Commotio", uzbek: "Chayqalish" },
-      { latin: "Congenitus", uzbek: "Tug'ma" },
-      { latin: "Contusio", uzbek: "Lat yeyish" },
-      { latin: "Cystis", uzbek: "Kista" },
-      { latin: "Diabetes", uzbek: "Diabet" },
-      { latin: "Diarrhoea", uzbek: "Ichi ketish" },
-      { latin: "Eczema", uzbek: "Ekzema" },
-      { latin: "Embolia", uzbek: "Emboliya" },
-      { latin: "Emphysema", uzbek: "Emfizema" },
-      { latin: "Encephalitis", uzbek: "Miya yallig'lanishi" },
-      { latin: "Epilepsia", uzbek: "Tutqanoq" },
-      { latin: "Erythema", uzbek: "Eritema" },
-      { latin: "Gastritis", uzbek: "Oshqozon yallig'lanishi" },
-      { latin: "Glaucoma", uzbek: "Glaukoma" },
-      { latin: "Haemorrhagia", uzbek: "Qon ketishi" },
-      { latin: "Hepatitis", uzbek: "Jigar yallig'lanishi" },
-      { latin: "Hernia", uzbek: "Churra" },
-      { latin: "Hypertensio", uzbek: "Qon bosimi oshishi" },
-      { latin: "Hypotensio", uzbek: "Qon bosimi tushishi" },
-      { latin: "Icterus", uzbek: "Sariqlik" },
-      { latin: "Infarctus", uzbek: "Infarkt" },
-      { latin: "Insultus", uzbek: "Insult" },
-      { latin: "Ischaemia", uzbek: "Ishomiya" },
-      { latin: "Neoplasma", uzbek: "O'sma (yangi hosila)" },
-      { latin: "Oedema", uzbek: "Shish" },
-      { latin: "Osteoporosis", uzbek: "Suyak mo'rtlashishi" },
-      { latin: "Otitis", uzbek: "Quloq yallig'lanishi" },
-      { latin: "Paralysis", uzbek: "Shol" },
-      { latin: "Paresis", uzbek: "Parez" },
-      { latin: "Peritonitis", uzbek: "Qorin pardasi yallig'lanishi" },
-      { latin: "Pneumonia", uzbek: "Zotiljam" },
-      { latin: "Rhinitis", uzbek: "Tumov (burun yallig'lanishi)" },
-      { latin: "Sclerosis", uzbek: "Skleroz" },
-      { latin: "Sepsis", uzbek: "Qon zaharlanishi" },
-      { latin: "Shock", uzbek: "Shok" },
-      { latin: "Spasmus", uzbek: "Tomir tortishishi" },
-      { latin: "Stenosis", uzbek: "Torayish" },
-      { latin: "Stomatitis", uzbek: "Og'iz yallig'lanishi" },
-      { latin: "Thrombosis", uzbek: "Tromboz" },
-      { latin: "Trauma", uzbek: "Jarohat" },
-      { latin: "Tumor", uzbek: "O'sma" },
-      { latin: "Ulcus", uzbek: "Yara" },
-      { latin: "Varix", uzbek: "Varikoz" },
-      // MORE OSTEOLOGY & JOINTS
-      { latin: "Gomphosis", uzbek: "Mixsimon birikish (tish)" },
-      { latin: "Schindylesis", uzbek: "Yoriqli birikish" },
-      { latin: "Sutura serrata", uzbek: "Arrasimon chok" },
-      { latin: "Sutura squamosa", uzbek: "Tangachalik chok" },
-      { latin: "Sutura plana", uzbek: "Tekis chok" },
-      { latin: "Synchondrosis", uzbek: "Tog'ayli birikish" },
-      { latin: "Synostosis", uzbek: "Suyakli birikish" },
-      { latin: "Syndesmosis", uzbek: "Boylamli birikish" },
-      { latin: "Articulatio plana", uzbek: "Tekis bo'g'im" },
-      { latin: "Articulatio sphaeroidea", uzbek: "Sharsimon bo'g'im" },
-      { latin: "Articulatio ellipsoidea", uzbek: "Ellipssimon bo'g'im" },
-      { latin: "Articulatio sellaris", uzbek: "Egarsimon bo'g'im" },
-      { latin: "Articulatio trochoidea", uzbek: "G'ildiraksimon bo'g'im" },
-      { latin: "Articulatio ginglymus", uzbek: "G'altaksimon bo'g'im" },
-      { latin: "Articulatio bicondylaris", uzbek: "Ikki bo'rtikli bo'g'im" },
-      { latin: "Enarthrosis", uzbek: "Yong'oqsimon bo'g'im" },
-      { latin: "Labrum articulare", uzbek: "Bo'g'im labi" },
-      { latin: "Discus articularis", uzbek: "Bo'g'im diski" },
-      { latin: "Bursa synovialis", uzbek: "Sinovial xalta" },
-      { latin: "Vagina synovialis", uzbek: "Sinovial qin" },
-
-      // MORE MYOLOGY (Muscles of limbs)
-      { latin: "Musculus coracobrachialis", uzbek: "Tumshug'simon-yelka mushagi" },
-      { latin: "Musculus brachialis", uzbek: "Yelka mushagi" },
-      { latin: "Musculus brachioradialis", uzbek: "Yelka-bilak mushagi" },
-      { latin: "Musculus supinator", uzbek: "Supinator (tashqariga buruvchi)" },
-      { latin: "Musculus pronator teres", uzbek: "Yumaloq pronator" },
-      { latin: "Musculus pronator quadratus", uzbek: "Kvadrat pronator" },
-      { latin: "Musculus flexor carpi radialis", uzbek: "Bilakning bilak bukchisi" },
-      { latin: "Musculus flexor carpi ulnaris", uzbek: "Bilakning tirsak bukchisi" },
-      { latin: "Musculus palmaris longus", uzbek: "Kaftning uzun mushagi" },
-      { latin: "Musculus flexor digitorum superficialis", uzbek: "Barmoqlarning yuzaki bukchisi" },
-      { latin: "Musculus flexor digitorum profundus", uzbek: "Barmoqlarning chuqur bukchisi" },
-      { latin: "Musculus extensor carpi radialis longus", uzbek: "Bilakning uzun bilak yozuvchisi" },
-      { latin: "Musculus extensor digitorum", uzbek: "Barmoqlarning yozuvchi mushagi" },
-      { latin: "Musculus extensor indicis", uzbek: "Ko'rsatkich barmoq yozuvchisi" },
-      { latin: "Musculus abductor pollicis longus", uzbek: "Bosh barmoqni uzoqlashtiruvchi uzun mushak" },
-      { latin: "Musculus adductor magnus", uzbek: "Katta yaqinlashtiruvchi mushak" },
-      { latin: "Musculus obturatorius", uzbek: "Yopuvchi mushak" },
-      { latin: "Musculus piriformis", uzbek: "Noksimon mushak" },
-      { latin: "Musculus pectineus", uzbek: "Taroqsimon mushak" },
-      { latin: "Musculus semitendinosus", uzbek: "Yarim payli mushak" },
-      { latin: "Musculus semimembranosus", uzbek: "Yarim pardali mushak" },
-      { latin: "Musculus biceps femoris", uzbek: "Sonning ikki boshli mushagi" },
-      { latin: "Musculus popliteus", uzbek: "Tizza osti mushagi" },
-      { latin: "Musculus plantaris", uzbek: "Oyoq kafti mushagi" },
-
-      // MORE SPLANCHNOLOGY (Organs)
-      { latin: "Vestibulum oris", uzbek: "Og'iz dahlizi" },
-      { latin: "Cavitas oris propria", uzbek: "Xususiy og'iz bo'shlig'i" },
-      { latin: "Papilla vallata", uzbek: "Novsimon so'rg'ich" },
-      { latin: "Papilla fungiformis", uzbek: "Qo'ziqorinman so'rg'ich" },
-      { latin: "Papilla filiformis", uzbek: "Ipsimon so'rg'ich" },
-      { latin: "Papilla foliata", uzbek: "Bargsmon so'rg'ich" },
-      { latin: "Vallecula epiglottica", uzbek: "Hiqildoq usti chuqurchasi" },
-      { latin: "Plica vocalis", uzbek: "Ovoz burmasi" },
-      { latin: "Rima glottidis", uzbek: "Ovoz yorig'i" },
-      { latin: "Cartilago thyroidea", uzbek: "Qalqonsimon tog'ay" },
-      { latin: "Cartilago cricoidea", uzbek: "Uzuksimon tog'ay" },
-      { latin: "Cartilago epiglottica", uzbek: "Hiqildoq usti tog'ayi" },
-      { latin: "Cartilago arytenoidea", uzbek: "Cho'michsimon tog'ay" },
-      { latin: "Bronchus principalis", uzbek: "Asosiy bronx" },
-      { latin: "Bronchiolus", uzbek: "Bronxiola" },
-      { latin: "Hilum pulmonis", uzbek: "O'pka darvozasi" },
-      { latin: "Basis pulmonis", uzbek: "O'pka asosi" },
-      { latin: "Apex pulmonis", uzbek: "O'pka uchi" },
-      { latin: "Fissura obliqua", uzbek: "Qiyshiq yoriq" },
-      { latin: "Fissura horisontalis", uzbek: "Gorizontal yoriq" },
-      { latin: "Lobulus", uzbek: "Bo'lakcha" },
-      { latin: "Segments bronchopulmonalia", uzbek: "Bronx-o'pka segmentlari" },
-      { latin: "Medulla", uzbek: "Mag'iz/Miye" },
-      { latin: "Pelvis major", uzbek: "Katta chanoq" },
-      { latin: "Pelvis minor", uzbek: "Kichik chanoq" },
-      { latin: "Inlet", uzbek: "Kirish" },
-      { latin: "Outlet", uzbek: "Chiqish" },
-      { latin: "Excavatio rectouterina (Douglas)", uzbek: "To'g'ri ichak-bachadon chuqurchasi" },
-      { latin: "Excavatio vesicouterina", uzbek: "Qovuq-bachadon chuqurchasi" },
-      { latin: "Parametrium", uzbek: "Bachadon atrofidagi kletchatka" },
-      { latin: "Perimetrium", uzbek: "Bachadonning seroz pardasi" },
-      { latin: "Myometrium", uzbek: "Bachadonning mushak pardasi" },
-      { latin: "Endometrium", uzbek: "Bachadonning ichki shilliq pardasi" },
-      { latin: "Ostitis", uzbek: "Suyak yallig'lanishi" },
-      { latin: "Orchitis", uzbek: "Moyak yallig'lanishi" },
-      { latin: "Salpingitis", uzbek: "Bachadon nayi yallig'lanishi" },
-      { latin: "Nephritis", uzbek: "Buyrak yallig'lanishi" },
-      { latin: "Cystitis", uzbek: "Qovuq yallig'lanishi" },
-
-      // NEUROLOGY extra
-      { latin: "Nervus phrenicus", uzbek: "Diafragma asabi" },
-      { latin: "Nervus medianus", uzbek: "O'rta asab" },
-      { latin: "Nervus ulnaris", uzbek: "Tirsak asabi" },
-      { latin: "Nervus radialis", uzbek: "Bilak asabi" },
-      { latin: "Nervus femoralis", uzbek: "Son asabi" },
-      { latin: "Nervus tibialis", uzbek: "Katta boldir asabi" },
-      { latin: "Nervus peroneus communis", uzbek: "Umumiy kichik boldir asabi" },
-      { latin: "Nervus saphenus", uzbek: "Teri osti asabi" },
-      { latin: "Plexus cervicalis", uzbek: "Bo'yin chigali" },
-      { latin: "Plexus brachialis", uzbek: "Yelka chigali" },
-      { latin: "Plexus lumbalis", uzbek: "Bel chigali" },
-      { latin: "Plexus sacralis", uzbek: "Dumg'aza chigali" },
-      { latin: "Truncus sympathicus", uzbek: "Simpatik poya" },
-      { latin: "Rami communicantes", uzbek: "Bog'lovchi shoxlar" },
-
-      // SENSES extra
-      { latin: "Sclera", uzbek: "Sklera (oq parda)" },
-      { latin: "Choroidea", uzbek: "Xususiy tomirli parda" },
-      { latin: "Corpus ciliare", uzbek: "Siliar (kipriksimon) tana" },
-      { latin: "Chamber anterior", uzbek: "Oldingi kamera" },
-      { latin: "Chamber posterior", uzbek: "Orqa kamera" },
-      { latin: "Humor vitreus", uzbek: "Shishasimon tana" },
-      { latin: "Coniunctiva", uzbek: "Kon'yunktiva" },
-      { latin: "Palpebra", uzbek: "Qovoq" },
-      { latin: "Glandula lacrimalis", uzbek: "Ko'z yosh bezi" },
-      { latin: "Auricula", uzbek: "Quloq suprasi" },
-      { latin: "Meatus acusticus externus", uzbek: "Tashqi eshituv yo'li" },
-      { latin: "Meatus acusticus internus", uzbek: "Ichki eshituv yo'li" },
-      { latin: "Tuba auditiva (Eustachii)", uzbek: "Eshituv nayi" },
-      { latin: "Semicircular canals", uzbek: "Yarim doira kanallar" },
-      { latin: "Vestibulum", uzbek: "Dahliz" },
-
-      // ANATOMICAL REGIONS
-      { latin: "Regio capitis", uzbek: "Bosh sohasi" },
-      { latin: "Regio facialis", uzbek: "Yuz sohasi" },
-      { latin: "Regio orbitalis", uzbek: "Ko'z kosasi sohasi" },
-      { latin: "Regio nasalis", uzbek: "Burun sohasi" },
-      { latin: "Regio oralis", uzbek: "Og'iz sohasi" },
-      { latin: "Regio mentalis", uzbek: "Iyak sohasi" },
-      { latin: "Regio buccalis", uzbek: "Lunj sohasi" },
-      { latin: "Regio parotideomasseterica", uzbek: "Quloq oldi-chaynov sohasi" },
-      { latin: "Regio axillaris", uzbek: "Qo'ltiq osti sohasi" },
-      { latin: "Regio inguinalis", uzbek: "Chov sohasi" },
-      { latin: "Regio perinealis", uzbek: "Oraliq sohasi" },
-      { latin: "Regio glutealis", uzbek: "Dumba sohasi" },
-      { latin: "Regio poplitea", uzbek: "Tizza osti sohasi" },
-
-      // DESCRIPTORS (Colors, Shapes)
-      { latin: "Albus", uzbek: "Oq" },
-      { latin: "Griseus", uzbek: "Kulrang" },
-      { latin: "Niger", uzbek: "Qora" },
-      { latin: "Ruber", uzbek: "Qizil" },
-      { latin: "Flavus", uzbek: "Sariq" },
-      { latin: "Caeruleus", uzbek: "Ko'k" },
-      { latin: "Rotundus", uzbek: "Yumaloq" },
-      { latin: "Oualis", uzbek: "Oval" },
-      { latin: "Triangularis", uzbek: "Uchburchak" },
-      { latin: "Piriformis", uzbek: "Noksimon" },
-      { latin: "Cruciatus", uzbek: "Xochsimon" },
-      { latin: "Stellatus", uzbek: "Yulduzsimon" },
-      { latin: "Semilunaris", uzbek: "Yarim oysimon" },
-
-      // ADDITIONAL MEDICAL
-      { latin: "Amnesia", uzbek: "Xotira yo'qolishi" },
-      { latin: "Anasarca", uzbek: "Umumiy shish" },
-      { latin: "Ascites", uzbek: "Qorin istisqosi" },
-      { latin: "Cachexia", uzbek: "Ozib ketish (kaxeksiya)" },
-      { latin: "Cyanosis", uzbek: "Ko'karish" },
-      { latin: "Dyspnoe", uzbek: "Hansirash" },
-      { latin: "Edema", uzbek: "Shish" },
-      { latin: "Emesis", uzbek: "Qusish" },
-      { latin: "Exitus letalis", uzbek: "O'lim bilan yakunlanish" },
-      { latin: "Fibrosis", uzbek: "Fibroz" },
-      { latin: "Gagangraena", uzbek: "Gangrena" },
-      { latin: "Hernia inguinalis", uzbek: "Chov churrasi" },
-      { latin: "Hypertrophia", uzbek: "Gipertrofiya" },
-      { latin: "Metastasis", uzbek: "Metastaz" },
-      { latin: "Necrosis", uzbek: "Nekroz (o'lish)" },
-      { latin: "Phlebitis", uzbek: "Vena yallig'lanishi" },
-      { latin: "Polyuria", uzbek: "Ko'p siydik chiqishi" },
-      { latin: "Prognosis", uzbek: "Prognoz" },
-      { latin: "Recidivus", uzbek: "Qaytalanish (retsidiv)" },
-      { latin: "Remissio", uzbek: "Vaqtincha yaxshilanish" },
-      { latin: "Spasmus", uzbek: "Spazm" },
-      { latin: "Tachycardia", uzbek: "Yurak tez urishi" },
-      { latin: "Tremor", uzbek: "Qaltiroq" },
-      // MORE PREFIXES & SUFFIXES (Very useful as terms)
-      { latin: "A- / An-", uzbek: "Yo'qlikni bildiruvchi qo'shimcha" },
-      { latin: "Hyper-", uzbek: "Me'yoridan ortiq" },
-      { latin: "Hypo-", uzbek: "Me'yoridan kam" },
-      { latin: "Peri-", uzbek: "Atrofida" },
-      { latin: "Endo-", uzbek: "Ichida" },
-      { latin: "Epi-", uzbek: "Tepasida" },
-      { latin: "Para-", uzbek: "Yonida" },
-      { latin: "Anti-", uzbek: "Qarshi" },
-      { latin: "Auto-", uzbek: "-o'zi" },
-      { latin: "Bi-", uzbek: "Ikki" },
-      { latin: "Tri-", uzbek: "Uch" },
-      { latin: "Multi-", uzbek: "Ko'p" },
-      { latin: "Poly-", uzbek: "Ko'p" },
-      { latin: "Mono-", uzbek: "Bir" },
-      { latin: "Sub-", uzbek: "Ostida" },
-      { latin: "Supra-", uzbek: "Ustida" },
-      { latin: "Inter-", uzbek: "Orasida" },
-      { latin: "Intra-", uzbek: "Ichida (ichki)" },
-      { latin: "Extra-", uzbek: "Tashqarida" },
-      { latin: "Post-", uzbek: "Keyin" },
-      { latin: "Pre-", uzbek: "Oldin" },
-      { latin: "Pro-", uzbek: "Oldinga" },
-      { latin: "Retro-", uzbek: "Orqaga" },
-      { latin: "Trans-", uzbek: "Orqali" },
-      { latin: "-itis", uzbek: "Yallig'lanish qo'shimchasi" },
-      { latin: "-oma", uzbek: "O'sma qo'shimchasi" },
-      { latin: "-pathia", uzbek: "Kasallik qo'shimchasi" },
-      { latin: "-logia", uzbek: "Fan / Ta'limot" },
-      { latin: "-scopia", uzbek: "Ko'rish / Tekshirish" },
-      { latin: "-graphia", uzbek: "Yozish / Tasvirlash" },
-      { latin: "-tomia", uzbek: "Kesish" },
-      { latin: "-ectomia", uzbek: "Kesib olib tashlash" },
-      { latin: "-stomia", uzbek: "Teshik ochish" },
-
-      // MORE CLINICAL SPECIALTIES
-      { latin: "Cardiologia", uzbek: "Kardiologiya" },
-      { latin: "Neurologia", uzbek: "Nevrologiya" },
-      { latin: "Oncologia", uzbek: "Onkologiya" },
-      { latin: "Pediatria", uzbek: "Pediatriya" },
-      { latin: "Gynaecologia", uzbek: "Ginekologiya" },
-      { latin: "Obstetricia", uzbek: "Akusherlik" },
-      { latin: "Urologia", uzbek: "Urologiya" },
-      { latin: "Ophthalmologia", uzbek: "Oftalmologiya" },
-      { latin: "Otorhinolaryngologia", uzbek: "LOR (Quloq-burun-tomoq)" },
-      { latin: "Dermatologia", uzbek: "Dermatologiya" },
-      { latin: "Psychiatria", uzbek: "Psixiatriya" },
-      { latin: "Radiologia", uzbek: "Radiologiya" },
-      { latin: "Gastroenterologia", uzbek: "Gastroenterologiya" },
-      { latin: "Endocrinologia", uzbek: "Endokrinologiya" },
-
-      // MORE ANATOMICAL DETAILS (Hand/Foot)
-      { latin: "Carpus", uzbek: "Bilak usti" },
-      { latin: "Metacarpus", uzbek: "Bilak (kaft)" },
-      { latin: "Tarsus", uzbek: "To'piq usti" },
-      { latin: "Metatarsus", uzbek: "Oyoq kafti" },
-      { latin: "Os scaphoideum", uzbek: "Navisimon suyak" },
-      { latin: "Os lunatum", uzbek: "Oysimon suyak" },
-      { latin: "Os triquetrum", uzbek: "Uch qirrali suyak" },
-      { latin: "Os pisiforme", uzbek: "No'xatsimon suyak" },
-      { latin: "Os trapezium", uzbek: "Trapetsiya suyak" },
-      { latin: "Os trapezoideum", uzbek: "Trapetsiyasimon suyak" },
-      { latin: "Os capitatum", uzbek: "Boshli suyak" },
-      { latin: "Os hamatum", uzbek: "Ilgakli suyak" },
-      { latin: "Os naviculare", uzbek: "Qayiqsimon suyak" },
-      { latin: "Os cuneiforme", uzbek: "Ponasimon suyaklar" },
-      { latin: "Os cuboideum", uzbek: "Kubsimon suyak" },
-
-      // MORE SPLANCHNOLOGY (Internal)
-      { latin: "Serosa", uzbek: "Seroz parda" },
-      { latin: "Mucosa", uzbek: "Shilliq parda" },
-      { latin: "Muscularis", uzbek: "Mushak qavati" },
-      { latin: "Adventitia", uzbek: "Adventitsial parda" },
-      { latin: "Lumen", uzbek: "Bo'shliq / Kanal ichi" },
-      { latin: "Ostium", uzbek: "Teshik / Kirish joyi" },
-      { latin: "Sphincter", uzbek: "Sfimkter (siqib turuvchi)" },
-      { latin: "Glandula parotid", uzbek: "Quloq oldi bezi" },
-      { latin: "Glandula sublingualis", uzbek: "Til osti bezi" },
-      { latin: "Glandula submandibularis", uzbek: "Jag' osti bezi" },
-      { latin: "Secretio", uzbek: "Sekretsiya (ajralish)" },
-      { latin: "Hormonum", uzbek: "Gormon" },
-      { latin: "Insulina", uzbek: "Insulin" },
-      { latin: "Adrenalinum", uzbek: "Adrenalin" },
-
-      // MORE HEAD/NECK
-      { latin: "Scalp", uzbek: "Kallaning sochli qismi" },
-      { latin: "Vertex", uzbek: "Tepa" },
-      { latin: "Occiput", uzbek: "Ensa" },
-      { latin: "Frons", uzbek: "Peshona" },
-      { latin: "Tempora", uzbek: "Chakka" },
-      { latin: "Gena", uzbek: "Lunj" },
-      { latin: "Mentum", uzbek: "Iyak" },
-      { latin: "Bucca", uzbek: "Yanoq" },
-      { latin: "Supercilium", uzbek: "Qosh" },
-      { latin: "Cilium", uzbek: "Kiprik" },
-      { latin: "Vibrissae", uzbek: "Burun ichidagi tuklar" },
-      { latin: "Tragus", uzbek: "Quloq dahlizchasi" },
-
-      // REPRODUCTIVE DETAILED
-      { latin: "Spermatogenesis", uzbek: "Spermatogenez" },
-      { latin: "Ovulatio", uzbek: "Ovulyatsiya" },
-      { latin: "Placenta", uzbek: "Yo'ldosh" },
-      { latin: "Fetus", uzbek: "Homiya" },
-      { latin: "Embryo", uzbek: "Murtak" },
-      { latin: "Umbilicus", uzbek: "Kindik" },
-      { latin: "Funiculus umbilicalis", uzbek: "Kindik tizimchasi" },
-      { latin: "Liquor amnii", uzbek: "Homiya oldi suyuqligi" },
-
-      // MISC MEDICAL
-      { latin: "Injectio", uzbek: "Ukol / Inyeksiya" },
-      { latin: "Vaccina", uzbek: "Vaksina" },
-      { latin: "Serum", uzbek: "Zardob" },
-      { latin: "Antibioticum", uzbek: "Antibiotik" },
-      { latin: "Spasmus bronchi", uzbek: "Bronxosvazm" },
-      { latin: "Apoplexia", uzbek: "Apopleksiya (qon quyilishi)" },
-      { latin: "Ischias", uzbek: "Ishias (o'tirg'ich asabi og'rig'i)" },
-      { latin: "Lumbago", uzbek: "Lyumbago (bel og'rig'i)" },
-      { latin: "Neuralgia", uzbek: "Nevralgiya (asab og'rig'i)" },
-      { latin: "Polyneuritis", uzbek: "Ko'p asablar yallig'lanishi" },
-      { latin: "Encephalopathia", uzbek: "Ensefalopatiya" },
-      { latin: "Meningitis", uzbek: "Miya pardalari yallig'lanishi" },
-      { latin: "Myelitis", uzbek: "Orqa miya yallig'lanishi" },
-      { latin: "Radiculitis", uzbek: "Radikulit" },
-      { latin: "Anesthesia", uzbek: "Anesteziya (sezmaslik)" },
-      { latin: "Hyperesthesia", uzbek: "Sezuvchanlik oshishi" },
-      { latin: "Paresthesia", uzbek: "Sezuvchanlik buzilishi" },
-      { latin: "Agraphia", uzbek: "Yozish qobiliyati yo'qolishi" },
-      { latin: "Alexia", uzbek: "O'qish qobiliyati yo'qolishi" },
-      { latin: "Aphasia", uzbek: "Nutq buzilishi" },
-      { latin: "Ataxia", uzbek: "Harakat koordinatsiyasi buzilishi" },
-      { latin: "Hypokinesia", uzbek: "Harakat kamligi" },
-      { latin: "Rigiditas", uzbek: "Taranglik (tosh qotish)" },
-      // OSTEOLOGY DETAILED (Landmarks)
-      { latin: "Foramen magnum", uzbek: "Katta teshik (ensada)" },
-      { latin: "Fossa cranii", uzbek: "Kalla chuqurchasi" },
-      { latin: "Sulcus chiasmatis", uzbek: "Xochlashuv egati" },
-      { latin: "Sella turcica", uzbek: "Turk egari" },
-      { latin: "Dorsum sellae", uzbek: "Egar suyanchig'i" },
-      { latin: "Canalis opticus", uzbek: "Ko'ruv kanali" },
-      { latin: "Fissura orbitalis superior", uzbek: "Yuqori ko'z kosasi yorig'i" },
-      { latin: "Foramen rotundum", uzbek: "Yumaloq teshik" },
-      { latin: "Foramen ovale", uzbek: "Oval teshik" },
-      { latin: "Foramen spinosum", uzbek: "Tikanli teshik" },
-      { latin: "Canalis caroticus", uzbek: "Uyqu kanali" },
-      { latin: "Meatus acusticus internus", uzbek: "Ichki eshituv yo'li" },
-      { latin: "Foramen jugulare", uzbek: "Bo'yinturuq teshigi" },
-      { latin: "Canalis hypoglossalis", uzbek: "Til osti asabi kanali" },
-      { latin: "Protuberantia occipitalis interna", uzbek: "Ichki ensa do'mbog'i" },
-      { latin: "Crista galli", uzbek: "Xo'roz toji" },
-      { latin: "Lamina cribrosa", uzbek: "G'alvirsimon plastinka" },
-      { latin: "Concha nasalis inferior", uzbek: "Pastki burun chig'anog'i" },
-      { latin: "Vomer", uzbek: "Dimog' suyagi" },
-      { latin: "Os palatinum", uzbek: "Tanglay suyagi" },
-      { latin: "Sinus frontalis", uzbek: "Peshona bo'shlig'i" },
-      { latin: "Sinus sphenoidalis", uzbek: "Ponasimon bo'shliq" },
-      { latin: "Sinus maxillaris", uzbek: "Yuqori jag' bo'shlig'i" },
-      { latin: "Cellulae ethmoidales", uzbek: "G'alvirsimon kataklar" },
-
-      // MYOLOGY DETAILED (Small muscles/groups)
-      { latin: "Musculi intercostales externi", uzbek: "Tashqi qovurg'alararo mushaklar" },
-      { latin: "Musculi intercostales interni", uzbek: "Ichki qovurg'alararo mushaklar" },
-      { latin: "Musculus serratus posterior superior", uzbek: "Orqa yuqori tishsimon mushak" },
-      { latin: "Musculus serratus posterior inferior", uzbek: "Orqa pastki tishsimon mushak" },
-      { latin: "Musculus splenius capitis", uzbek: "Boshning bog'ichsimon mushagi" },
-      { latin: "Musculus erector spinae", uzbek: "Urtqani ko'taruvchi mushak" },
-      { latin: "Musculus multifidus", uzbek: "Ko'p bo'lakli mushak" },
-      { latin: "Musculus scalenus anterior", uzbek: "Oldingi pillapoyasimon mushak" },
-      { latin: "Musculus scalenus medius", uzbek: "O'rta pillapoyasimon mushak" },
-      { latin: "Musculus scalenus posterior", uzbek: "Orqa pillapoyasimon mushak" },
-      { latin: "Musculus omohyoideus", uzbek: "Kurak-til osti mushagi" },
-      { latin: "Musculus sternohyoideus", uzbek: "To'sh-til osti mushagi" },
-      { latin: "Musculus sternothyroideus", uzbek: "To'sh-qalqonsimon mushak" },
-      { latin: "Musculus thyrohyoideus", uzbek: "Qalqonsimon-til osti mushagi" },
-      { latin: "Musculus geniohyoideus", uzbek: "Iyak-til osti mushagi" },
-      { latin: "Musculus mylohyoideus", uzbek: "Jag'-til osti mushagi" },
-      { latin: "Musculus digastricus", uzbek: "Ikki qorinli mushak" },
-
-      // SPLANCHNOLOGY DETAILED (Gut/Urinary)
-      { latin: "Plicae circulares", uzbek: "Aylana burmalar" },
-      { latin: "Villi intestinales", uzbek: "Ichak vorsinkalari" },
-      { latin: "Glandulae intestinales", uzbek: "Ichak bezlari" },
-      { latin: "Haustra coli", uzbek: "Yo'g'on ichak bo'rtmalari" },
-      { latin: "Taeniae coli", uzbek: "Yo'g'on ichak lentalari" },
-      { latin: "Appendices epiploicae", uzbek: "Yog'li o'simtalar" },
-      { latin: "Flexura coli dextra", uzbek: "Yo'g'on ichakning o'ng egilmasi" },
-      { latin: "Flexura coli sinistra", uzbek: "Yo'g'on ichakning chap egilmasi" },
-      { latin: "Mesocolon", uzbek: "Yo'g'on ichak tutqichi" },
-      { latin: "Trigonum vesicae", uzbek: "Qovuq uchburchagi" },
-      { latin: "Urachus", uzbek: "Kindik-qovuq yo'li" },
-      { latin: "Segmenta renalia", uzbek: "Buyrak segmentlari" },
-      { latin: "Arteriae interlobares", uzbek: "Bo'laklararo arteriyalar" },
-      { latin: "Arteriae arcuatae", uzbek: "Yoysimon arteriyalar" },
-      { latin: "Glomerulus", uzbek: "Koptokcha" },
-      { latin: "Capsula glomerularis (Bowmani)", uzbek: "Koptokcha kapsulasi" },
-
-      // ANGIOLOGY DETAILED
-      { latin: "Arcus aortae", uzbek: "Aorta yoyi" },
-      { latin: "Truncus brachiocephalicus", uzbek: "Yelka-bosh poyasi" },
-      { latin: "Arteria vertebralis", uzbek: "Umurtqa arteriyasi" },
-      { latin: "Arteria thoracica interna", uzbek: "Ichki ko'krak arteriyasi" },
-      { latin: "Truncus coeliacus", uzbek: "Qorin poyasi" },
-      { latin: "Arteria gastrica sinistra", uzbek: "Chap me'da arteriyasi" },
-      { latin: "Arteria lienalis", uzbek: "Taloq arteriyasi" },
-      { latin: "Arteria hepatica communis", uzbek: "Umumiy jigar arteriyasi" },
-      { latin: "Arteria mesenterica superior", uzbek: "Yuqori tutqich arteriyasi" },
-      { latin: "Arteria mesenterica inferior", uzbek: "Pastki tutqich arteriyasi" },
-      { latin: "Arteria renalis", uzbek: "Buyrak arteriyasi" },
-      { latin: "Arteria testicularis", uzbek: "Moyak arteriyasi" },
-      { latin: "Arteria ovarica", uzbek: "Tuxumdon arteriyasi" },
-      { latin: "Sinus sagittalis superior", uzbek: "Yuqori sagittal sinus" },
-      { latin: "Vena brachiocephalica", uzbek: "Yelka-bosh venasi" },
-      { latin: "Vena azygos", uzbek: "Toq vena" },
-      { latin: "Vena hemiazygos", uzbek: "Yarim toq vena" },
-
-      // NEUROLOGY DETAILED
-      { latin: "Nucleus", uzbek: "Yadro" },
-      { latin: "Tractus spinothalamicus", uzbek: "Orqa miya-ko'rish do'mbog'i yo'li" },
-      { latin: "Tractus corticospinalis", uzbek: "Po'stloq-orqa miya yo'li" },
-      { latin: "Fasciculus gracilis", uzbek: "Nozik dasta" },
-      { latin: "Fasciculus cuneatus", uzbek: "Ponasimon dasta" },
-      { latin: "Lemniscus medialis", uzbek: "Medial halqa" },
-      { latin: "Capsula interna", uzbek: "Ichki kapsula" },
-      { latin: "Nucleus caudatus", uzbek: "Dumsmon yadro" },
-       { latin: "Putamen", uzbek: "Po'stloqcha" },
-      { latin: "Globus pallidus", uzbek: "Oqish shar" },
-      { latin: "Thalamus dorsalis", uzbek: "Orqa ko'rish do'mbog'i" },
-      { latin: "Hypothalamus", uzbek: "Gipotalamus" },
-      { latin: "Epithalamus", uzbek: "Epitalamus" },
-      { latin: "Metathalamus", uzbek: "Metatalamus" },
-      { latin: "Corpus geniculatum laterale", uzbek: "Tashqi tizzasimon tana" },
-      { latin: "Corpus geniculatum mediale", uzbek: "Ichki tizzasimon tana" },
-      { latin: "Pedunculus cerebri", uzbek: "Miya oyoqchasi" },
-      { latin: "Tegmentum", uzbek: "Qopqoq" },
-      { latin: "Substantia nigra", uzbek: "Qora modda" },
-      { latin: "Nucleus ruber", uzbek: "Qizil yadro" },
-      { latin: "Vermis cerebelli", uzbek: "Miyacha chuvalchangi" },
-      { latin: "Hemispherium cerebelli", uzbek: "Miyacha yarim shari" },
-      { latin: "Nucleus dentatus", uzbek: "Tishsimon yadro" },
-
-      // ADJECTIVES & TERMS
-      { latin: "Afferens", uzbek: "Keltiruvchi" },
-      { latin: "Efferens", uzbek: "Chiquvchi" },
-      { latin: "Ascendens", uzbek: "Ko'tariluvchi" },
-      { latin: "Descendens", uzbek: "Tushuvchi" },
-      { latin: "Proprius", uzbek: "Xususiy" },
-      { latin: "Communis", uzbek: "Umumiy" },
-      { latin: "Intermedius", uzbek: "O'rtadagi" },
-      { latin: "Superficialis", uzbek: "Yuzaki" },
-      { latin: "Profundus", uzbek: "Chuqur" },
-      { latin: "Laterall", uzbek: "Latiniy" },
-      { latin: "Mediall", uzbek: "Media" },
-      { latin: "Sagittalis", uzbek: "Sagittal" },
-      { latin: "Frontalis", uzbek: "Frontal" },
-      { latin: "Horizontalis", uzbek: "Gorizontal" },
-      { latin: "Verticalis", uzbek: "Vertikal" },
-      { latin: "Medialis", uzbek: "Ichki / Medial" },
-      { latin: "Lateralis", uzbek: "Tashqi / Lateral" },
-
-      // CLINICAL/MISC
-      { latin: "Status", uzbek: "Holat" },
-      { latin: "Habitus", uzbek: "Tana tuzilishi" },
-      { latin: "Symptoma", uzbek: "Simptom" },
-      { latin: "Syndromum", uzbek: "Sindrom" },
-      { latin: "Diagnosis", uzbek: "Diagnoz" },
-      { latin: "Prognosis", uzbek: "Prognoz" },
-      { latin: "Therapia", uzbek: "Terapiya" },
-      { latin: "Chirurgia", uzbek: "Xirurgiya" },
-      { latin: "Medicus", uzbek: "Vrach" },
-      { latin: "Obstetrix", uzbek: "Akusherka" },
-      { latin: "Aegrotus", uzbek: "Kasal / Bemor" },
-      { latin: "Sanitas", uzbek: "Sog'lik" },
-      { latin: "Curatio", uzbek: "Davolanish" },
-      { latin: "Rehabilitatio", uzbek: "Reabilitatsiya" },
-      { latin: "Prophylaxis", uzbek: "Profilaktika" },
-      { latin: "Vaccinatio", uzbek: "Vaktsinatsiya" },
-      { latin: "Sterilisatio", uzbek: "Sterilizatsiya" },
-      { latin: "Desinfectio", uzbek: "Dezinfeksiya" },
-      { latin: "Antisepsis", uzbek: "Antiseptika" },
-      { latin: "Asepsis", uzbek: "Aseptika" },
-      { latin: "Anatomia Pathologica", uzbek: "Patologik anatomiya" },
-      { latin: "Histologia", uzbek: "Gistologiya" },
-      { latin: "Cytologia", uzbek: "Tsitologiya" },
-      { latin: "Embryologia", uzbek: "Embriologiya" },
-      // FINAL MASSIVE ADDITION
-      { latin: "Pars cardiaca", uzbek: "Me'daning kirish qismi" },
-      { latin: "Corpus gastricum", uzbek: "Me'da tanasi" },
-      { latin: "Antrum pyloricum", uzbek: "Me'da darvoza bo'shlig'i" },
-      { latin: "Plicae gastrique", uzbek: "Me'da burmalari" },
-      { latin: "Areae gastricae", uzbek: "Me'da maydonchalari" },
-      { latin: "Foveolae gastricae", uzbek: "Me'da chuqurchalari" },
-      { latin: "Cardia", uzbek: "Kardial teshik" },
-      { latin: "Incisura cardiaca", uzbek: "Kardial o'yiq" },
-      { latin: "Ostium pyloricum", uzbek: "Darvoza teshigi" },
-      { latin: "Ampulla duodeni", uzbek: "O'n ikki barmoqli ichak ampulasi" },
-      { latin: "Papilla duodeni major", uzbek: "O'n ikki barmoqli ichakning katta so'rg'ichi" },
-      { latin: "Papilla duodeni minor", uzbek: "O'n ikki barmoqli ichakning kichik so'rg'ichi" },
-      { latin: "Flexura duodenojejunalis", uzbek: "O'n ikki barmoqli-och ichak egilmasi" },
-      { latin: "Villi intestinales", uzbek: "Ichak vorsinkalari" },
-      { latin: "Noduli lymphoidei", uzbek: "Limfa tugunchalari" },
-      { latin: "Valva ileocaecalis", uzbek: "Yonbosh-ko'r ichak klapani" },
-      { latin: "Taenia mesocolica", uzbek: "Mezenteral lenta" },
-      { latin: "Taenia omentalis", uzbek: "Charvi lentasi" },
-      { latin: "Taenia libera", uzbek: "Erkin lenta" },
-      { latin: "Columnae anales", uzbek: "To'g'ri ichak ustunlari" },
-      { latin: "Sinus anales", uzbek: "To'g'ri ichak sinuslari" },
-      { latin: "Linea pectinea", uzbek: "Taroqsimon chiziq" },
-      { latin: "Arteria coeliaca", uzbek: "Qorin poyasi" },
-      { latin: "Arteria phrenica", uzbek: "Diafragma arteriyasi" },
-      { latin: "Arteria suprarenalis", uzbek: "Buyrak usti arteriyasi" },
-      { latin: "Arteria lumbalis", uzbek: "Bel arteriyasi" },
-      { latin: "Arteria sacralis mediana", uzbek: "O'rta dumg'aza arteriyasi" },
-      { latin: "Arteria iliaca externa", uzbek: "Tashqi yonbosh arteriyasi" },
-      { latin: "Arteria iliaca interna", uzbek: "Ichki yonbosh arteriyasi" },
-      { latin: "Arteria obturatoria", uzbek: "Yopuvchi arteriya" },
-      { latin: "Arteria glutea", uzbek: "Dumba arteriyasi" },
-      { latin: "Arteria pudenda interna", uzbek: "Ichki uyatli arteriya" },
-      { latin: "Arteria femoralis profunda", uzbek: "Sonning chuqur arteriyasi" },
-      { latin: "Arteria circumflexa", uzbek: "Aylanib o'tuvchi arteriya" },
-      { latin: "Arteria perforans", uzbek: "Teshib o'tuvchi arteriya" },
-      { latin: "Arteria dorsalis pedis", uzbek: "Oyoq usti arteriyasi" },
-      { latin: "Vena brachialis", uzbek: "Yelka venasi" },
-      { latin: "Vena cephalica", uzbek: "Bosh venasi (qo'lda)" },
-      { latin: "Vena basilica", uzbek: "Asosiy vena (qo'lda)" },
-      { latin: "Vena mediana cubiti", uzbek: "Tirsakning o'rta venasi" },
-      { latin: "Vena saphena parva", uzbek: "Oyoqning kichik teri osti venasi" },
-      { latin: "Plexus pampiniformis", uzbek: "Toksimon chigal" },
-      { latin: "Vena renalis", uzbek: "Buyrak venasi" },
-      { latin: "Vena suprarenalis", uzbek: "Buyrak usti venasi" },
-      { latin: "Vena testicularis", uzbek: "Moyak venasi" },
-      { latin: "Vena ovarica", uzbek: "Tuxumdon venasi" },
-
-      // NEUROLOGY MORE
-      { latin: "Nucleus accumbens", uzbek: "Yondosh yadro" },
-      { latin: "Amygdala", uzbek: "Bodomsimon tana" },
-      { latin: "Hippocampus", uzbek: "Gippokamp" },
-      { latin: "Striatum", uzbek: "Narzsimon tana" },
-      { latin: "Pallidum", uzbek: "Oqish shar" },
-      { latin: "Thalamus", uzbek: "Ko'rish do'mbog'i" },
-      { latin: "Hypothalamus", uzbek: "Gipotalamus" },
-      { latin: "Epithalamus", uzbek: "Epitalamus" },
-      { latin: "Subthalamus", uzbek: "Subtalamus" },
-      { latin: "Mesencephalon", uzbek: "O'rta miya" },
-      { latin: "Metencephalon", uzbek: "Keyingi miya" },
-      { latin: "Myelencephalon", uzbek: "Uzunchoq miya" },
-      { latin: "Rhombencephalon", uzbek: "Rombisimon miya" },
-      { latin: "Prosencephalon", uzbek: "Oldingi miya" },
-      { latin: "Telencephalon", uzbek: "Oxirgi miya" },
-      { latin: "Cortex", uzbek: "Po'stloq" },
-      { latin: "Medulla", uzbek: "Mag'iz" },
-      { latin: "Gyrus precentralis", uzbek: "Markaz oldi egati" },
-      { latin: "Gyrus postcentralis", uzbek: "Markaz orqa egati" },
-      { latin: "Sulcus lateralis (Sylvii)", uzbek: "Yon egat" },
-      { latin: "Fissura longitudinalis", uzbek: "Bo'ylama yoriq" },
-      { latin: "Corpus striatum", uzbek: "Narzsimon tana" },
-      { latin: "Nucleus ruber", uzbek: "Qizil yadro" },
-      { latin: "Substantia nigra", uzbek: "Qora modda" },
-      { latin: "Locus coeruleus", uzbek: "Moviy nuqta" },
-      { latin: "Formatio reticularis", uzbek: "To'rsimon formatsiya" },
-
-      // REPRODUCTIVE system parts
-      { latin: "Epididymis", uzbek: "Moyak ortig'i" },
-      { latin: "Ductus deferens", uzbek: "Urug' chiqaruv yo'li" },
-      { latin: "Vesicula seminalis", uzbek: "Urug' pufakchasi" },
-      { latin: "Funiculus spermaticus", uzbek: "Urug' tizimchasi" },
-      { latin: "Ductus ejaculatorius", uzbek: "Urug' otuvchi yo'l" },
-      { latin: "Bulbulus urethrae", uzbek: "Siydik chiqarish kanalining lampochkasi" },
-      { latin: "Preputium", uzbek: "Olatning chekka terisi" },
-      { latin: "Glans penis", uzbek: "Olat boshi" },
-      { latin: "Corpus cavernosum", uzbek: "G'ovak tana" },
-      { latin: "Corpus spongiosum", uzbek: "Gubkasimon tana" },
-      { latin: "Labia majora pudendi", uzbek: "Katta uyatli lablar" },
-      { latin: "Labia minora pudendi", uzbek: "Kichik uyatli lablar" },
-      { latin: "Clitoris", uzbek: "Klitor" },
-      { latin: "Hymen", uzbek: "Qizlik pardasi" },
-      { latin: "Montes pubis", uzbek: "Qov do'mbog'i" },
-
-      // SENSES details
-      { latin: "Cavitatis tympani", uzbek: "Nog'ora bo'shlig'i" },
-      { latin: "Ossicula auditus", uzbek: "Eshituv suyakchalari" },
-      { latin: "Basis stapedis", uzbek: "Uzangicha asosi" },
-      { latin: "Fenestra vestibuli", uzbek: "Dahliz darchasi" },
-      { latin: "Fenestra cochleae", uzbek: "Chig'anoq darchasi" },
-      { latin: "Labyrinthus osseus", uzbek: "Suyak labirinti" },
-      { latin: "Labyrinthus membranaceus", uzbek: "Pardali labirint" },
-      { latin: "Sacculus", uzbek: "Xaltacha" },
-      { latin: "Utriculus", uzbek: "Bachadoncha (qulog'da)" },
-      { latin: "Ductus semicircularis", uzbek: "Yarim doira yo'li" },
-      { latin: "Scala vestibuli", uzbek: "Dahliz zinapoyasi" },
-      { latin: "Scala tympani", uzbek: "Nog'ora zinapoyasi" },
-      { latin: "Ductus cochlearis", uzbek: "Chig'anoq yo'li" },
-      { latin: "Organum spirale (Cortii)", uzbek: "Spiral a'zo" },
-      { latin: "Membrana tympani", uzbek: "Nog'ora parda" },
-
-      // MORE CLINICAL
-      { latin: "Anamnesis", uzbek: "Anamnez (kasallik tarixi)" },
-      { latin: "Epicrisis", uzbek: "Epikriz" },
-      { latin: "Remedium", uzbek: "Dori vositasi" },
-      { latin: "Solutio", uzbek: "Eritma" },
-      { latin: "Unguentum", uzbek: "Malham" },
-      { latin: "Tinctura", uzbek: "Damlama" },
-      { latin: "Infusum", uzbek: "Ivitma" },
-      { latin: "Decoctum", uzbek: "Qaynatma" },
-      { latin: "Pulvis", uzbek: "Kukun" },
-      { latin: "Pilula", uzbek: "Hapdori" },
-      { latin: "Tabuletta", uzbek: "Tabletka" },
-      { latin: "Capsula", uzbek: "Kapsula" },
-      { latin: "Suppositorium", uzbek: "Shamcha" },
-      { latin: "Emulsum", uzbek: "Emulsiya" },
-      { latin: "Suspension", uzbek: "Suspenziya" },
-      { latin: "Aerosolum", uzbek: "Aerozol" },
-      { latin: "Dosis", uzbek: "Doz" },
-      { latin: "Dosis maxima", uzbek: "Eng yuqori doza" },
-      { latin: "Dosis letalis", uzbek: "O'lim dozasi" },
-      { latin: "Veneno", uzbek: "Zahar" },
-      { latin: "Antidotum", uzbek: "Antidot" },
-      { latin: "Placebo", uzbek: "Placebo" },
-      { latin: "Contraindicatio", uzbek: "Qarshi ko'rsatma" },
-      { latin: "Indicatio", uzbek: "Ko'rsatma" },
-      { latin: "Receptum", uzbek: "Retsept" },
-      { latin: "Signatura", uzbek: "Imzo / Belgilash" },
-      { latin: "Misce", uzbek: "Aralashtiring" },
-      { latin: "Da", uzbek: "Bering" },
-      { latin: "Signa", uzbek: "Belgilang" },
-      { latin: "Repete", uzbek: "Takrorlang" },
-      { latin: "Divide", uzbek: "Bo'ling" },
-      { latin: "In vitro", uzbek: "Probirkada" },
-      { latin: "In vivo", uzbek: "Tirik organizmda" },
-      { latin: "Post mortem", uzbek: "O'rumdan keyin" },
-      // MORE SPINAL NERVES & PARTS
-      { latin: "Nervi cervicales (C1-C8)", uzbek: "Bo'yin asablari" },
-      { latin: "Nervi thoracici (T1-T12)", uzbek: "Ko'krak asablari" },
-      { latin: "Nervi lumbales (L1-L5)", uzbek: "Bel asablari" },
-      { latin: "Nervi sacrales (S1-S5)", uzbek: "Dumg'aza asablari" },
-      { latin: "Nervus coccygeus", uzbek: "Dum asabi" },
-      { latin: "Cauda equina", uzbek: "Ot dumi (asablar to'plami)" },
-      { latin: "Filum terminale", uzbek: "Oxirgi ip" },
-      { latin: "Conus medullaris", uzbek: "Miya konusi" },
-      // LIVER/GALLBLADDER DETAILS
-      { latin: "Vesica biliaris (fellea)", uzbek: "O't pufagi" },
-      { latin: "Fundus vesicae biliaris", uzbek: "O't pufagi tubi" },
-      { latin: "Corpus vesicae biliaris", uzbek: "O't pufagi tanasi" },
-      { latin: "Collum vesicae biliaris", uzbek: "O't pufagi bo'yni" },
-      { latin: "Ductus cysticus", uzbek: "O't pufagi yo'li" },
-      { latin: "Ductus hepaticus dexter", uzbek: "O'ng jigar yo'li" },
-      { latin: "Ductus hepaticus sinister", uzbek: "Chap jigar yo'li" },
-      { latin: "Ligamentum falciforme", uzbek: "O'roqsimon boylam" },
-      { latin: "Ligamentum teres hepatis", uzbek: "Jigarning yumaloq boylami" },
-      { latin: "Ligamentum venosum", uzbek: "Vena boylami" },
-      { latin: "Area nuda", uzbek: "Yalang'och maydon (jigarda)" },
-      // MORE OSTEOLOGY LANDMARKS
-      { latin: "Sutura sagittalis", uzbek: "O'qsimon (sagittal) chok" },
-      { latin: "Sutura coronalis", uzbek: "Tojsimon (koronal) chok" },
-      { latin: "Sutura lambdoidea", uzbek: "Lyambdasimon chok" },
-      { latin: "Bregma", uzbek: "Bregma (choklar tutashgan joy)" },
-      { latin: "Lambda", uzbek: "Lyambda (nuqta)" },
-      { latin: "Asterion", uzbek: "Asterion" },
-      { latin: "Pterion", uzbek: "Pterion" },
-      { latin: "Fossa temporalis", uzbek: "Chakka chuqurchasi" },
-      { latin: "Fossa infratemporalis", uzbek: "Chakka osti chuqurchasi" },
-      { latin: "Fissura pterygomaxillaris", uzbek: "Qanotsimon-yuqori jag' yorig'i" },
-      { latin: "Arcus zygomaticus", uzbek: "Yonoq yoyi" },
-      // MORE MUSCLE PARTS
-      { latin: "Venter musculi", uzbek: "Mushak qorini" },
-      { latin: "Caput musculi", uzbek: "Mushak boshi" },
-      { latin: "Cauda musculi", uzbek: "Mushak dumi" },
-      { latin: "Aponeurosis", uzbek: "Aponevroz" },
-      { latin: "Ligamentum inguinale", uzbek: "Chov boylami" },
-      { latin: "Lacuna musculorum", uzbek: "Mushaklar bo'shlig'i" },
-      { latin: "Lacuna vasorum", uzbek: "Tomirlar bo'shlig'i" },
-      { latin: "Canalis inguinalis", uzbek: "Chov kanali" },
-      { latin: "Anulus inguinalis", uzbek: "Chov halqasi" },
-      { latin: "Linea alba", uzbek: "Oq chiziq" },
-      // CLINICAL VERBS & ACTIONS
-      { latin: "Auscultatio", uzbek: "Eshitib ko'rish" },
-      { latin: "Palpatio", uzbek: "Paypaslab ko'rish" },
-      { latin: "Percussio", uzbek: "Urib ko'rish" },
-      { latin: "Inspectio", uzbek: "Ko'zdan kechirish" },
-      { latin: "Punctio", uzbek: "Punksiya" },
-      { latin: "Catheterisatio", uzbek: "Kateter qo'yish" },
-      { latin: "Intubatio", uzbek: "Intubatsiya" },
-      { latin: "Transfusio", uzbek: "Qon quyish" },
-      { latin: "Operatio", uzbek: "Operatsiya" },
-      { latin: "Amputatio", uzbek: "Amputatsiya" },
-      { latin: "Reanimatio", uzbek: "Reanimatsiya" },
-      { latin: "Observatio", uzbek: "Kuzatuv" },
-      { latin: "Consultatio", uzbek: "Konsultatsiya" },
-      // MISC LATIN MAXIMS (Common in medicine)
-      { latin: "Primum non nocere", uzbek: "Eng avvalo zarar keltirma" },
-      { latin: "Medicus curat, natura sanat", uzbek: "Shifokor davolaydi, tabiat sog'aytiradi" },
-      { latin: "Ubi pus, ibi incisio", uzbek: "Qayerda yiring bo'lsa, o'sha yerni kesing" },
-      { latin: "Diagnosls bona - curatio bona", uzbek: "Yaxshi tashxis - yaxshi davolash" },
-      { latin: "Vivere est cogitare", uzbek: "Yashash - bu fikrlash demakdir" }
-    ];
-
-    if (!auth.currentUser) {
-      alert("Xatolik: Tizimga kiring!");
-      return;
-    }
-
-    setIsSeeding(true);
-    try {
-      // Fetch existing terms to avoid duplicates efficiently
-      const existingSnap = await getDocs(collection(db, 'latin_terms'));
-      const existingLatins = new Set(existingSnap.docs.map(d => d.data().latin.toLowerCase()));
-      
-      const missingTerms = ESSENTIAL_TERMS.filter(t => !existingLatins.has(t.latin.toLowerCase()));
-      
-      if (missingTerms.length === 0) {
-        alert("Baza allaqachon to'liq!");
-        setIsSeeding(false);
-        return;
-      }
-
-      // Chunking for large datasets (Firestore limited to 500 per batch)
-      const chunkSize = 400;
-      for (let i = 0; i < missingTerms.length; i += chunkSize) {
-        const chunk = missingTerms.slice(i, i + chunkSize);
-        const batch = writeBatch(db);
-        chunk.forEach(term => {
-          const docRef = doc(collection(db, 'latin_terms'));
-          batch.set(docRef, term);
-        });
-        await batch.commit();
-      }
-
-      alert(`${missingTerms.length} ta yangi termin muvaffaqiyatli qo'shildi! Lug'at to'liq to'ldirildi.`);
-      fetchTerms();
-    } catch (e: any) {
-      console.error(e);
-      alert("Xatolik yuz berdi: " + (e.message || e));
-    } finally {
-      setIsSeeding(false);
-    }
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editing.id) {
-      await updateDoc(doc(db, 'latin_terms', editing.id), { latin: editing.latin, uzbek: editing.uzbek });
-    } else {
-      await addDoc(collection(db, 'latin_terms'), editing);
-    }
-    setEditing(null);
-    fetchTerms();
-  };
-
-  const handleDelete = (id: string) => {
-    requestConfirm(
-      "Terminni o'chirish",
-      "Haqiqatdan ham ushbu terminni o'chirmoqchimisiz?",
-      async () => {
-        try {
-          await deleteDoc(doc(db, 'latin_terms', id));
-          alert("Termin o'chirildi");
-          fetchTerms();
-        } catch (error) {
-          console.error(error);
-          alert("O'chirishda xatolik: " + (error instanceof Error ? error.message : String(error)));
-        }
-      }
-    );
-  };
-
-  return (
-    <div className="space-y-8">
-      <div className="bg-white p-8 rounded-[32px] border border-slate-200 flex items-center justify-between">
-        <div className="space-y-1">
-          <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Lotincha Terminlar Bazasi</h3>
-          <p className="text-brand-muted text-xs font-bold uppercase tracking-widest">{terms.length} TA TERMIN MAVJUD</p>
-        </div>
-        <div className="flex gap-4">
-          <button 
-            onClick={seedTerms} 
-            disabled={isSeeding}
-            className="px-6 py-3 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-100 transition-all"
-          >
-            {isSeeding ? <RefreshCw className="animate-spin w-4 h-4" /> : <Database size={16} />} 
-            BAZANI TO'LDIRISH
-          </button>
-          <button onClick={() => setEditing({ latin: '', uzbek: '' })} className="px-6 py-3 bg-brand-accent text-[#0E1624] rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-brand-accent/20 hover:scale-105 transition-all">Yangi termin</button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-[40px] border border-slate-200 overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex items-center gap-4">
-          <div className="relative flex-grow">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="Bazadan qidirish..."
-              value={localSearch}
-              onChange={(e) => setLocalSearch(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-brand-accent outline-none transition-all"
-            />
-          </div>
-        </div>
-        <table className="w-full text-left">
-          <thead className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-            <tr>
-              <th className="px-8 py-6">Lotincha</th>
-              <th className="px-8 py-6">O'zbekcha</th>
-              <th className="px-8 py-6 text-right">Amallar</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredTerms.map(t => (
-              <tr key={t.id} className="hover:bg-slate-50/50">
-                <td className="px-8 py-6 font-black italic text-brand-accent text-lg">{t.latin}</td>
-                <td className="px-8 py-6 font-bold text-slate-800">{t.uzbek}</td>
-                <td className="px-8 py-6 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button onClick={() => setEditing(t)} className="p-2 text-slate-400 hover:text-brand-accent"><Edit size={18} /></button>
-                    <button onClick={() => handleDelete(t.id)} className="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={18} /></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-8 bg-[#0E1624]/90 backdrop-blur-sm">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }} 
-            animate={{ opacity: 1, scale: 1 }} 
-            className="bg-white rounded-[40px] w-full max-w-lg overflow-hidden flex flex-col shadow-2xl border-4 border-white/10"
-          >
-            <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between shrink-0">
-              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Termin Editor</h2>
-              <button 
-                onClick={() => setEditing(null)} 
-                className="w-10 h-10 bg-white rounded-xl flex items-center justify-center border border-slate-200 text-slate-400 hover:text-red-500 transition-all"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            <form onSubmit={handleSave} className="p-10 space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Lotincha</label>
-                <input type="text" value={editing.latin || ''} onChange={e => setEditing({...editing, latin: e.target.value})} placeholder="Masalan: Musculus" className="w-full p-5 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-brand-accent outline-none font-bold text-slate-700" required />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">O'zbekcha</label>
-                <input type="text" value={editing.uzbek || ''} onChange={e => setEditing({...editing, uzbek: e.target.value})} placeholder="Masalan: Mushak" className="w-full p-5 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-brand-accent outline-none font-black text-slate-800" required />
-              </div>
-              <div className="flex justify-end gap-5 pt-6 border-t border-slate-50">
-                <button type="button" onClick={() => setEditing(null)} className="px-6 py-3 text-[10px] font-black uppercase text-slate-400 tracking-widest hover:text-slate-600">Bekor qilish</button>
-                <button type="submit" className="px-10 py-4 bg-brand-primary text-white rounded-2xl font-black text-[10px] uppercase shadow-xl shadow-brand-primary/20 hover:bg-slate-800 transition-all tracking-widest">Saqlash</button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // --- Midterm Manager ---
 function MidtermManager({ authUser, requestConfirm }: { authUser: any, requestConfirm: any }) {
@@ -9583,7 +8372,7 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
 
   TERMS_MAPPING = {
     "Sath to‘g‘risida tushuncha. Anatomik terminologiya. Umurtqa pog‘onasi": [
-      "Planum (Sath)", "Sagittalis (Sagittal)", "Frontalis (Frontal)", "Horizontalis (Gorizontal)", "Medialis (Medial)", "Lateralis (Lateral)", "Superior (Yuqori)", "Inferior (Pastki)", "Columna vertebralis (Umurtqa pog'onasi)", "Vertebra (Umurtqa)", "Atlas (Atlas)", "Axis (Eksis)"
+      "Plana sagittalia (Sagittal sath)", "Planum medianum (Median / o'rta sath)", "Plana frontalia (Frontal sath)", "Plana horizontalia (Gorizontal sath)", "Axis sagittalis (Sagittal o'q)", "Axis frontalis / transversalis (Frontal o'q)", "Axis verticalis (Vertikal o'q)", "Medialis (Medial - o'rta chiziqqa yaqin)", "Lateralis (Lateral - tashqi tomon)", "Cranialis (Kranial - bosh tomon)", "Caudalis (Kaudal - dum tomon)", "Anterior (Oldingi)", "Posterior (Orqa)", "Ventralis (Ventral)", "Dorsalis (Dorsal)", "Superior (Yuqori)", "Inferior (Pastki)", "Proximalis (Proksimal)", "Distalis (Distal)", "Dexter et Sinister (O'ng va chap)", "Superficialis et Profundus (Yuza va chuqur)", "Columna vertebralis (Umurtqa pog'onasi)", "Vertebra (Umurtqa)", "Corpus vertebrae (Umurtqa tanasi)", "Arcus vertebrae (Umurtqa yoyi)", "Pedunculus arcus vertebrae (Umurtqa yoyi oyoqchasi)", "Foramen vertebrale (Umurtqa teshigi)", "Canalis vertebralis (Umurtqa kanali)", "Processus spinosus (O'tkir qirrali o'simta)", "Processus transversus (Ko'ndalang o'simta)", "Processus articularis superior (Yuqori bo'g'im o'simtasi)", "Processus articularis inferior (Pastki bo'g'im o'simtasi)", "Incisura vertebralis superior et inferior (Umurtqa o'ymalari)", "Foramen intervertebrale (Umurtqalararo teshik)", "Vertebrae cervicales (Bo'yin umurtqalari - C1-C7)", "Foramen processus transversi (Ko'ndalang o'simta teshigi)", "Tuberculum caroticum (Uyqu bo'rtig'i - C6)", "Atlas (Atlas - I bo'yin umurtqasi)", "Arcus anterior et posterior atlantis (Atlas yoylari)", "Massa lateralis atlantis (Atlas yon massalari)", "Fovea dentis (Tish chuqurchasi)", "Axis / Epistropheus (Aksis - II bo'yin umurtqasi)", "Dens axis (Aksis tishi)", "Vertebra prominens (Bo'rtib chiquvchi umurtqa - C7)", "Vertebrae thoracicae (Ko'krak umurtqalari - Th1-Th12)", "Fovea costalis superior et inferior (Qovurg'a chuqurchalari)", "Fovea costalis processus transversi (Ko'ndalang o'simta qovurg'a chuqurchasi)", "Vertebrae lumbales (Bel umurtqalari - L1-L5)", "Processus costalis (Qovurg'asimon o'simta)", "Processus mammillaris et accessorius (So'rg'ichsimon va qo'shimcha o'simtalar)", "Os sacrum (Dumg'aza suyagi)", "Promontorium (Promontorium / burun)", "Canalis sacralis (Dumg'aza kanali)", "Os coccygis (Dum suyagi)", "Lordosis et Kyphosis (Lordoz va kifoz egriliklari)"
     ],
     "Qovurg‘alar. Kurak suyagi. To‘sh suyagi. O‘mrov suyagi": [
       "Costae (Qovurg'alar)", "Sternum (To'sh suyagi)", "Scapula (Kurak suyagi)", "Clavicula (O'mrov suyagi)", "Manubrium sterni (To'sh dastasi)", "Spina scapulae (Kurak qirrasi)"
@@ -9877,7 +8666,7 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
                 ru: `Теоретические материалы к разделу ${title} будут добавлены в ближайшее время. Сверяйтесь с атласом.`
               },
               latinTerms: TERMS_MAPPING[title] || [],
-              image: "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?q=80&w=2564&auto=format&fit=crop",
+              image: "",
               videos: []
             });
           });
@@ -9896,7 +8685,7 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
                 ru: `Теоретические материалы к разделу ${title} будут добавлены в ближайшее время. Сверяйтесь с атласом.`
               },
               latinTerms: TERMS_MAPPING[title] || [],
-              image: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?q=80&w=2670&auto=format&fit=crop",
+              image: "",
               videos: []
             });
           });
@@ -10133,7 +8922,7 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
           </button>
           <button 
             type="button"
-            onClick={() => setEditing({ semester: selectedSemester === 'all' ? 1 : selectedSemester, order: topics.length + 1, title: { uz: '' }, theory: { uz: '' }, latinTerms: [], videos: [] } as any)}
+            onClick={() => setEditing({ semester: selectedSemester === 'all' ? 1 : selectedSemester, order: topics.length + 1, title: { uz: '' }, theory: { uz: '' }, latinTerms: [], terms: [], references: [], videos: [] } as any)}
             className="bg-brand-accent text-brand-primary px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:scale-105 transition-all shadow-xl shadow-brand-accent/20 cursor-pointer"
           >
             <Plus size={16} /> YANGI MAVZU
@@ -10183,15 +8972,39 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
               {filteredTopics.map(t => (
                 <tr key={t.id} className="hover:bg-brand-bg/50 transition-colors group">
                   <td className="px-10 py-6">
-                    <span className="px-3 py-1 bg-brand-primary text-brand-accent text-[10px] font-black rounded-lg">
-                      SEM {t.semester} • #{t.order}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 bg-brand-primary text-brand-accent text-[10px] font-black rounded-lg">
+                        SEM {t.semester} • #{t.order}
+                      </span>
+                      {(t.lectureType === 'pdf' || t.customLectureFile?.fileType === 'pdf' || Boolean(t.pdfUrl)) && (
+                        <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-200">
+                          📑 PDF
+                        </span>
+                      )}
+                      {(t.lectureType === 'pptx' || t.customLectureFile?.fileType === 'pptx' || Boolean(t.pptxUrl)) && (
+                        <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-amber-50 text-amber-600 border border-amber-200">
+                          📊 PPTX
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-10 py-6 font-black text-brand-primary text-lg tracking-tight group-hover:text-brand-accent transition-colors">{getSafeAdminTitle(t.title)}</td>
                   <td className="px-10 py-6 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button 
-                        onClick={() => setEditing({ ...t, title: t.title || { uz: '' }, theory: t.theory || { uz: '' }, latinTerms: t.latinTerms || [], image: t.image || '' })} 
+                        onClick={() => setEditing({ 
+                          ...t, 
+                          title: t.title || { uz: '' }, 
+                          theory: t.theory || { uz: '' }, 
+                          latinTerms: t.latinTerms || [], 
+                          terms: t.terms || [],
+                          references: t.references || [],
+                          image: t.image || '',
+                          lectureType: t.lectureType || (t.customLectureFile?.fileType || (t.pdfUrl ? 'pdf' : t.pptxUrl ? 'pptx' : 'text')),
+                          customLectureFile: t.customLectureFile || null,
+                          pdfUrl: t.pdfUrl || '',
+                          pptxUrl: t.pptxUrl || ''
+                        })} 
                         className="p-3 text-brand-primary hover:bg-brand-accent hover:text-brand-primary rounded-xl transition-all shadow-sm hover:shadow-lg border border-brand-border cursor-pointer"
                         title="Tahrirlash"
                       >
@@ -10272,8 +9085,40 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
                     </div>
                   </div>
 
+                  {/* Topic PPTX or PDF Lecture Switcher / Uploader */}
                   <div>
-                    <label className="block text-[10px] font-black text-brand-muted uppercase tracking-widest mb-3 text-right">Darslik Konstruktori & AI Yordamchi</label>
+                    <label className="block text-[10px] font-black text-brand-muted uppercase tracking-widest mb-3">
+                      Konspekt / Ma'ruza Formati (PDF yoki PPTX ga almashtirish)
+                    </label>
+                    <TopicLectureEditor
+                      topicId={editing.id}
+                      semester={editing.semester || 1}
+                      order={editing.order || 1}
+                      topicTitle={getSafeAdminTitle(editing.title)}
+                      lectureType={editing.lectureType || 'text'}
+                      customLectureFile={editing.customLectureFile || null}
+                      pdfUrl={editing.pdfUrl || ''}
+                      pptxUrl={editing.pptxUrl || ''}
+                      onChange={(lectureData) => {
+                        setEditing({
+                          ...editing,
+                          ...lectureData
+                        });
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="text-[10px] font-black text-brand-muted uppercase tracking-widest">
+                        Matnli Darslik / Nazariya (Markdown)
+                      </label>
+                      {editing.lectureType && editing.lectureType !== 'text' && (
+                        <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
+                          {editing.lectureType.toUpperCase()} tanlangan: Talabalarga birinchi navbatda fayl ko'rsatiladi
+                        </span>
+                      )}
+                    </div>
                     <div className="border border-slate-200 rounded-[35px] overflow-hidden bg-brand-bg shadow-sm mb-4">
                       {/* Visual Editor Toolbar */}
                       <div className="bg-white p-6 border-b border-brand-border flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
@@ -10364,78 +9209,153 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div>
-                      <label className="block text-[10px] font-black text-brand-muted uppercase tracking-widest mb-3">Lotin terminlari (har bir qatorda bitta)</label>
-                      <textarea rows={8} value={(editing.latinTerms || []).join('\n')} onChange={e => setEditing({...editing, latinTerms: e.target.value.split('\n').filter(t => t.trim() !== '')})} className="w-full p-6 bg-brand-bg rounded-2xl border-2 border-brand-border focus:border-brand-accent focus:bg-white outline-none transition-all font-mono text-sm" />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <label className="block text-[10px] font-black text-brand-muted uppercase tracking-widest">Videolar (har bir tilda alohida, har bir qatorda bitta YouTube URL)</label>
-                        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
-                          {(['uz', 'en', 'ru'] as const).map((langKey) => (
-                            <button
-                              type="button"
-                              key={langKey}
-                              onClick={() => setTopicEditVidTab(langKey)}
-                              className={`px-3 py-1 text-[9px] font-black uppercase tracking-wider rounded-lg transition-all ${
-                                topicEditVidTab === langKey
-                                  ? 'bg-brand-primary text-white shadow-xs'
-                                  : 'text-brand-muted hover:bg-slate-200'
-                              }`}
-                            >
-                              {langKey === 'uz' ? 'UZB' : langKey === 'en' ? 'ENG' : 'RUS'}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <textarea
-                        rows={6}
-                        value={(() => {
-                          const v = editing.videos;
-                          if (v && typeof v === 'object' && !Array.isArray(v)) {
-                            return ((v as any)[topicEditVidTab] || []).join('\n');
-                          }
-                          if (Array.isArray(v)) {
-                            return topicEditVidTab === 'uz' ? v.join('\n') : '';
-                          }
-                          return '';
-                        })()}
-                        onChange={(e) => {
-                          const valList = e.target.value.split('\n').filter(v => v.trim() !== '');
-                          let current = editing.videos;
-                          if (!current || Array.isArray(current) || typeof current !== 'object') {
-                            current = {
-                              uz: Array.isArray(current) ? current : [],
-                              en: [],
-                              ru: []
-                            };
-                          }
-                          setEditing({
-                            ...editing,
-                            videos: {
-                              ...current,
-                              [topicEditVidTab]: valList
-                            }
-                          });
-                        }}
-                        className="w-full p-6 bg-brand-bg rounded-2xl border-2 border-brand-border focus:border-brand-accent focus:bg-white outline-none transition-all font-mono text-sm"
-                        placeholder={`Masalan: https://www.youtube.com/watch?v=...\n(Har bir qatorda bitta URL)`}
-                      />
-                    </div>
+                  {/* Topic Terms (Lug'atlar) Editor */}
+                  <div className="pt-4">
+                    <TopicTermsEditor
+                      terms={editing.terms || []}
+                      latinTerms={editing.latinTerms || []}
+                      onChange={(updatedTerms, updatedLatinTerms) => {
+                        setEditing({
+                          ...editing,
+                          terms: updatedTerms,
+                          latinTerms: updatedLatinTerms
+                        });
+                      }}
+                    />
                   </div>
 
+                  {/* Topic References (Foydalanilgan adabiyotlar) Editor */}
+                  <div className="pt-4">
+                    <TopicReferencesEditor
+                      references={editing.references || []}
+                      onChange={(updatedReferences) => {
+                        setEditing({
+                          ...editing,
+                          references: updatedReferences
+                        });
+                      }}
+                    />
+                  </div>
+
+                  {/* Topic Diagrams & Schematics Replacer */}
+                  <div className="pt-4">
+                    <TopicDiagramsEditor
+                      topicId={editing.id}
+                      theory={editing.theory}
+                      diagramReplacements={editing.diagramReplacements || {}}
+                      onChange={(updatedReplacements) => {
+                        setEditing({
+                          ...editing,
+                          diagramReplacements: updatedReplacements
+                        });
+                      }}
+                    />
+                  </div>
+
+                  {/* Videos */}
                   <div>
-                    <label className="block text-[10px] font-black text-brand-muted uppercase tracking-widest mb-3 flex items-center justify-between">
-                      Rasm URL (CDN yoki External Link)
-                      <span className="text-brand-accent lowercase font-medium italic">Github yoki Google Drive linki bo'ladi</span>
-                    </label>
-                    <div className="relative">
-                      <input type="text" value={editing.image || ''} onChange={e => setEditing({...editing, image: e.target.value})} className="w-full p-5 bg-brand-bg rounded-2xl border-2 border-brand-border focus:border-brand-accent focus:bg-white outline-none transition-all font-medium text-xs text-brand-muted pr-16" placeholder="https://raw.githubusercontent.com/..." />
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300">
-                        <LinkIcon size={20} />
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="block text-[10px] font-black text-brand-muted uppercase tracking-widest">Videolar (har bir tilda alohida, har bir qatorda bitta YouTube URL)</label>
+                      <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
+                        {(['uz', 'en', 'ru'] as const).map((langKey) => (
+                          <button
+                            type="button"
+                            key={langKey}
+                            onClick={() => setTopicEditVidTab(langKey)}
+                            className={`px-3 py-1 text-[9px] font-black uppercase tracking-wider rounded-lg transition-all ${
+                              topicEditVidTab === langKey
+                                ? 'bg-brand-primary text-white shadow-xs'
+                                : 'text-brand-muted hover:bg-slate-200'
+                            }`}
+                          >
+                            {langKey === 'uz' ? 'UZB' : langKey === 'en' ? 'ENG' : 'RUS'}
+                          </button>
+                        ))}
                       </div>
                     </div>
+                    <textarea
+                      rows={4}
+                      value={(() => {
+                        const v = editing.videos;
+                        if (v && typeof v === 'object' && !Array.isArray(v)) {
+                          return ((v as any)[topicEditVidTab] || []).join('\n');
+                        }
+                        if (Array.isArray(v)) {
+                          return topicEditVidTab === 'uz' ? v.join('\n') : '';
+                        }
+                        return '';
+                      })()}
+                      onChange={(e) => {
+                        const valList = e.target.value.split('\n').filter(v => v.trim() !== '');
+                        let current = editing.videos;
+                        if (!current || Array.isArray(current) || typeof current !== 'object') {
+                          current = {
+                            uz: Array.isArray(current) ? current : [],
+                            en: [],
+                            ru: []
+                          };
+                        }
+                        setEditing({
+                          ...editing,
+                          videos: {
+                            ...current,
+                            [topicEditVidTab]: valList
+                          }
+                        });
+                      }}
+                      className="w-full p-6 bg-brand-bg rounded-2xl border-2 border-brand-border focus:border-brand-accent focus:bg-white outline-none transition-all font-mono text-sm"
+                      placeholder={`Masalan: https://www.youtube.com/watch?v=...\n(Har bir qatorda bitta URL)`}
+                    />
+                  </div>
+
+                  {/* Topic Image Management */}
+                  <div className="p-6 bg-slate-50 border border-brand-border rounded-3xl space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="block text-xs font-black text-brand-primary uppercase tracking-wider">
+                          Mavzu Rasmi (Ixtiyoriy)
+                        </label>
+                        <p className="text-[11px] text-brand-muted mt-0.5">
+                          Foydalanuvchi talabiga binoan barcha mavzulardan standart shifokor rasmlari olib tashlangan. Agar maxsus anatomik atlas rasmi kerak bo'lsa kiriting, aks holda bo'sh qoldiring.
+                        </p>
+                      </div>
+                      {editing.image && (
+                        <button
+                          type="button"
+                          onClick={() => setEditing({ ...editing, image: '' })}
+                          className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Trash2 size={13} />
+                          <span>Rasmni butunlay o'chirish</span>
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={editing.image || ''}
+                        onChange={e => setEditing({...editing, image: e.target.value})}
+                        className="w-full p-4 bg-white rounded-2xl border-2 border-brand-border focus:border-brand-accent outline-none transition-all font-medium text-xs text-brand-primary pr-12"
+                        placeholder="Rasm URL havolasi (agar kerak bo'lmasa bo'sh qoldiring)..."
+                      />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                        <LinkIcon size={18} />
+                      </div>
+                    </div>
+                    {editing.image && (
+                      <div className="flex items-center gap-4 p-3.5 bg-white rounded-2xl border border-brand-border">
+                        <img
+                          src={editing.image}
+                          alt="Mavzu rasmi"
+                          className="w-24 h-16 object-cover rounded-xl border border-slate-200"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="text-xs text-slate-600">
+                          <span className="font-bold text-brand-primary">Hozirgi mavzu rasmi</span>
+                          <p className="text-[11px] text-slate-400 truncate max-w-sm">{editing.image}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex justify-end gap-6 pt-10 border-t border-brand-border">

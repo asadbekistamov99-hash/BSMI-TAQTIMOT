@@ -44,7 +44,11 @@ const mapAppwriteTopic = (doc: any) => ({
   theory: doc.theory,
   latinTerms: doc.latin_terms !== undefined ? doc.latin_terms : doc.latinTerms,
   videos: typeof doc.videos === 'string' ? JSON.parse(doc.videos) : (doc.videos || []),
-  image: doc.image
+  image: doc.image,
+  pptxUrl: doc.pptx_url !== undefined ? doc.pptx_url : doc.pptxUrl,
+  pdfUrl: doc.pdf_url !== undefined ? doc.pdf_url : doc.pdfUrl,
+  lectureType: doc.lecture_type !== undefined ? doc.lecture_type : doc.lectureType,
+  customLectureFile: doc.custom_lecture_file !== undefined ? doc.custom_lecture_file : doc.customLectureFile
 });
 
 const mapAppwriteQuiz = (doc: any) => {
@@ -64,9 +68,13 @@ const mapAppwriteLatinTerm = (doc: any) => ({
   id: doc.$id,
   latin: doc.latin,
   uzbek: doc.uzbek,
-  english: doc.english,
-  russian: doc.russian,
-  pronunciation: doc.pronunciation
+  english: doc.english || '',
+  russian: doc.russian || '',
+  semester: doc.semester,
+  topicOrder: doc.topicOrder !== undefined ? doc.topicOrder : doc.topic_order,
+  description: doc.description || '',
+  pronunciation: doc.pronunciation || '',
+  isDeleted: doc.isDeleted || doc.is_deleted || false
 });
 
 const mapAppwriteAtlas = (doc: any) => {
@@ -154,7 +162,11 @@ const mapTopic = (t: any) => ({
   theory: t.theory,
   latinTerms: t.latin_terms !== undefined ? t.latin_terms : t.latinTerms,
   videos: t.videos,
-  image: t.image
+  image: t.image,
+  pptxUrl: t.pptx_url !== undefined ? t.pptx_url : t.pptxUrl,
+  pdfUrl: t.pdf_url !== undefined ? t.pdf_url : t.pdfUrl,
+  lectureType: t.lecture_type !== undefined ? t.lecture_type : t.lectureType,
+  customLectureFile: t.custom_lecture_file !== undefined ? t.custom_lecture_file : t.customLectureFile
 });
 
 const mapQuiz = (q: any) => {
@@ -173,7 +185,14 @@ const mapQuiz = (q: any) => {
 const mapLatinTerm = (l: any) => ({
   id: l.id,
   latin: l.latin,
-  uzbek: l.uzbek
+  uzbek: l.uzbek,
+  english: l.english || '',
+  russian: l.russian || '',
+  semester: l.semester,
+  topicOrder: l.topicOrder !== undefined ? l.topicOrder : l.topic_order,
+  description: l.description || '',
+  pronunciation: l.pronunciation || '',
+  isDeleted: l.isDeleted || l.is_deleted || false
 });
 
 const mapAtlas = (a: any) => {
@@ -693,6 +712,10 @@ export const dbService = {
   },
 
   async saveLatinTerm(latinTerm: any): Promise<any> {
+    if (latinTerm.id) {
+      return this.updateLatinTerm(latinTerm.id, latinTerm);
+    }
+
     if (isAppwriteEnabled() && appwriteDb) {
       try {
         const payload = {
@@ -700,6 +723,9 @@ export const dbService = {
           uzbek: latinTerm.uzbek,
           english: latinTerm.english || '',
           russian: latinTerm.russian || '',
+          semester: latinTerm.semester || null,
+          topic_order: latinTerm.topicOrder || null,
+          description: latinTerm.description || '',
           pronunciation: latinTerm.pronunciation || ''
         };
         const existing = await appwriteDb.listDocuments(appwriteDatabaseId, 'latin_terms', [
@@ -724,6 +750,9 @@ export const dbService = {
         uzbek: latinTerm.uzbek,
         english: latinTerm.english || null,
         russian: latinTerm.russian || null,
+        semester: latinTerm.semester || null,
+        topic_order: latinTerm.topicOrder || null,
+        description: latinTerm.description || null,
         pronunciation: latinTerm.pronunciation || null
       };
       
@@ -735,9 +764,79 @@ export const dbService = {
       if (error) throw error;
       return mapLatinTerm(data);
     } else {
-      const dRef = await addDoc(collection(db, 'latin_terms'), latinTerm);
-      return { id: dRef.id, ...latinTerm };
+      const cleanData: any = {
+        latin: latinTerm.latin,
+        uzbek: latinTerm.uzbek,
+        english: latinTerm.english || '',
+        russian: latinTerm.russian || '',
+        semester: latinTerm.semester ? Number(latinTerm.semester) : null,
+        topicOrder: latinTerm.topicOrder ? Number(latinTerm.topicOrder) : null,
+        description: latinTerm.description || '',
+        pronunciation: latinTerm.pronunciation || '',
+        createdAt: new Date().toISOString()
+      };
+      const dRef = await addDoc(collection(db, 'latin_terms'), cleanData);
+      return { id: dRef.id, ...cleanData };
     }
+  },
+
+  async updateLatinTerm(termId: string, updates: any): Promise<void> {
+    const cleanUpdates: any = {
+      ...(updates.latin !== undefined && { latin: updates.latin }),
+      ...(updates.uzbek !== undefined && { uzbek: updates.uzbek }),
+      ...(updates.english !== undefined && { english: updates.english }),
+      ...(updates.russian !== undefined && { russian: updates.russian }),
+      ...(updates.semester !== undefined && { semester: updates.semester ? Number(updates.semester) : null }),
+      ...(updates.topicOrder !== undefined && { topicOrder: updates.topicOrder ? Number(updates.topicOrder) : null }),
+      ...(updates.description !== undefined && { description: updates.description }),
+      ...(updates.pronunciation !== undefined && { pronunciation: updates.pronunciation }),
+      ...(updates.isDeleted !== undefined && { isDeleted: updates.isDeleted }),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (isAppwriteEnabled() && appwriteDb) {
+      try {
+        await appwriteDb.updateDocument(appwriteDatabaseId, 'latin_terms', termId, cleanUpdates);
+        return;
+      } catch (err) {
+        console.warn("Appwrite updateLatinTerm failed:", err);
+      }
+    }
+
+    if (isSupabaseEnabled() && supabase) {
+      try {
+        const { error } = await supabase.from('latin_terms').update(cleanUpdates).eq('id', termId);
+        if (error) throw error;
+        return;
+      } catch (err) {
+        console.warn("Supabase updateLatinTerm failed:", err);
+      }
+    }
+
+    await setDoc(doc(db, 'latin_terms', termId), cleanUpdates, { merge: true });
+  },
+
+  async deleteLatinTerm(termId: string): Promise<void> {
+    if (isAppwriteEnabled() && appwriteDb) {
+      try {
+        await appwriteDb.deleteDocument(appwriteDatabaseId, 'latin_terms', termId);
+        return;
+      } catch (err) {
+        console.warn("Appwrite deleteLatinTerm failed:", err);
+      }
+    }
+
+    if (isSupabaseEnabled() && supabase) {
+      try {
+        const { error } = await supabase.from('latin_terms').delete().eq('id', termId);
+        if (error) throw error;
+        return;
+      } catch (err) {
+        console.warn("Supabase deleteLatinTerm failed:", err);
+      }
+    }
+
+    await deleteDoc(doc(db, 'latin_terms', termId));
   },
 
   // 5. ATLAS

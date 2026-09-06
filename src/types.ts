@@ -12,6 +12,38 @@ export interface User {
   expiryDate?: any;
 }
 
+export interface CustomLectureFile {
+  fileUrl: string;
+  fileName: string;
+  fileType: 'pdf' | 'pptx';
+  fileSize?: number;
+  uploadedAt?: any;
+}
+
+export interface TopicTerm {
+  id: string;
+  latin: string;
+  uzbek: string;
+  russian?: string;
+  english?: string;
+  uz?: string;
+  ru?: string;
+  en?: string;
+  description?: string;
+  pronunciation?: string;
+}
+
+export interface TopicReference {
+  id: string;
+  title: string;
+  authors?: string;
+  year?: string;
+  type?: 'textbook' | 'atlas' | 'article' | 'manual' | 'online' | string;
+  pages?: string;
+  link?: string;
+  note?: string;
+}
+
 export interface Topic {
   id: string;
   semester: number;
@@ -19,8 +51,15 @@ export interface Topic {
   title: Record<string, string>; // Multi-language support
   theory: Record<string, string>;
   latinTerms: string[];
+  terms?: TopicTerm[];
+  references?: TopicReference[];
   image?: string;
-  videos: string[] | Record<string, string[]>;
+  videos?: string[] | Record<string, string[]>;
+  lectureType?: 'text' | 'pdf' | 'pptx';
+  customLectureFile?: CustomLectureFile | null;
+  pdfUrl?: string;
+  pptxUrl?: string;
+  diagramReplacements?: Record<string, any>;
 }
 
 export interface Semester {
@@ -76,6 +115,21 @@ export interface AtlasEntry {
     normal?: string;
     description: Record<string, string>;
   }[];
+}
+
+export interface LatinTerm {
+  id: string;
+  latin: string;
+  uzbek: string;
+  russian?: string;
+  english?: string;
+  semester?: number;
+  topicOrder?: number;
+  description?: string;
+  pronunciation?: string;
+  isDeleted?: boolean;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export interface UserPayment {

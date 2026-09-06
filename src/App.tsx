@@ -401,8 +401,8 @@ export default function App() {
               <Route path="/latin-glossary" element={<LatinGlossary isAdmin={isAdmin} user={user} />} />
               <Route path="/pin-quiz" element={<Navigate to="/models" replace />} />
               <Route path="/leaderboard" element={<LeaderboardPage user={user} />} />
-              <Route path="/ai-assistant" element={<AiAssistant user={user} />} />
-              <Route path="/presentation" element={<Presentation />} />
+              <Route path="/ai-assistant" element={<Navigate to="/" replace />} />
+              <Route path="/presentation" element={<Presentation user={user} isAdmin={isAdmin} />} />
               <Route path="/admin/login" element={!isAdmin ? <AdminLogin onLogin={handleAdminLogin} /> : <Navigate to="/admin" />} />
               <Route path="/admin/*" element={isAdmin ? <AdminDashboard onLogout={handleAdminLogout} /> : <Navigate to="/admin/login" />} />
             </Routes>

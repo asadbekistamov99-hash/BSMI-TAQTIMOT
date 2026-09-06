@@ -17,8 +17,8 @@ export async function createServerApp() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ limit: '50mb', extended: true }));
+  app.use(express.json({ limit: '150mb' }));
+  app.use(express.urlencoded({ limit: '150mb', extended: true }));
 
   interface PerformanceLog {
     id: string;
@@ -269,18 +269,37 @@ export async function createServerApp() {
   app.get('/api/files/:filename', (req: express.Request, res: any) => {
     try {
       const filename = path.basename(req.params.filename);
-      const targetFilePath = path.join(uploadsDir, filename);
+      const targetFilePath = path.resolve(uploadsDir, filename);
 
       if (!fs.existsSync(targetFilePath)) {
         return res.status(404).json({ error: 'Fayl topilmadi' });
       }
 
+      const lower = filename.toLowerCase();
+      if (lower.endsWith('.pdf')) {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      } else if (lower.endsWith('.pptx')) {
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      } else if (lower.endsWith('.ppt')) {
+        res.setHeader('Content-Type', 'application/vnd.ms-powerpoint');
+        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      }
+
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Cache-Control', 'public, max-age=31536000');
-      res.sendFile(targetFilePath);
+      res.sendFile(targetFilePath, (err) => {
+        if (err && !res.headersSent) {
+          console.error('[STORAGE-SERVER] Error streaming file:', err);
+          res.status(500).json({ error: 'Faylni ochishda xatolik' });
+        }
+      });
     } catch (err: any) {
       console.error('[STORAGE-SERVER] Error serving file:', err);
-      res.status(500).json({ error: 'Faylni ochishda xatolik' });
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Faylni ochishda xatolik' });
+      }
     }
   });
 

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { 
   FileText, Download, Printer, Copy, Check, X, 
-  BookOpen, Sparkles, ShieldCheck, HelpCircle, Layers
+  BookOpen, Sparkles, ShieldCheck, HelpCircle, Layers,
+  Presentation, ChevronRight
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import bsmiLogo from '../assets/images/bsmi.jpg';
 
 interface ExportTopicPdfModalProps {
@@ -12,6 +14,7 @@ interface ExportTopicPdfModalProps {
 }
 
 export default function ExportTopicPdfModal({ topic, isOpen, onClose }: ExportTopicPdfModalProps) {
+  const navigate = useNavigate();
   const [includeTheory, setIncludeTheory] = useState<boolean>(true);
   const [includeLatinTerms, setIncludeLatinTerms] = useState<boolean>(true);
   const [includeClinical, setIncludeClinical] = useState<boolean>(true);
@@ -295,6 +298,34 @@ export default function ExportTopicPdfModal({ topic, isOpen, onClose }: ExportTo
         {/* Modal Content */}
         <div className="p-6 space-y-6 overflow-y-auto">
           
+          {/* Presentation Switch Banner */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-slate-900 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg shadow-amber-500/5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                <Presentation className="w-5 h-5" />
+              </div>
+              <div>
+                <h5 className="text-xs font-black text-amber-300 uppercase tracking-wide flex items-center gap-1.5">
+                  <span>Mavzu Taqdimoti (PowerPoint / Slaydlar)</span>
+                </h5>
+                <p className="text-[11px] text-slate-300 font-medium mt-0.5">
+                  Ushbu mavzuning biriktirilgan taqdimotiga o'ting va slaydlarni kinoteatr rejimida ko'ring.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                navigate(`/presentation?topicId=${topic.id}&semester=${topic.semester}&order=${topic.order}`);
+                onClose();
+              }}
+              className="w-full sm:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <span>Taqdimotga O'tish</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           {/* Options Checklist */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -367,13 +398,27 @@ export default function ExportTopicPdfModal({ topic, isOpen, onClose }: ExportTo
 
         {/* Modal Footer Actions */}
         <div className="p-6 border-t border-slate-800 bg-slate-950/80 flex flex-wrap items-center justify-between gap-3">
-          <button
-            onClick={handleCopyMarkdown}
-            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-slate-700 cursor-pointer"
-          >
-            {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-            {copied ? "Nusxalandi!" : "Markdown / Matn Nusxalash"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopyMarkdown}
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-slate-700 cursor-pointer"
+            >
+              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+              {copied ? "Nusxalandi!" : "Markdown / Matn Nusxalash"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                navigate(`/presentation?topicId=${topic.id}&semester=${topic.semester}&order=${topic.order}`);
+                onClose();
+              }}
+              className="px-4 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
+              title="Ushbu mavzuning PowerPoint taqdimotiga o'tish"
+            >
+              <Presentation className="w-4 h-4 text-amber-400" />
+              <span>Taqdimotga O'tish</span>
+            </button>
+          </div>
 
           <div className="flex items-center gap-3">
             <button
