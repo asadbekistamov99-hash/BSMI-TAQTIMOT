@@ -9394,11 +9394,94 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
   const [generatingTopicId, setGeneratingTopicId] = useState<string | null>(null);
   const [genProgress, setGenProgress] = useState({ current: 0, total: 0 });
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  const [isDeduping, setIsDeduping] = useState(false);
 
   useEffect(() => {
     fetchQuizzes();
     fetchTopics();
   }, []);
+
+  // Firestore'dagi "topics" kolleksiyasida bir xil semestr+tartib raqamiga ega
+  // bir nechta hujjat (dublikat) paydo bo'lishi mumkin (masalan, takroriy sinxronizatsiya
+  // yoki AI generatsiya urinishlaridan qolgan). Bu holatda mazkur mavzu bir nechta marta
+  // ko'rinadi (masalan "3-Semestr (39 ta mavzu)" o'rniga aslida 13 ta bo'lishi kerak).
+  const duplicateTopicGroups = (() => {
+    const groups: Record<string, Topic[]> = {};
+    topics.forEach((t) => {
+      const key = `${t.semester}_${t.order}`;
+      (groups[key] = groups[key] || []).push(t);
+    });
+    return Object.values(groups).filter((g) => g.length > 1);
+  })();
+  const duplicateTopicCount = duplicateTopicGroups.reduce((sum, g) => sum + (g.length - 1), 0);
+
+  const handleDeduplicateTopics = () => {
+    if (duplicateTopicCount === 0) return;
+
+    requestConfirm(
+      "Takrorlangan Mavzularni Tozalash",
+      `${duplicateTopicCount} ta takrorlangan (dublikat) mavzu hujjati topildi. Har bir guruhdan eng to'liq ma'lumotli versiya (nazariya matni, testlar, taqdimot fayli bilan) saqlab qolinadi, qolgan bo'sh nusxalar butunlay o'chiriladi. Agar o'chiriladigan nusxaga tegishli test savollari bo'lsa, ular avtomatik ravishda saqlanib qolgan mavzuga ko'chiriladi — hech qanday test yo'qolmaydi. Bu amalni ortga qaytarib bo'lmaydi. Davom etilsinmi?`,
+      async () => {
+        setIsDeduping(true);
+        try {
+          const quizCountById: Record<string, number> = {};
+          quizzes.forEach((q) => {
+            quizCountById[q.topicId] = (quizCountById[q.topicId] || 0) + 1;
+          });
+
+          const scoreTopic = (t: any): number => {
+            let score = (quizCountById[t.id] || 0) * 1000;
+            const theory = t.theory;
+            if (typeof theory === 'string') score += theory.length;
+            else if (theory && typeof theory === 'object') {
+              score += Object.values(theory).reduce((a: number, v: any) => a + (typeof v === 'string' ? v.length : 0), 0);
+            }
+            if (Array.isArray(t.terms)) score += t.terms.length * 5;
+            if (Array.isArray(t.references)) score += t.references.length * 5;
+            if (t.pptxUrl || t.pdfUrl || t.customLectureFile) score += 50;
+            const videos = t.videos;
+            if (Array.isArray(videos)) score += videos.length * 10;
+            else if (videos && typeof videos === 'object') {
+              score += Object.values(videos).reduce((a: number, v: any) => a + (Array.isArray(v) ? v.length : 0), 0) * 10;
+            }
+            return score;
+          };
+
+          const batch = writeBatch(db);
+          let deletedCount = 0;
+          let relinkedCount = 0;
+
+          duplicateTopicGroups.forEach((group) => {
+            const sorted = [...group].sort((a, b) => scoreTopic(b) - scoreTopic(a));
+            const keeper = sorted[0];
+            const losers = sorted.slice(1);
+            losers.forEach((loser) => {
+              quizzes
+                .filter((q) => q.topicId === loser.id)
+                .forEach((q) => {
+                  batch.update(doc(db, 'quizzes', q.id), { topicId: keeper.id });
+                  relinkedCount++;
+                });
+              batch.delete(doc(db, 'topics', loser.id));
+              deletedCount++;
+            });
+          });
+
+          await batch.commit();
+          await fetchTopics();
+          await fetchQuizzes();
+          alert(`Tozalandi! ${deletedCount} ta dublikat mavzu o'chirildi${relinkedCount > 0 ? `, ${relinkedCount} ta test boshqa mavzuga ko'chirildi` : ''}.`);
+        } catch (err: any) {
+          console.error(err);
+          alert("Tozalashda xatolik yuz berdi: " + (err.message || String(err)));
+        } finally {
+          setIsDeduping(false);
+        }
+      },
+      "Ha, tozalansin",
+      "Bekor qilish"
+    );
+  };
 
   const generateAIQuizzes = async (topic: Topic) => {
     setGeneratingTopicId(topic.id);
@@ -9568,6 +9651,31 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
           </button>
         </div>
       </div>
+
+      {!selectedTopicId && duplicateTopicCount > 0 && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-[32px] p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="text-amber-600 w-6 h-6 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="text-sm font-black text-amber-900 uppercase tracking-tight">
+                Takrorlangan (dublikat) mavzular topildi
+              </h4>
+              <p className="text-xs text-amber-700 font-medium mt-1 max-w-2xl">
+                Ma'lumotlar bazasida {duplicateTopicCount} ta ortiqcha mavzu nusxasi bor — shu sababli semestr bo'yicha mavzular soni haqiqiyidan ko'p ko'rinmoqda. Tozalash tugmasi eng to'liq ma'lumotli nusxani saqlab, qolganlarini o'chiradi (testlar yo'qolmaydi).
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleDeduplicateTopics}
+            disabled={isDeduping}
+            className="px-6 py-3.5 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all cursor-pointer shadow-lg shadow-amber-600/20 whitespace-nowrap shrink-0 flex items-center gap-2 disabled:opacity-50"
+          >
+            {isDeduping ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            {isDeduping ? 'Tozalanmoqda...' : `Takrorlanganlarni Tozalash (${duplicateTopicCount})`}
+          </button>
+        </div>
+      )}
 
       {!selectedTopicId && (
         <div className="flex flex-wrap gap-2 bg-white p-4 rounded-2xl border border-brand-border shadow-sm">

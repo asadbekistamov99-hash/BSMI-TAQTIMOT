@@ -405,30 +405,36 @@ function ModelCard({
     >
       {/* Thumbnail */}
       <div className="relative aspect-[4/3] bg-slate-950 overflow-hidden w-full">
-        {/* Glowing 3D System Backdrop Base Layer */}
-        <img
-          src={systemBackdrop}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-500"
-          referrerPolicy="no-referrer"
-        />
-        {/* Tech subtle vignette & radial depth gradient */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/20" />
-
         {model.thumbnail && imgOk ? (
-          <img
-            src={model.thumbnail}
-            alt={tr(model.title)}
-            onError={() => setImgOk(false)}
-            referrerPolicy="no-referrer"
-            className="absolute inset-0 w-full h-full object-contain p-3.5 z-10 group-hover:scale-110 transition-transform duration-500"
-          />
+          /* Real per-model picture: shown on a solid white card so it's always clearly visible */
+          <>
+            <div className="absolute inset-0 bg-white" />
+            <img
+              src={model.thumbnail}
+              alt={tr(model.title)}
+              onError={() => setImgOk(false)}
+              referrerPolicy="no-referrer"
+              loading="lazy"
+              className="absolute inset-0 w-full h-full object-contain p-4 z-10 group-hover:scale-110 transition-transform duration-500"
+            />
+          </>
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center z-10">
-            <div className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-xl">
-              <Icon className="w-7 h-7 text-white" />
+          <>
+            {/* Glowing 3D System Backdrop Base Layer (used only when no real picture is available) */}
+            <img
+              src={systemBackdrop}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-500"
+              referrerPolicy="no-referrer"
+            />
+            {/* Tech subtle vignette & radial depth gradient */}
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/20" />
+            <div className="absolute inset-0 flex items-center justify-center z-10">
+              <div className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-xl">
+                <Icon className="w-7 h-7 text-white" />
+              </div>
             </div>
-          </div>
+          </>
         )}
         <div className="absolute top-3 left-3 flex gap-1.5 z-20">
           <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border ${sm.badge} flex items-center gap-1 backdrop-blur-sm bg-white/5`}>
@@ -546,7 +552,7 @@ function DetailModal({
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-slate-950/40" />
 
                 {model.thumbnail ? (
-                  <div className="relative z-10 w-44 h-44 bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl shadow-2xl overflow-hidden p-3 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center">
+                  <div className="relative z-10 w-44 h-44 bg-white border border-white/10 rounded-3xl shadow-2xl overflow-hidden p-3 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center">
                     <img src={model.thumbnail} alt="" referrerPolicy="no-referrer" className="w-full h-full object-contain" />
                   </div>
                 ) : (
