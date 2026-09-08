@@ -10,7 +10,7 @@ import { SEMESTER_2_DETAILED_TOPICS } from '../data/semester2TopicsData';
 import { SEMESTER_3_DETAILED_TOPICS } from '../data/semester3TopicsData';
 import { getGlossaryTermsByTopic } from '../data/topicGlossaryData';
 import { motion } from 'motion/react';
-import { Book, Play, Image as ImageIcon, Languages, ChevronRight, ClipboardCheck, Lock, Sparkles, Clock, Maximize2, Minimize2, ZoomIn, ZoomOut, X, Type, BookOpen, Search, CheckCircle, Edit3, Trash2, History, Download, Bold, Italic, List, Heading, Code, Check, Stethoscope, Printer, BookA, Bookmark, Presentation, FileText, RefreshCw } from 'lucide-react';
+import { Book, Play, Image as ImageIcon, Languages, ChevronRight, ClipboardCheck, Lock, Sparkles, Clock, Maximize2, Minimize2, ZoomIn, ZoomOut, X, Type, BookOpen, Search, CheckCircle, Edit3, Trash2, History, Download, Bold, Italic, List, Heading, Code, Check, Stethoscope, Printer, BookA, Bookmark, Presentation, FileText, RefreshCw, Box } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import PaymentModal from '../components/PaymentModal';
 import CreativeAnatomyDiagram from '../components/CreativeAnatomyDiagram';
@@ -20,6 +20,7 @@ import ExportTopicPdfModal from '../components/ExportTopicPdfModal';
 import TopicGlossaryViewer from '../components/TopicGlossaryViewer';
 import TopicReferencesViewer from '../components/TopicReferencesViewer';
 import TopicTheoryReader from '../components/TopicTheoryReader';
+import { ANATOMY_MODELS, SEED_MODELS, type AnatomyModel } from '../data/anatomyModels';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
 import { parseDate } from '../lib/dateUtils';
@@ -126,6 +127,13 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
   // Search & Atlas Related States
   const [relatedAtlas, setRelatedAtlas] = useState<AtlasEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Ushbu mavzuga maxsus biriktirilgan 3D Anatomiya Modellari (src/data/anatomyModels.ts dagi topicIds orqali)
+  const relatedModels: AnatomyModel[] = (() => {
+    if (!topic || !topic.semester || !topic.order) return [];
+    const curriculumTopicId = `sem_${topic.semester}_top_${topic.order}`;
+    return [...ANATOMY_MODELS, ...SEED_MODELS].filter((m) => m.topicIds?.includes(curriculumTopicId));
+  })();
 
   // Completion Status Tracking state
   const [isCompleted, setIsCompleted] = useState(false);
@@ -1414,6 +1422,50 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                       >
                         {language === 'uz' ? "Video darslikni tomosha qilish" : language === 'ru' ? "Смотреть видеоурок" : "Watch Lecture Video"}
                       </button>
+                    </div>
+                  )}
+
+                  {/* Related 3D Anatomy Models Section */}
+                  {relatedModels.length > 0 && (
+                    <div className="mt-10">
+                      <div className="flex items-center gap-3 mb-5">
+                        <div className="w-10 h-10 rounded-xl bg-brand-accent/15 text-brand-primary flex items-center justify-center shrink-0">
+                          <Box className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-black text-brand-primary uppercase tracking-tight">
+                            {language === 'uz' ? "Ushbu mavzuga tegishli 3D Modellar" : language === 'ru' ? "3D модели по этой теме" : "3D Models for this Topic"}
+                          </h3>
+                          <p className="text-xs text-brand-muted font-medium">
+                            {language === 'uz' ? `${relatedModels.length} ta interaktiv model topildi` : language === 'ru' ? `Найдено интерактивных моделей: ${relatedModels.length}` : `${relatedModels.length} interactive models found`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
+                        {relatedModels.map((m) => (
+                          <Link
+                            key={m.id}
+                            to={`/atlas?model=${encodeURIComponent(m.id)}`}
+                            className="group shrink-0 w-56 bg-white border border-brand-border rounded-2xl overflow-hidden shadow-sm hover:shadow-lg hover:border-brand-accent transition-all"
+                          >
+                            <div className="relative aspect-video bg-slate-100 flex items-center justify-center overflow-hidden">
+                              {m.thumbnail ? (
+                                <img src={m.thumbnail} alt={getLocalized(m.title)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" referrerPolicy="no-referrer" />
+                              ) : (
+                                <Box className="w-10 h-10 text-slate-300" />
+                              )}
+                            </div>
+                            <div className="p-4">
+                              <h4 className="text-xs font-black text-brand-primary line-clamp-2 uppercase tracking-tight leading-snug">
+                                {getLocalized(m.title)}
+                              </h4>
+                              <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-brand-accent group-hover:translate-x-0.5 transition-transform">
+                                {language === 'uz' ? "3D da ko'rish" : language === 'ru' ? "Смотреть в 3D" : "View in 3D"} <ChevronRight className="w-3 h-3" />
+                              </span>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </>
