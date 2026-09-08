@@ -26,6 +26,25 @@ import { useLanguage } from '../hooks/useLanguage';
 import { parseDate } from '../lib/dateUtils';
 import SEO from '../components/SEO';
 
+// Rasm yuklanmasa (buzuq havola) brauzerning xunuk "broken image" belgisi o'rniga
+// tekis Box ikonkasiga qaytadi.
+function RelatedModelThumb({ src, alt }: { src?: string; alt: string }) {
+  const [ok, setOk] = useState(true);
+  if (!src || !ok) {
+    return <Box className="w-10 h-10 text-slate-300" />;
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      onError={() => setOk(false)}
+      referrerPolicy="no-referrer"
+      loading="lazy"
+      className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-500"
+    />
+  );
+}
+
 function Countdown({ createdAt }: { createdAt: any }) {
   const [timeLeft, setTimeLeft] = useState<string>('');
   const { t } = useLanguage();
@@ -1424,50 +1443,6 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                       </button>
                     </div>
                   )}
-
-                  {/* Related 3D Anatomy Models Section */}
-                  {relatedModels.length > 0 && (
-                    <div className="mt-10">
-                      <div className="flex items-center gap-3 mb-5">
-                        <div className="w-10 h-10 rounded-xl bg-brand-accent/15 text-brand-primary flex items-center justify-center shrink-0">
-                          <Box className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-black text-brand-primary uppercase tracking-tight">
-                            {language === 'uz' ? "Ushbu mavzuga tegishli 3D Modellar" : language === 'ru' ? "3D модели по этой теме" : "3D Models for this Topic"}
-                          </h3>
-                          <p className="text-xs text-brand-muted font-medium">
-                            {language === 'uz' ? `${relatedModels.length} ta interaktiv model topildi` : language === 'ru' ? `Найдено интерактивных моделей: ${relatedModels.length}` : `${relatedModels.length} interactive models found`}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
-                        {relatedModels.map((m) => (
-                          <Link
-                            key={m.id}
-                            to={`/atlas?model=${encodeURIComponent(m.id)}`}
-                            className="group shrink-0 w-56 bg-white border border-brand-border rounded-2xl overflow-hidden shadow-sm hover:shadow-lg hover:border-brand-accent transition-all"
-                          >
-                            <div className="relative aspect-video bg-slate-100 flex items-center justify-center overflow-hidden">
-                              {m.thumbnail ? (
-                                <img src={m.thumbnail} alt={getLocalized(m.title)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" referrerPolicy="no-referrer" />
-                              ) : (
-                                <Box className="w-10 h-10 text-slate-300" />
-                              )}
-                            </div>
-                            <div className="p-4">
-                              <h4 className="text-xs font-black text-brand-primary line-clamp-2 uppercase tracking-tight leading-snug">
-                                {getLocalized(m.title)}
-                              </h4>
-                              <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-brand-accent group-hover:translate-x-0.5 transition-transform">
-                                {language === 'uz' ? "3D da ko'rish" : language === 'ru' ? "Смотреть в 3D" : "View in 3D"} <ChevronRight className="w-3 h-3" />
-                              </span>
-                            </div>
-                          </Link>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </>
               ) : activeTab === 'video_lessons' ? (
                 <div className="space-y-8">
@@ -1651,6 +1626,54 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     </>
                   )}
                 </button>
+              </div>
+            )}
+
+            {/* Related 3D Anatomy Models — sidebar, always visible without scrolling */}
+            {relatedModels.length > 0 && (
+              <div className="p-8 bg-white border border-slate-200/80 rounded-[32px] shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-2 h-full bg-brand-accent" />
+                <div className="flex items-center gap-2.5 mb-1">
+                  <span className="w-9 h-9 rounded-xl bg-brand-accent/15 text-brand-primary flex items-center justify-center shrink-0">
+                    <Box className="w-4.5 h-4.5" />
+                  </span>
+                  <h3 className="text-sm font-black text-slate-800 tracking-tight uppercase leading-tight">
+                    {language === 'uz' ? "Tegishli 3D Modellar" : language === 'ru' ? "3D модели по теме" : "Related 3D Models"}
+                  </h3>
+                </div>
+                <p className="text-slate-400 text-[11px] font-semibold leading-relaxed mb-5">
+                  {language === 'uz' ? `${relatedModels.length} ta interaktiv model topildi` : language === 'ru' ? `Найдено интерактивных моделей: ${relatedModels.length}` : `${relatedModels.length} interactive models found`}
+                </p>
+                <div className="space-y-3">
+                  {relatedModels.slice(0, 4).map((m) => (
+                    <Link
+                      key={m.id}
+                      to={`/atlas?model=${encodeURIComponent(m.id)}`}
+                      className="group flex items-center gap-3 p-2 rounded-2xl border border-slate-100 hover:border-brand-accent hover:bg-slate-50 transition-all"
+                    >
+                      <div className="w-14 h-14 rounded-xl bg-white border border-slate-100 shrink-0 overflow-hidden flex items-center justify-center">
+                        <RelatedModelThumb src={m.thumbnail} alt={getLocalized(m.title)} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-[11px] font-black text-brand-primary line-clamp-2 uppercase tracking-tight leading-snug">
+                          {getLocalized(m.title)}
+                        </h4>
+                        <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-brand-accent mt-1">
+                          {language === 'uz' ? "3D da ko'rish" : language === 'ru' ? "Смотреть в 3D" : "View in 3D"} <ChevronRight className="w-3 h-3" />
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+                {relatedModels.length > 4 && (
+                  <Link
+                    to={`/atlas?topic=${encodeURIComponent(`sem_${topic?.semester}_top_${topic?.order}`)}`}
+                    className="mt-4 w-full flex items-center justify-center gap-1.5 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-brand-primary text-[10px] font-black uppercase tracking-wider transition-all"
+                  >
+                    {language === 'uz' ? `Yana ${relatedModels.length - 4} tasini ko'rish` : language === 'ru' ? `Ещё ${relatedModels.length - 4}` : `See ${relatedModels.length - 4} more`}
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Link>
+                )}
               </div>
             )}
 
