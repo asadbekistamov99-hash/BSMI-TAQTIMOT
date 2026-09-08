@@ -38,6 +38,48 @@ import { formatDocumentUrl } from './TopicLectureEditor';
 import { uploadPresentationFile, formatPresentationUrl, getPresentationEmbedUrl } from '../lib/uploadHelper';
 import { PresentationViewer } from './PresentationViewer';
 
+const STORAGE_RULES_SNIPPET = `rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email.matches('(?i)asadbekistamov99@gmail.com');
+    }
+
+    match /midterms/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 10 * 1024 * 1024 * 1024;
+    }
+
+    match /atlas_models/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 10 * 1024 * 1024 * 1024;
+    }
+
+    match /site_assets/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 50 * 1024 * 1024;
+    }
+
+    match /presentations/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 150 * 1024 * 1024;
+    }
+
+    match /diagrams/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 10 * 1024 * 1024;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}`;
+
 interface AdminPresentationsManagerProps {
   searchQuery?: string;
   authUser?: any;
@@ -949,7 +991,40 @@ export default function AdminPresentationsManager({
               </div>
 
               {/* Alert Messages */}
-              {saveError && (
+              {saveError && saveError.includes('STORAGE_RULES_MISSING') ? (
+                <div className="p-5 bg-indigo-50 border-2 border-indigo-200 rounded-2xl space-y-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-black text-indigo-900 uppercase tracking-tight">
+                        Firebase Storage qoidalari sozlanmagan
+                      </h4>
+                      <p className="text-[11px] text-indigo-700/80 font-medium mt-1 leading-relaxed">
+                        Fayl yuklanmadi, chunki Firebase loyihangizdagi Storage xavfsizlik qoidalarida <code>presentations/</code> papkasiga yozish ruxsati yo'q.
+                        Buni bir marta tuzatish kifoya: quyidagi qoidalarni nusxalab, <b>Firebase Console → Storage → Rules</b> bo'limiga to'liq joylashtiring va <b>Publish</b> tugmasini bosing.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="relative bg-slate-900 rounded-2xl overflow-hidden p-4 border border-slate-800">
+                    <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-widest pb-2 border-b border-slate-800/80 mb-2">
+                      <span>storage.rules</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(STORAGE_RULES_SNIPPET);
+                          alert("Storage qoidalari nusxalandi! Firebase Console → Storage → Rules bo'limiga joylashtiring.");
+                        }}
+                        className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors cursor-pointer text-[9px] font-black uppercase tracking-wider"
+                      >
+                        Nusxalash
+                      </button>
+                    </div>
+                    <pre className="text-[10px] text-emerald-400 font-mono overflow-x-auto max-h-52 leading-relaxed select-all">
+{STORAGE_RULES_SNIPPET}
+                    </pre>
+                  </div>
+                </div>
+              ) : saveError && (
                 <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-bold flex items-center gap-2.5">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{saveError}</span>

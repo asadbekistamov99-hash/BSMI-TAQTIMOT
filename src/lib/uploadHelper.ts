@@ -125,6 +125,7 @@ export async function uploadPresentationFile(
   }
 
   // 1. Primary in production: Firebase Storage (persists across all instances/deploys)
+  let firebaseErrorCode: string | undefined;
   try {
     const sanitized = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const storageRef = ref(storage, `presentations/${Date.now()}_${sanitized}`);
@@ -160,12 +161,23 @@ export async function uploadPresentationFile(
       };
     }
   } catch (firebaseErr: any) {
+    firebaseErrorCode = firebaseErr?.code || firebaseErr?.message;
     console.warn("[UPLOAD] Firebase storage upload failed:", firebaseErr);
+  }
+
+  // If Firebase Storage explicitly denied the write (security rules), don't waste
+  // time on the ephemeral server-disk fallback — it would just 404 later on Vercel.
+  // Surface a precise, actionable error instead of a generic one.
+  if (firebaseErrorCode && String(firebaseErrorCode).includes('storage/unauthorized')) {
+    throw new Error(
+      "STORAGE_RULES_MISSING: Firebase Storage xavfsizlik qoidalari 'presentations/' papkasiga yozishga ruxsat bermayapti. " +
+      "Admin: Firebase Console → Storage → Rules bo'limiga o'ting va storage.rules faylidagi yangilangan qoidalarni joylashtiring."
+    );
   }
 
   // Last-resort fallback (production): server disk. Note this will NOT persist
   // reliably on serverless hosting — only reached if Firebase Storage itself is
-  // unreachable/misconfigured.
+  // unreachable/misconfigured for a reason other than a rules rejection.
   try {
     const serverResult = await uploadViaServerApi(file, onProgress);
     if (serverResult?.url) {
@@ -183,8 +195,6 @@ export async function uploadPresentationFile(
   throw new Error(
     "Faylni yuklashda xatolik yuz berdi. Iltimos, fayl hajmini tekshiring yoki Google Drive / tashqi havola orqali biriktiring."
   );
-
-  throw new Error("Faylni yuklab bo'lmadi.");
 }
 
 /**

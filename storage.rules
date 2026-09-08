@@ -23,7 +23,21 @@ service firebase.storage {
       allow read: if true;
       allow write: if isAdmin() && request.resource.size < 50 * 1024 * 1024; // 50MB max for assets
     }
-    
+
+    // Taqdimotlar (PPTX / PDF) — Admin panelidan "Taqdimotlar" bo'limiga yuklanadigan fayllar.
+    // Bu blok bo'lmasa, standart "deny all" qoidasi tufayli yuklash "permission-denied" xatoligi bilan
+    // muvaffaqiyatsiz tugaydi (aynan shu narsa taqdimot yuklashning ishlamasligiga sabab bo'lgan).
+    match /presentations/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 150 * 1024 * 1024; // 150MB gacha
+    }
+
+    // Diagramma va tasvirlar (masalan, mavzu diagrammalarini almashtirish, 3D model rasm-thumbnaillari)
+    match /diagrams/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 10 * 1024 * 1024; // 10MB gacha
+    }
+
     // Default deny for everything else
     match /{allPaths=**} {
       allow read, write: if false;

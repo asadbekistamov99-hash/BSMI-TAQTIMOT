@@ -64,6 +64,9 @@ export interface AnatomyModel {
   author?: string;
   tags?: string[];
   pins?: AnatomyModelPin[];
+  /** ALL_39_TOPICS dagi mos mavzu(lar) id'lari, masalan "sem_2_top_9" — mavzu sahifasida
+   * ushbu model "Tegishli 3D Modellar" bo'limida avtomatik ko'rsatiladi. */
+  topicIds?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -181,6 +184,7 @@ export const ANATOMY_MODELS: AnatomyModel[] = [
     license: 'MIT (demo)',
     author: 'three.js',
     tags: ['demo', 'glb', 'head', 'bosh'],
+    topicIds: ['sem_1_top_6'],
   },
 ];
 
@@ -204,6 +208,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-heart-3342c8c438904ee2b3b6b68fedf30531',
     license: 'CC-BY', author: 'Freddan755',
     tags: ['yurak', 'heart', 'cor', 'сердце'],
+    topicIds: ['sem_2_top_9'],
   },
   {
     id: 'lungs-neshallads',
@@ -219,6 +224,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/realistic-human-lungs-ce09f4099a68467880f46e61eb9a3531',
     license: 'CC-BY', author: 'neshallads',
     tags: ["o'pka", 'lungs', 'pulmo', 'лёгкие'],
+    topicIds: ['sem_2_top_4'],
   },
   {
     id: 'internal-organs-unlim3d',
@@ -234,6 +240,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-internal-organs-fe69d7b1ed6f46a3bd0b6933b796092e',
     license: 'CC (Sketchfab)', author: 'unlim3d',
     tags: ['a\'zolar', 'organs', 'viscera', 'органы'],
+    topicIds: ['sem_2_top_2', 'sem_2_top_4', 'sem_2_top_6', 'sem_2_top_9'],
   },
   {
     id: 'brain-labeled',
@@ -249,6 +256,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/brain-with-labeled-parts-28c8971e11334e8b97a2a0d6235992e8',
     license: 'CC (Sketchfab)', author: 'AbdulMuhaymin',
     tags: ['miya', 'brain', 'cerebrum', 'мозг'],
+    topicIds: ['sem_3_top_1', 'sem_3_top_3'],
   },
 
   // ---------------------- NERVLAR (NERVE) ----------------------
@@ -266,6 +274,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab (Univ. of Dundee)', sourceUrl: 'https://sketchfab.com/3d-models/the-nervous-system-2e6be1399756494b9f185ce8c5900911',
     license: 'CC (Sketchfab)', author: 'University of Dundee, CAHID',
     tags: ['nerv', 'nervous', 'systema nervosum', 'нервы'],
+    topicIds: ['sem_3_top_1'],
   },
   {
     id: 'brain-cerebrum-brainstem',
@@ -281,6 +290,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-brain-cerebrum-brainstem-0aa0e33c5c854d1bab7bac9e1c7acaec',
     license: 'CC (Sketchfab)', author: 'FrankJohansson',
     tags: ['miya', 'brainstem', 'cerebrum', 'мозг'],
+    topicIds: ['sem_3_top_1', 'sem_3_top_3'],
   },
 
   // ---------------------- MUSKULLAR (MUSCLE) ----------------------
@@ -298,6 +308,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/simplified-male-muscular-system-4f258907dfb6477aa9bf4dfb5833a797',
     license: 'CC (Sketchfab)', author: 'Alexander (@qwertzus)',
     tags: ['muskul', 'muscles', 'musculi', 'мышцы'],
+    topicIds: ['sem_1_top_10', 'sem_1_top_12'],
   },
   {
     id: 'ecorche-anatomy-study',
@@ -313,6 +324,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/ecorche-anatomy-study-e402d3d541eb4b199c57d5410f5d3c57',
     license: 'CC (Sketchfab)', author: 'Beatriz Gomez Santamaria',
     tags: ['ekorshe', 'ecorche', 'muscles', 'мышцы'],
+    topicIds: ['sem_1_top_12', 'sem_1_top_13'],
   },
   {
     id: 'facial-muscles-ecorche',
@@ -328,6 +340,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/male-facial-muscles-ecorche-23c2d4af8088418d8b3ea9057ec88ff4',
     license: 'CC (Sketchfab)', author: 'hangar79',
     tags: ['yuz', 'facial', 'muscles', 'лицо'],
+    topicIds: ['sem_1_top_11'],
   },
 
   // ---------------------- SUYAKLAR (BONE) ----------------------
@@ -345,6 +358,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-skull-anatomy-daaaa5668efa43f280e23196adb792ca',
     license: 'CC-BY', author: 'Kumar Thyadi',
     tags: ['kalla', 'skull', 'cranium', 'череп'],
+    topicIds: ['sem_1_top_5'],
   },
   {
     id: 'skull-anatomy-hannah',
@@ -360,6 +374,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/the-anatomy-of-the-human-skull-baf6ac7b781a46218dca2b59dee58817',
     license: 'CC (Sketchfab)', author: 'HannahNewey',
     tags: ['kalla', 'skull', 'cranium', 'череп'],
+    topicIds: ['sem_1_top_5', 'sem_1_top_6'],
   },
   {
     id: 'skeleton-terrie',
@@ -375,6 +390,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-skeleton-911b9df7e7834175b69b4840ea15e054',
     license: 'CC-BY', author: 'Terrie Simmons-Ehrhardt',
     tags: ['skelet', 'skeleton', 'sceleton', 'скелет'],
+    topicIds: ['sem_1_top_1'],
   },
   {
     id: 'hand-wrist-bones',
@@ -390,6 +406,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/anatomy-of-hand-and-wrist-bones-labels-1704c8bec5db422fbe17c1e9650c293a',
     license: 'CC (Sketchfab)', author: 'Soma3D',
     tags: ['kaft', 'hand', 'wrist', 'кисть'],
+    topicIds: ['sem_1_top_3'],
   },
 
   // ---------------------- QON TOMIRLAR (VESSEL) ----------------------
@@ -407,6 +424,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/a3f0ea2030214a6bbaa97e7357eebd58',
     license: 'CC (Sketchfab)', author: 'HannahNewey',
     tags: ['tomir', 'vessels', 'coronaria', 'сосуды'],
+    topicIds: ['sem_2_top_9'],
   },
   {
     id: 'heart-anatomically-correct',
@@ -422,6 +440,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/anatomically-correct-human-heart-54fa880728d14c11afff78be8721620a',
     license: 'CC (Sketchfab)', author: 'Pigcraft (@s8819296)',
     tags: ['yurak', 'aorta', 'vessels', 'сердце'],
+    topicIds: ['sem_2_top_9'],
   },
 
   // ================= KENGAYTIRILGAN TO'PLAM =================
@@ -437,6 +456,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab (Oregon State Univ.)', sourceUrl: 'https://sketchfab.com/3d-models/vertebral-column-9ef040d718cd4c269844cc5cabf6ceaa',
     license: 'CC (Sketchfab)', author: 'Oregon State University | Ecampus',
     tags: ['umurtqa', 'spine', 'columna vertebralis', 'позвоночник'],
+    topicIds: ['sem_1_top_1'],
   },
   {
     id: 'atlas-c1-vertebra',
@@ -448,6 +468,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-atlas-c1-vertebra-03657338956d41158be94cf19b150402',
     license: 'CC-BY', author: 'Eric Bauer (@ebauer4)',
     tags: ['atlant', 'atlas', 'C1', 'умуurt'],
+    topicIds: ['sem_1_top_1'],
   },
   {
     id: 'thorax-ribcage',
@@ -459,6 +480,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-thorax-4aba9b2ced344bdf8f09656c6a298b50',
     license: 'CC (Sketchfab)', author: 'Medulla (@thunderpig)',
     tags: ["qovurg'a", 'ribs', 'thorax', 'грудь'],
+    topicIds: ['sem_1_top_2'],
   },
   {
     id: 'pelvic-bone',
@@ -470,6 +492,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-pelvic-bone-71a2dfe1a80444f89d90212a921ed0a2',
     license: 'CC-BY', author: 'Eric Bauer (@ebauer4)',
     tags: ['tos', 'pelvis', 'os coxae', 'таз'],
+    topicIds: ['sem_1_top_4'],
   },
   {
     id: 'sacrum',
@@ -481,6 +504,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-sacrum-49aafdac520046ab97afc33a26d47d0c',
     license: 'CC-BY', author: 'Eric Bauer (@ebauer4)',
     tags: ["dumg'aza", 'sacrum', 'крестец'],
+    topicIds: ['sem_1_top_1', 'sem_1_top_4'],
   },
   {
     id: 'femur-only',
@@ -492,6 +516,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-femur-a9c1f1a88b104c3fbfe975fa10b31b31',
     license: 'CC-BY', author: 'Eric Bauer (@ebauer4)',
     tags: ['son', 'femur', 'бедро'],
+    topicIds: ['sem_1_top_4'],
   },
   {
     id: 'leg-bones-set',
@@ -503,6 +528,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/femur-patella-tibia-fibula-and-foot-e0401c95f53c46df97b1db1cf21f3a56',
     license: 'CC (Sketchfab)', author: 'Kayla Carter (@kaylacarter)',
     tags: ['boldir', 'tibia', 'fibula', 'нога'],
+    topicIds: ['sem_1_top_4'],
   },
   {
     id: 'foot-bones',
@@ -514,6 +540,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/foot-bones-anatomical-to-table-d69e5651252e44d0bb5d7742670d1d48',
     license: 'CC-BY', author: 'Terrie Simmons-Ehrhardt',
     tags: ['panja', 'foot', 'tarsus', 'стопа'],
+    topicIds: ['sem_1_top_4'],
   },
   {
     id: 'humerus-only',
@@ -525,6 +552,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-humerus-548132dc5a0a423581e2cba2014ea521',
     license: 'CC-BY', author: 'Eric Bauer (@ebauer4)',
     tags: ['yelka', 'humerus', 'плечо'],
+    topicIds: ['sem_1_top_3'],
   },
   {
     id: 'humerus-radius-ulna',
@@ -536,6 +564,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/humerus-radius-ulna-f39e683a0af342b9801adedebf2b2a9a',
     license: 'CC (Sketchfab)', author: 'hreagers',
     tags: ['bilak', 'radius', 'ulna', 'рука'],
+    topicIds: ['sem_1_top_3'],
   },
   {
     id: 'scapula',
@@ -547,6 +576,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-scapula-0745bbb368b4401db89e73babe440ee8',
     license: 'CC-BY', author: 'Eric Bauer (@ebauer4)',
     tags: ['kurak', 'scapula', 'лопатка'],
+    topicIds: ['sem_1_top_2'],
   },
   {
     id: 'clavicle',
@@ -558,6 +588,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-clavicle-fd3ae947be90403d9a79d8e9669af236',
     license: 'CC-BY', author: 'Eric Bauer (@ebauer4)',
     tags: ["o'mrov", 'clavicle', 'ключица'],
+    topicIds: ['sem_1_top_2'],
   },
 
   // ---------------------- MUSKULLAR (MUSCLE) ----------------------
@@ -571,6 +602,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/leg-anatomy-d57c2b75ebc74e0bacc2624ec00ec226',
     license: 'CC-BY', author: 'alfance',
     tags: ['oyoq muskul', 'leg muscles', 'мышцы ноги'],
+    topicIds: ['sem_1_top_13'],
   },
   {
     id: 'arm-muscles-sgu',
@@ -582,6 +614,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab (SGU)', sourceUrl: 'https://sketchfab.com/3d-models/muscles-of-the-shoulder-arm-forearm-6dd851d018f34892800b83ca418ccb52',
     license: 'CC (Sketchfab)', author: 'Center for BioMedical Visualization, SGU',
     tags: ["qo'l muskul", 'arm muscles', 'мышцы руки'],
+    topicIds: ['sem_1_top_12'],
   },
   {
     id: 'simple-arm-anatomy',
@@ -593,6 +626,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/simple-arm-anatomy-874c8868bdb942f1a0dab2f023e16ee3',
     license: 'CC (Sketchfab)', author: 'Krogor',
     tags: ["qo'l", 'arm', 'рука'],
+    topicIds: ['sem_1_top_12'],
   },
 
   // ---------------------- A'ZOLAR (ORGAN) ----------------------
@@ -606,6 +640,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/digestive-system-2-6e072566838d4797a10b849cce737f3a',
     license: 'CC-BY', author: 'Naveera Zafar',
     tags: ['hazm', 'digestive', 'oshqozon', 'пищеварение'],
+    topicIds: ['sem_2_top_2'],
   },
   {
     id: 'liver-spleen-pancreas',
@@ -617,6 +652,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/adult-liver-spleen-and-pancreas-f9a34dba04624c28a3131970fcac4b81',
     license: 'CC (Sketchfab)', author: 'Education Resource Fund',
     tags: ['jigar', 'liver', 'taloq', 'печень'],
+    topicIds: ['sem_2_top_2'],
   },
   {
     id: 'urinary-system',
@@ -628,6 +664,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/urinary-system-final-4258252eb7c04e748ab7501eb5f1abb1',
     license: 'CC (Sketchfab)', author: 'Hannah Koffman',
     tags: ['buyrak', 'kidney', 'urinary', 'почка'],
+    topicIds: ['sem_2_top_6'],
   },
   {
     id: 'eye-cross-section',
@@ -639,6 +676,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/cross-section-of-eye-anatomy-4bf3236c8fe2407ea3f494a93b8f5aa2',
     license: 'CC (Sketchfab)', author: 'Erik Ao (@erikao)',
     tags: ["ko'z", 'eye', 'oculus', 'глаз'],
+    topicIds: ['sem_1_top_6', 'sem_3_top_13'],
   },
   {
     id: 'inner-ear',
@@ -650,6 +688,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab (Univ. of Dundee)', sourceUrl: 'https://sketchfab.com/3d-models/anatomy-of-the-inner-ear-f80bda64666c4b8aaac8f63b7b82a0a0',
     license: 'CC-BY', author: 'University of Dundee',
     tags: ['quloq', 'ear', 'auris', 'ухо'],
+    topicIds: ['sem_3_top_13'],
   },
   {
     id: 'larynx',
@@ -661,6 +700,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab (Univ. of Dundee)', sourceUrl: 'https://sketchfab.com/3d-models/anatomy-of-the-larynx-a00bc73a303c46248db6a13a88b23404',
     license: 'CC-BY-SA', author: 'University of Dundee',
     tags: ['hiqildoq', 'larynx', 'гортань'],
+    topicIds: ['sem_2_top_4'],
   },
 
   // ---------------------- NERVLAR (NERVE) ----------------------
@@ -674,6 +714,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/spinal-nerve-and-brachial-plexus-1177cbb86fb24b089513587ac0a9b403',
     license: 'CC (Sketchfab)', author: 'VivekAnatomy',
     tags: ['nerv', 'brachial plexus', 'нерв'],
+    topicIds: ['sem_3_top_5', 'sem_3_top_6'],
   },
   {
     id: 'brachial-plexus-ubc',
@@ -685,6 +726,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab (UBC Medicine)', sourceUrl: 'https://sketchfab.com/3d-models/brachial-plexus-932dbecba80541ce9168cef085fc15fa',
     license: 'CC (Sketchfab)', author: 'UBC Medicine',
     tags: ['nerv chigali', 'plexus', 'сплетение'],
+    topicIds: ['sem_3_top_6'],
   },
 
   // ---------------------- QON TOMIRLAR (VESSEL) ----------------------
@@ -698,6 +740,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-circulatory-system-719baedb192c49c0bb9b602690698f01',
     license: 'CC (Sketchfab)', author: 'chi051205',
     tags: ['qon aylanish', 'circulatory', 'кровь'],
+    topicIds: ['sem_2_top_9'],
   },
   {
     id: 'artery-vein-system',
@@ -709,6 +752,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/3d-human-artery-and-vein-system-974e23da8f4b49da9928ce369167cb02',
     license: 'CC (Sketchfab)', author: 'artisan3dventures',
     tags: ['arteriya', 'vena', 'artery', 'vein'],
+    topicIds: ['sem_2_top_9', 'sem_2_top_11', 'sem_2_top_12'],
   },
   {
     id: 'angiology-zanatomy',
@@ -720,5 +764,6 @@ export const SEED_MODELS: AnatomyModel[] = [
     source: 'Sketchfab (Z-Anatomy)', sourceUrl: 'https://sketchfab.com/3d-models/angiology-0caae8f894cc40b69f3f78adf14b9665',
     license: 'CC-BY-SA', author: 'Z-Anatomy',
     tags: ['angiologiya', 'vessels', 'сосуды'],
+    topicIds: ['sem_2_top_9'],
   },
 ];

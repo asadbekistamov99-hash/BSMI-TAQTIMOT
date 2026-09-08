@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Search, X, Box, Heart, Activity, Zap, GitBranch, Bone, Layers, Maximize2,
@@ -97,8 +98,10 @@ export default function AnatomyModels({ isAdmin: isAdminProp }: { isAdmin?: bool
   const isAdmin = isAdminProp ?? !!sessionStorage.getItem('adminToken');
   const lang = language as 'uz' | 'ru' | 'en';
 
+  const [searchParams] = useSearchParams();
   const [custom, setCustom] = useState<AnatomyModel[]>(() => loadCustomModels());
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('q') || '');
+  const [topicFilter, setTopicFilter] = useState<string | null>(() => searchParams.get('topic'));
   const [activeSystem, setActiveSystem] = useState<AnatomySystem | 'all'>('all');
   const [activeRegion, setActiveRegion] = useState<string>('all');
   const [selected, setSelected] = useState<AnatomyModel | null>(null);
@@ -131,12 +134,23 @@ export default function AnatomyModels({ isAdmin: isAdminProp }: { isAdmin?: bool
   const tr = (obj: Record<string, string> | undefined, fallback = '') =>
     obj ? obj[lang] || obj.uz || obj.en || obj.ru || fallback : fallback;
 
+  // Mavzu sahifasidan "?model=<id>" orqali kelingan bo'lsa, mos modelni avtomatik ochish
+  useEffect(() => {
+    const modelId = searchParams.get('model');
+    if (modelId && allModels.length > 0) {
+      const found = allModels.find((m) => m.id === modelId);
+      if (found) setSelected(found);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allModels]);
+
   // Filtrlash
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return allModels.filter((m) => {
       if (activeSystem !== 'all' && m.system !== activeSystem) return false;
       if (activeRegion !== 'all' && m.region !== activeRegion) return false;
+      if (topicFilter && !m.topicIds?.includes(topicFilter)) return false;
       if (!q) return true;
       const hay = [
         tr(m.title), m.title?.uz, m.title?.ru, m.title?.en,
@@ -147,7 +161,7 @@ export default function AnatomyModels({ isAdmin: isAdminProp }: { isAdmin?: bool
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [allModels, search, activeSystem, activeRegion, lang]);
+  }, [allModels, search, activeSystem, activeRegion, topicFilter, lang]);
 
   // Har bir tizim uchun soni
   const counts = useMemo(() => {
@@ -271,6 +285,22 @@ export default function AnatomyModels({ isAdmin: isAdminProp }: { isAdmin?: bool
               ))}
             </select>
           </div>
+
+          {/* Active topic-deep-link filter indicator */}
+          {topicFilter && (
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1.5 bg-brand-accent/15 text-brand-primary border border-brand-accent/30 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                {{ uz: 'Mavzu bo\'yicha filtrlangan', ru: 'Отфильтровано по теме', en: 'Filtered by topic' }[lang]}
+                <button
+                  onClick={() => setTopicFilter(null)}
+                  className="ml-1 hover:text-red-600 transition-colors cursor-pointer"
+                  title={{ uz: "Filtrni tozalash", ru: 'Сбросить фильтр', en: 'Clear filter' }[lang]}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
