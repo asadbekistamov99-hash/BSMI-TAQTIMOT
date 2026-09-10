@@ -1,5 +1,6 @@
 import { db, storage } from './firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { dbService } from './dbService';
 
 export interface UploadResult {
   url: string;
@@ -80,11 +81,18 @@ export async function uploadImageFile(
 }
 
 /**
- * Robust file uploader for Anatomical Presentations (PPTX & PDF)
- * On localhost: server /api/upload first (fast, disk-backed), Firebase Storage as fallback.
- * On any deployed/serverless host (production, e.g. Vercel): Firebase Storage is PRIMARY,
- * because the server's local disk there is ephemeral and does not persist uploaded files
- * across requests/instances — using it as primary caused "Faylni yuklab bo'lmadi (404)".
+ * Robust file uploader for Anatomical Presentations (PPTX & PDF).
+ * Delegates to dbService.uploadFileWithProgress, which already tries (in order):
+ *   1. Local /api/upload (fast, only reliable on a persistent server, e.g. localhost)
+ *   2. Appwrite Storage (if VITE_APPWRITE_* env vars are configured)
+ *   3. Supabase Storage (if VITE_SUPABASE_* env vars are configured — free tier,
+ *      no credit card / billing account required, a good escape hatch when
+ *      Firebase Storage is blocked by a Google Cloud billing issue)
+ *   4. Firebase Storage (requires the Blaze billing plan to be active on the
+ *      Firebase project — Google now requires this even for small free-tier usage)
+ *   5. Base64 Data URI (last resort, only for files under 3MB)
+ * This means presentations automatically benefit from whichever backend is
+ * actually configured and working, instead of being hard-locked to Firebase.
  */
 export async function uploadPresentationFile(
   file: File,
@@ -99,102 +107,29 @@ export async function uploadPresentationFile(
     throw new Error("Fayl hajmi 150 MB dan oshmasligi kerak. Iltimos, kichikroq fayl tanlang yoki Google Drive havolasidan foydalaning.");
   }
 
-  // IMPORTANT: On Vercel (and any serverless host), the server's local disk is
-  // EPHEMERAL — a file written by /api/upload during one invocation is not
-  // guaranteed to exist on the container that later handles /api/files/:filename.
-  // That mismatch is exactly what caused "Faylni yuklab bo'lmadi (404)" in
-  // production. Firebase Storage is real persistent storage, so it must be the
-  // PRIMARY path whenever we're not on a stable local/dev server.
-  const isServerless = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+  const sanitized = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const filePath = `${Date.now()}_${sanitized}`;
 
-  if (!isServerless) {
-    // Local development: server disk is fine and faster, try it first.
-    try {
-      const serverResult = await uploadViaServerApi(file, onProgress);
-      if (serverResult?.url) {
-        return {
-          url: serverResult.url,
-          fileName: file.name,
-          fileType,
-          fileSize: file.size
-        };
-      }
-    } catch (serverErr) {
-      console.warn("[UPLOAD] Server /api/upload attempt failed, trying Firebase storage fallback...", serverErr);
-    }
-  }
-
-  // 1. Primary in production: Firebase Storage (persists across all instances/deploys)
-  let firebaseErrorCode: string | undefined;
   try {
-    const sanitized = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storageRef = ref(storage, `presentations/${Date.now()}_${sanitized}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
-    const downloadUrl = await new Promise<string>((resolve, reject) => {
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          if (snapshot.totalBytes > 0 && onProgress) {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            onProgress(Math.round(progress));
-          }
-        },
-        (error) => reject(error),
-        async () => {
-          try {
-            const url = await getDownloadURL(uploadTask.snapshot.ref);
-            resolve(url);
-          } catch (e) {
-            reject(e);
-          }
-        }
+    const url = await dbService.uploadFileWithProgress('presentations', filePath, file, (p) => onProgress?.(p));
+    return { url, fileName, fileType, fileSize: file.size };
+  } catch (err: any) {
+    const message = String(err?.message || err || '');
+    if (message.includes('storage/unauthorized')) {
+      throw new Error(
+        "STORAGE_RULES_MISSING: Firebase Storage xavfsizlik qoidalari 'presentations/' papkasiga yozishga ruxsat bermayapti. " +
+        "Admin: Firebase Console → Storage → Rules bo'limiga o'ting va storage.rules faylidagi yangilangan qoidalarni joylashtiring."
       );
-    });
-
-    if (downloadUrl) {
-      return {
-        url: downloadUrl,
-        fileName: file.name,
-        fileType,
-        fileSize: file.size
-      };
     }
-  } catch (firebaseErr: any) {
-    firebaseErrorCode = firebaseErr?.code || firebaseErr?.message;
-    console.warn("[UPLOAD] Firebase storage upload failed:", firebaseErr);
-  }
-
-  // If Firebase Storage explicitly denied the write (security rules), don't waste
-  // time on the ephemeral server-disk fallback — it would just 404 later on Vercel.
-  // Surface a precise, actionable error instead of a generic one.
-  if (firebaseErrorCode && String(firebaseErrorCode).includes('storage/unauthorized')) {
-    throw new Error(
-      "STORAGE_RULES_MISSING: Firebase Storage xavfsizlik qoidalari 'presentations/' papkasiga yozishga ruxsat bermayapti. " +
-      "Admin: Firebase Console → Storage → Rules bo'limiga o'ting va storage.rules faylidagi yangilangan qoidalarni joylashtiring."
-    );
-  }
-
-  // Last-resort fallback (production): server disk. Note this will NOT persist
-  // reliably on serverless hosting — only reached if Firebase Storage itself is
-  // unreachable/misconfigured for a reason other than a rules rejection.
-  try {
-    const serverResult = await uploadViaServerApi(file, onProgress);
-    if (serverResult?.url) {
-      return {
-        url: serverResult.url,
-        fileName: file.name,
-        fileType,
-        fileSize: file.size
-      };
+    if (message.includes('billing') || message.includes('403') || message.includes('storage/unknown')) {
+      throw new Error(
+        "STORAGE_BILLING_BLOCKED: Firebase Storage ishlamayapti (loyihada Blaze to'lov rejasi faollashtirilmagan yoki billing xatoligi bor). " +
+        "Muqobil yechim: bepul Supabase (kartasiz) hisob oching va VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY o'zgaruvchilarini sozlang — " +
+        "shunda fayllar avtomatik Supabase Storage orqali yuklanadi."
+      );
     }
-  } catch (serverErr) {
-    console.warn("[UPLOAD] Server /api/upload fallback also failed:", serverErr);
+    throw new Error(message || "Faylni yuklashda xatolik yuz berdi. Iltimos, fayl hajmini tekshiring yoki Google Drive / tashqi havola orqali biriktiring.");
   }
-
-  throw new Error(
-    "Faylni yuklashda xatolik yuz berdi. Iltimos, fayl hajmini tekshiring yoki Google Drive / tashqi havola orqali biriktiring."
-  );
 }
 
 /**

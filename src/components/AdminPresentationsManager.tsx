@@ -1024,6 +1024,23 @@ export default function AdminPresentationsManager({
                     </pre>
                   </div>
                 </div>
+              ) : saveError && saveError.includes('STORAGE_BILLING_BLOCKED') ? (
+                <div className="p-5 bg-amber-50 border-2 border-amber-200 rounded-2xl space-y-3">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-black text-amber-900 uppercase tracking-tight">
+                        Firebase Storage ishlamayapti (billing muammosi)
+                      </h4>
+                      <p className="text-[11px] text-amber-700/90 font-medium mt-1.5 leading-relaxed">
+                        Google Firebase loyihangizda Storage'ni yoqish uchun endi to'lov (Blaze) rejasini talab qilmoqda, va hisobingizda billing sozlanmagan/xatolik bor.
+                      </p>
+                      <p className="text-[11px] text-amber-700/90 font-medium mt-2 leading-relaxed">
+                        <b>Tezkor bepul yechim:</b> <a href="https://supabase.com" target="_blank" rel="noreferrer" className="underline font-black">supabase.com</a> saytida kartasiz bepul hisob oching → yangi loyiha yarating → Project Settings → API bo'limidan <code>Project URL</code> va <code>anon public</code> kalitini nusxalang → saytingiz hostingidagi (Vercel) muhit o'zgaruvchilariga <code>VITE_SUPABASE_URL</code> va <code>VITE_SUPABASE_ANON_KEY</code> nomlari bilan qo'shing va qayta deploy qiling. Tizim buni avtomatik aniqlab, fayllarni Firebase o'rniga Supabase orqali yuklay boshlaydi.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               ) : saveError && (
                 <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-bold flex items-center gap-2.5">
                   <AlertCircle className="w-4 h-4 shrink-0" />
