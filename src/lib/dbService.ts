@@ -531,7 +531,22 @@ export const dbService = {
         return mapTopic(data);
       }
     } else {
+      // Firestore document size limit is 1 MB - check before saving
       const targetId = topicId || `sem_${topicData.semester || 1}_top_${topicData.order || 1}`;
+      const docSize = new Blob([JSON.stringify(topicData)]).size;
+      const MAX_SIZE = 900 * 1024; // 900 KB (leave 100 KB margin under 1 MB limit)
+
+      if (docSize > MAX_SIZE) {
+        console.warn(`[FIRESTORE] Document size (${(docSize / 1024).toFixed(1)} KB) exceeds limit. Truncating large fields...`);
+
+        // Truncate theory if it's too large
+        if (topicData.theory && topicData.theory.length > 5000) {
+          const originalLength = topicData.theory.length;
+          topicData.theory = topicData.theory.substring(0, 5000) + '\n\n[Matnning qolgan qismi Supabase-da saqlangan]';
+          console.warn(`[FIRESTORE] Theory truncated from ${originalLength} to ${topicData.theory.length} chars`);
+        }
+      }
+
       await setDoc(doc(db, 'topics', targetId), topicData, { merge: true });
       return { id: targetId, ...topicData };
     }
