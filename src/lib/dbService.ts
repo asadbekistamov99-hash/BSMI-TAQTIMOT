@@ -434,6 +434,26 @@ export const dbService = {
 
     // Deduplicate and consolidate all duplicate entries into one unified topic!
     const { mergedTopics } = deduplicateAndMergeTopics(validRaw);
+
+    // Fetch presentation references from Firestore if using Firestore backend
+    if (!isAppwriteEnabled() || rawTopics.length === 0) {
+      // Topics came from Firestore (or Supabase fallback to Firestore), fetch presentation refs
+      try {
+        for (const topic of mergedTopics) {
+          const presSnapshot = await getDoc(doc(db, 'topicPresentations', topic.id));
+          if (presSnapshot.exists()) {
+            const presData = presSnapshot.data();
+            topic.pptxUrl = presData.pptxUrl || null;
+            topic.pdfUrl = presData.pdfUrl || null;
+            topic.customLectureFile = presData.customLectureFile || null;
+            topic.lectureType = presData.lectureType || null;
+          }
+        }
+      } catch (err) {
+        console.warn('[FIRESTORE] Failed to fetch presentation references:', err);
+      }
+    }
+
     if (semesterId) {
       return mergedTopics.filter(t => Number(t.semester) === Number(semesterId));
     }
@@ -462,18 +482,42 @@ export const dbService = {
       } catch (err) {
         console.warn("Supabase getTopicDetail failed, fallback to Firebase:", err);
         supabaseFallbackActive = true;
+        let topic = { id: topicId };
         const snapshot = await getDoc(doc(db, 'topics', topicId));
         if (!snapshot.exists()) {
           throw new Error('Mavzu topilmadi');
         }
-        return { id: snapshot.id, ...snapshot.data() };
+        topic = { id: snapshot.id, ...snapshot.data() };
+
+        // Fetch presentation references from separate collection
+        const presSnapshot = await getDoc(doc(db, 'topicPresentations', topicId));
+        if (presSnapshot.exists()) {
+          const presData = presSnapshot.data();
+          topic.pptxUrl = presData.pptxUrl || null;
+          topic.pdfUrl = presData.pdfUrl || null;
+          topic.customLectureFile = presData.customLectureFile || null;
+          topic.lectureType = presData.lectureType || null;
+        }
+        return topic;
       }
     } else {
+      let topic = { id: topicId };
       const snapshot = await getDoc(doc(db, 'topics', topicId));
       if (!snapshot.exists()) {
         throw new Error('Mavzu topilmadi');
       }
-      return { id: snapshot.id, ...snapshot.data() };
+      topic = { id: snapshot.id, ...snapshot.data() };
+
+      // Fetch presentation references from separate collection
+      const presSnapshot = await getDoc(doc(db, 'topicPresentations', topicId));
+      if (presSnapshot.exists()) {
+        const presData = presSnapshot.data();
+        topic.pptxUrl = presData.pptxUrl || null;
+        topic.pdfUrl = presData.pdfUrl || null;
+        topic.customLectureFile = presData.customLectureFile || null;
+        topic.lectureType = presData.lectureType || null;
+      }
+      return topic;
     }
   },
 
@@ -531,23 +575,47 @@ export const dbService = {
         return mapTopic(data);
       }
     } else {
-      // Firestore document size limit is 1 MB - check before saving
+      // Firestore document size limit is 1 MB - keep only essential fields in topic doc
+      // Store file references (pptxUrl, pdfUrl, customLectureFile) in separate 'presentations' collection
       const targetId = topicId || `sem_${topicData.semester || 1}_top_${topicData.order || 1}`;
-      const docSize = new Blob([JSON.stringify(topicData)]).size;
-      const MAX_SIZE = 900 * 1024; // 900 KB (leave 100 KB margin under 1 MB limit)
 
-      if (docSize > MAX_SIZE) {
-        console.warn(`[FIRESTORE] Document size (${(docSize / 1024).toFixed(1)} KB) exceeds limit. Truncating large fields...`);
+      // Extract file references to store separately
+      const fileReferences = {
+        pptxUrl: topicData.pptxUrl || null,
+        pdfUrl: topicData.pdfUrl || null,
+        customLectureFile: topicData.customLectureFile || null,
+        lectureType: topicData.lectureType || null
+      };
 
-        // Truncate theory if it's too large
-        if (topicData.theory && topicData.theory.length > 5000) {
-          const originalLength = topicData.theory.length;
-          topicData.theory = topicData.theory.substring(0, 5000) + '\n\n[Matnning qolgan qismi Supabase-da saqlangan]';
-          console.warn(`[FIRESTORE] Theory truncated from ${originalLength} to ${topicData.theory.length} chars`);
+      // Create a clean topic doc WITHOUT file URLs
+      const cleanedTopicData = { ...topicData };
+      delete cleanedTopicData.pptxUrl;
+      delete cleanedTopicData.pdfUrl;
+      delete cleanedTopicData.customLectureFile;
+      delete cleanedTopicData.lectureType;
+
+      // Save topic (now much smaller)
+      await setDoc(doc(db, 'topics', targetId), cleanedTopicData, { merge: true });
+
+      // Save file references separately if they exist
+      if (fileReferences.pptxUrl || fileReferences.pdfUrl || fileReferences.customLectureFile) {
+        try {
+          await setDoc(
+            doc(db, 'topicPresentations', targetId),
+            {
+              topicId: targetId,
+              semester: topicData.semester,
+              order: topicData.order,
+              ...fileReferences,
+              updatedAt: new Date()
+            },
+            { merge: true }
+          );
+        } catch (err) {
+          console.warn('[FIRESTORE] Failed to save presentation reference, but topic was saved:', err);
         }
       }
 
-      await setDoc(doc(db, 'topics', targetId), topicData, { merge: true });
       return { id: targetId, ...topicData };
     }
   },
