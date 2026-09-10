@@ -26,3 +26,11 @@ test('provider details are not returned to the browser', () => {
   assert.ok(!JSON.stringify(result).includes('secret-key-test-value'));
   assert.equal(result.code, 'FACE_API_UNAVAILABLE');
 });
+
+// Exact provider failure reported in production logs.
+test('Gemini high demand is a retryable busy error, not a key or quota error', () => {
+  const result = faceVerificationError({status: 503, message: JSON.stringify({error: {code: 503, message: 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', status: 'UNAVAILABLE'}})});
+  assert.equal(result.code, 'FACE_API_BUSY');
+  assert.equal(result.retryable, true);
+  assert.match(result.reason, /30 soniyadan/);
+});

@@ -91,6 +91,9 @@ export async function createServerApp() {
       throw new Error('GEMINI_API_KEY sozlanmagan');
     }
     for (let i = 0; i < retries; i++) {
+      if (config?.config?.abortSignal?.aborted) {
+        throw new DOMException('Request aborted', 'AbortError');
+      }
       try {
         return await aiInstance.models.generateContent({
           model: modelName,
@@ -510,6 +513,7 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
       // Single choke point: every failure path returns through here so the
       // "fail closed" behavior can never accidentally be bypassed.
       console.warn(`[FACE VERIFICATION] DENIED (fail-closed): ${reason}`);
+      if (code === 'FACE_API_BUSY') resValue.setHeader('Retry-After', '30');
       return resValue.status(status).json({
         verified: false,
         isMatch: false,
@@ -624,7 +628,7 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
               parts: [toPart(enrolledImage), ...frameParts, { text: prompt }]
             }],
             config: { responseMimeType: "application/json", responseSchema, abortSignal: controller.signal }
-          }, 1, 300);
+          }, 2, 800);
           if (response && response.text) {
             console.log(`[FACE VERIFICATION] Success with model: ${modelName}`);
             break;
