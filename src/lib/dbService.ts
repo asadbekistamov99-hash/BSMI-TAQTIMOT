@@ -1,3 +1,4 @@
+import { MAX_INLINE_PRESENTATION_BYTES } from './presentationPayload';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { db, auth, OperationType, handleFirestoreError } from './firebase';
 import { appwriteDb, appwriteDatabaseId, isAppwriteEnabled, activateAppwriteFallback, appwriteStorage } from './appwrite';
@@ -1562,8 +1563,8 @@ export const dbService = {
       cleanupTicker();
       console.error("All cloud storage uploads failed:", firebaseErr);
       
-      // If file is small (< 3MB), we can encode to Data URL Base64 as ultimate emergency fallback
-      if (file.size <= 3 * 1024 * 1024) {
+      // Presentation data URLs must fit a Firestore document after Base64 expansion.
+      if (file.size <= (bucketName === 'presentations' ? MAX_INLINE_PRESENTATION_BYTES : 3 * 1024 * 1024)) {
         console.warn("Using Data URI fallback for small file...");
         return await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();

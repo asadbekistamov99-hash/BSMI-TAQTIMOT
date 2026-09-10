@@ -31,11 +31,12 @@ import {
 } from 'lucide-react';
 import { ALL_39_TOPICS, CurriculumTopic } from '../data/allSemesterTopics';
 import { db, storage } from '../lib/firebase';
-import { collection, doc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { dbService } from '../lib/dbService';
 import { formatDocumentUrl } from './TopicLectureEditor';
 import { uploadPresentationFile, formatPresentationUrl, getPresentationEmbedUrl } from '../lib/uploadHelper';
+import { buildPresentationFields, assertInlinePresentationFits } from '../lib/presentationPayload';
 import { PresentationViewer } from './PresentationViewer';
 
 const STORAGE_RULES_SNIPPET = `rules_version = '2';
@@ -298,16 +299,16 @@ export default function AdminPresentationsManager({
         semester: Number(editingTopic.semester),
         order: Number(editingTopic.order),
         lectureType: modalFileType,
-        pptxUrl: modalFileType === 'pptx' ? cleanUrl : '',
-        pdfUrl: modalFileType === 'pdf' ? cleanUrl : '',
-        customLectureFile: {
-          fileUrl: cleanUrl,
-          fileName: modalFileName || `${editingTopic.order}-mavzu taqdimoti.${modalFileType}`,
-          fileType: modalFileType,
-          uploadedAt: new Date().toISOString()
-        },
+        ...buildPresentationFields(cleanUrl, modalFileType,
+          modalFileName || `${editingTopic.order}-mavzu taqdimoti.${modalFileType}`),
         updatedAt: new Date().toISOString()
       };
+
+      // Include existing theory and other fields in the inline-file size budget.
+      if (cleanUrl.startsWith('data:')) {
+        const existing = await getDoc(doc(db, 'topics', targetId));
+        assertInlinePresentationFits({ ...existing.data(), ...updatePayload });
+      }
 
       // 1. Save directly to Firestore
       await setDoc(doc(db, 'topics', targetId), updatePayload, { merge: true });

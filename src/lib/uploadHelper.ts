@@ -90,7 +90,7 @@ export async function uploadImageFile(
  *      Firebase Storage is blocked by a Google Cloud billing issue)
  *   4. Firebase Storage (requires the Blaze billing plan to be active on the
  *      Firebase project — Google now requires this even for small free-tier usage)
- *   5. Base64 Data URI (last resort, only for files under 3MB)
+ *   5. Base64 Data URI (last resort, presentations up to 600 KiB)
  * This means presentations automatically benefit from whichever backend is
  * actually configured and working, instead of being hard-locked to Firebase.
  */
@@ -100,6 +100,10 @@ export async function uploadPresentationFile(
 ): Promise<UploadResult> {
   const fileName = file.name;
   const extension = fileName.split('.').pop()?.toLowerCase() || '';
+  if (!['pptx', 'pdf'].includes(extension)) {
+    throw new Error('Faqat PPTX yoki PDF fayl tanlang.');
+  }
+  if (file.size === 0) throw new Error('Tanlangan fayl bo‘sh. Boshqa fayl tanlang.');
   const fileType: 'pptx' | 'pdf' = extension === 'pdf' ? 'pdf' : 'pptx';
   const MAX_SIZE = 150 * 1024 * 1024; // 150 MB
 

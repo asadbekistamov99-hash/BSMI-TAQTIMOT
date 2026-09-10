@@ -223,7 +223,7 @@ export async function createServerApp() {
 
   // Local File Upload & Storage Endpoints
   const uploadsDir = path.join(process.cwd(), 'uploads');
-  if (!fs.existsSync(uploadsDir)) {
+  if (!process.env.VERCEL && !fs.existsSync(uploadsDir)) {
     try {
       fs.mkdirSync(uploadsDir, { recursive: true });
     } catch (err) {
@@ -233,6 +233,10 @@ export async function createServerApp() {
   app.use('/uploads', express.static(uploadsDir));
 
   app.post('/api/upload', (req: express.Request, res: any) => {
+    // Serverless local disks cannot provide durable uploaded-file URLs.
+    if (process.env.VERCEL) {
+      return res.status(503).json({ error: 'LOCAL_STORAGE_UNAVAILABLE: Bulut fayl saqlash xizmatidan foydalaning.' });
+    }
     try {
       const { fileName, fileData, mimeType } = req.body;
       if (!fileName || !fileData) {
