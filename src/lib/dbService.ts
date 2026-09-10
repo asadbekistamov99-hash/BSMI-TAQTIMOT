@@ -1407,53 +1407,58 @@ export const dbService = {
     };
 
     // 0. Primary: Direct Server /api/upload endpoint (Instant, highly reliable, no external storage dependency)
-    try {
-      const serverUploadPromise = new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = async () => {
-          try {
-            const base64Content = reader.result as string;
-            const res = await fetch('/api/upload', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                fileName: file.name,
-                fileData: base64Content,
-                mimeType: file.type
-              })
-            });
+    // Skip if Supabase is configured and working (faster upload path)
+    const skipLocalServer = isSupabaseEnabled() && supabase;
 
-            if (!res.ok) {
-              const errJson = await res.json().catch(() => ({}));
-              throw new Error(errJson.error || `Server status ${res.status}`);
+    if (!skipLocalServer) {
+      try {
+        const serverUploadPromise = new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = async () => {
+            try {
+              const base64Content = reader.result as string;
+              const res = await fetch('/api/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  fileName: file.name,
+                  fileData: base64Content,
+                  mimeType: file.type
+                })
+              });
+
+              if (!res.ok) {
+                const errJson = await res.json().catch(() => ({}));
+                throw new Error(errJson.error || `Server status ${res.status}`);
+              }
+
+              const data = await res.json();
+              if (data.url) {
+                cleanupTicker();
+                onProgress(100);
+                resolve(data.url);
+              } else {
+                throw new Error('Server URL qaytarmadi');
+              }
+            } catch (e) {
+              reject(e);
             }
+          };
+          reader.onerror = () => reject(new Error("Faylni o'qishda xatolik yuz berdi"));
+          reader.readAsDataURL(file);
+        });
 
-            const data = await res.json();
-            if (data.url) {
-              cleanupTicker();
-              onProgress(100);
-              resolve(data.url);
-            } else {
-              throw new Error('Server URL qaytarmadi');
-            }
-          } catch (e) {
-            reject(e);
-          }
-        };
-        reader.onerror = () => reject(new Error("Faylni o'qishda xatolik yuz berdi"));
-        reader.readAsDataURL(file);
-      });
+        const serverUpload = await Promise.race([
+          serverUploadPromise,
+          new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Server upload timeout (5s)')), 5000))
+        ]);
 
-      const serverUpload = await Promise.race([
-        serverUploadPromise,
-        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Server upload timeout (15s)')), 15000))
-      ]);
-
-      if (serverUpload) {
-        return serverUpload;
+        if (serverUpload) {
+          return serverUpload;
+        }
+      } catch (serverErr) {
+        console.warn("[STORAGE] Direct /api/upload failed or unavailable, falling back to cloud storages...", serverErr);
       }
-    } catch (serverErr) {
-      console.warn("[STORAGE] Direct /api/upload failed or unavailable, falling back to cloud storages...", serverErr);
     }
 
     // 1. Try Appwrite Storage if configured
