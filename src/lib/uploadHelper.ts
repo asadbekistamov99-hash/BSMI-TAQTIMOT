@@ -1,3 +1,4 @@
+import { prepareSmallPresentation } from './smallPresentation';
 import { db, storage } from './firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { dbService } from './dbService';
@@ -82,7 +83,8 @@ export async function uploadImageFile(
 
 /**
  * Robust file uploader for Anatomical Presentations (PPTX & PDF).
- * Delegates to dbService.uploadFileWithProgress, which already tries (in order):
+ * Files up to 600 KiB are prepared locally and persisted once with the topic.
+ * Larger files delegate to dbService.uploadFileWithProgress, which tries:
  *   1. Local /api/upload (fast, only reliable on a persistent server, e.g. localhost)
  *   2. Appwrite Storage (if VITE_APPWRITE_* env vars are configured)
  *   3. Supabase Storage (if VITE_SUPABASE_* env vars are configured — free tier,
@@ -109,6 +111,11 @@ export async function uploadPresentationFile(
 
   if (file.size > MAX_SIZE) {
     throw new Error("Fayl hajmi 150 MB dan oshmasligi kerak. Iltimos, kichikroq fayl tanlang yoki Google Drive havolasidan foydalaning.");
+  }
+
+  const inlineUrl = await prepareSmallPresentation(file, onProgress);
+  if (inlineUrl) {
+    return { url: inlineUrl, fileName, fileType, fileSize: file.size };
   }
 
   const sanitized = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');

@@ -921,7 +921,7 @@ export default function AdminPresentationsManager({
                   </label>
                   {modalFileUrl && (
                     <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Fayl tayyor
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Fayl tayyor — saqlashni bosing
                     </span>
                   )}
                 </div>
