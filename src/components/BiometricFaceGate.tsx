@@ -373,12 +373,13 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     }
 
     let result: any = null;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       setVerifying(true);
       setVerificationResult(null);
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000); // give the server's 60s function budget room to actually respond
+      timeoutId = setTimeout(() => controller.abort(), 45000); // give the server's 60s function budget room to actually respond
 
       const response = await fetch('/api/verify-face', {
         method: 'POST',
@@ -389,16 +390,20 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
         }),
         signal: controller.signal
       });
-      clearTimeout(timeoutId);
-
       // Always read the body — even on non-200 the backend returns a structured
       // fail-closed JSON payload ({verified:false, reason}) that we want to show.
       result = await response.json().catch(() => null);
+      if (!response.ok && result) {
+        result.verified = false;
+        result.isMatch = false;
+      }
 
+      clearTimeout(timeoutId);
       if (!result) {
         throw new Error("Server javobini o'qib bo'lmadi.");
       }
     } catch (err: any) {
+      clearTimeout(timeoutId);
       console.error("Face verification request failed:", err?.message || err);
       const timedOut = err?.name === 'AbortError';
       setVerificationResult({
