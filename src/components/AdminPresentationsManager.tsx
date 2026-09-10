@@ -935,7 +935,7 @@ export default function AdminPresentationsManager({
                     {isUploading ? "Fayl yuklanmoqda..." : "PPTX yoki PDF faylni tanlang yoki shu yerga tashlang"}
                   </span>
                   <span className="text-[10px] text-slate-400 mt-1">
-                    Maksimal tavsiya etilgan hajm: 25 MB gacha
+                    Maksimal hajm: 25 MB (26 214 400 bayt)
                   </span>
 
                   {uploadProgress !== null && (
