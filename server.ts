@@ -505,26 +505,32 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
   const MIN_FRAMES_REQUIRED = 3;
 
   app.post('/api/verify-face', async (req: express.Request, resValue: any) => {
+    const startTime = Date.now();
     const denyClosed = (status: number, reason: string) => {
       // Single choke point: every failure path returns through here so the
       // "fail closed" behavior can never accidentally be bypassed.
-      console.warn(`[FACE VERIFICATION] DENIED (fail-closed): ${reason}`);
+      const elapsedMs = Date.now() - startTime;
+      console.warn(`[FACE VERIFICATION] DENIED (fail-closed) [${elapsedMs}ms]: ${reason}`);
       return resValue.status(status).json({
         verified: false,
         isMatch: false,
         livenessPassed: false,
         confidence: 0,
-        reason
+        reason,
+        debug: process.env.DEBUG_FACE_ID === 'true' ? { elapsedMs, timestamp: new Date().toISOString() } : undefined
       });
     };
 
     try {
       const { enrolledImage, frames } = req.body || {};
+      console.log(`[FACE VERIFICATION] Request received with ${frames?.length || 0} frames`);
+      console.log(`[FACE VERIFICATION] GEMINI_API_KEY configured: ${!!process.env.GEMINI_API_KEY}`);
 
       if (!enrolledImage || typeof enrolledImage !== 'string') {
         return denyClosed(400, "Ro'yxatdan o'tgan surat topilmadi.");
       }
       if (!Array.isArray(frames) || frames.length < MIN_FRAMES_REQUIRED) {
+        console.warn(`[FACE VERIFICATION] Insufficient frames: got ${frames?.length}, need ${MIN_FRAMES_REQUIRED}`);
         return denyClosed(400, "Jonlilik tekshiruvi uchun yetarli kadr yuborilmadi.");
       }
       for (const f of frames) {
@@ -607,6 +613,7 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
 
       for (const modelName of models) {
         try {
+          const modelStartTime = Date.now();
           console.log(`[FACE VERIFICATION] Trying model: ${modelName}...`);
           response = await safeGenerateContent(modelName, {
             contents: [{
@@ -615,12 +622,27 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
             }],
             config: { responseMimeType: "application/json", responseSchema }
           }, 1, 300);
+          const modelDuration = Date.now() - modelStartTime;
           if (response && response.text) {
-            console.log(`[FACE VERIFICATION] Success with model: ${modelName}`);
+            console.log(`[FACE VERIFICATION] ✅ Success with model: ${modelName} [${modelDuration}ms]`);
             break;
           }
         } catch (err: any) {
-          console.log(`[FACE VERIFICATION] Model ${modelName} unavailable, trying next model...`, err?.message);
+          const modelDuration = Date.now() - modelStartTime;
+          const errorStr = String(err?.message || err || '');
+          console.warn(`[FACE VERIFICATION] ❌ Model ${modelName} failed [${modelDuration}ms]:`, errorStr.substring(0, 200));
+
+          // Log API-specific errors
+          if (errorStr.includes('429') || errorStr.includes('resource_exhausted')) {
+            console.warn('[FACE VERIFICATION] ⚠️ RATE LIMIT HIT — daily quota may be exhausted');
+          }
+          if (errorStr.includes('401') || errorStr.includes('UNAUTHENTICATED')) {
+            console.warn('[FACE VERIFICATION] ⚠️ AUTHENTICATION FAILED — API key may be invalid');
+          }
+          if (errorStr.includes('503') || errorStr.includes('UNAVAILABLE')) {
+            console.warn('[FACE VERIFICATION] ⚠️ SERVICE UNAVAILABLE — Gemini API might be down');
+          }
+
           lastError = err;
           response = null;
         }
@@ -629,7 +651,9 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
       // NO FALLBACK: if every model failed or returned nothing, deny access.
       // This used to silently return isMatch:true here — that was the security hole.
       if (!response || !response.text) {
-        return denyClosed(503, "Biometrik tekshiruv xizmati vaqtincha ishlamayapti. Iltimos, birozdan so'ng qayta urinib ko'ring. Xavfsizlik nuqtai nazaridan kirish rad etildi.");
+        const errorInfo = lastError?.message ? `: ${lastError.message.substring(0, 100)}` : '';
+        console.error(`[FACE VERIFICATION] 🚨 ALL MODELS FAILED${errorInfo}`);
+        return denyClosed(503, `Biometrik tekshiruv xizmati vaqtincha ishlamayapti. Iltimos, birozdan so'ng qayta urinib ko'ring. Xavfsizlik nuqtai nazaridan kirish rad etildi.`);
       }
 
       let result: any;
@@ -668,7 +692,19 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
       // automatic denial regardless of what isMatch/confidence the model returned.
       const verified = faceDetected && isMatch && livenessPassed && !spoofSuspected && confidence >= FACE_MATCH_THRESHOLD;
 
-      console.log(`[FACE VERIFICATION] Result: verified=${verified} faceDetected=${faceDetected} isMatch=${isMatch} liveness=${livenessPassed} spoof=${spoofSuspected} confidence=${confidence}`);
+      const elapsedMs = Date.now() - startTime;
+      const statusEmoji = verified ? '✅' : '❌';
+      const whyNotVerified = [];
+      if (!faceDetected) whyNotVerified.push('no-face');
+      if (!isMatch) whyNotVerified.push('no-match');
+      if (!livenessPassed) whyNotVerified.push('no-liveness');
+      if (spoofSuspected) whyNotVerified.push('spoof-detected');
+      if (confidence < FACE_MATCH_THRESHOLD) whyNotVerified.push(`low-confidence(${confidence.toFixed(2)}/${FACE_MATCH_THRESHOLD})`);
+
+      console.log(`[FACE VERIFICATION] ${statusEmoji} Result [${elapsedMs}ms]: verified=${verified} face=${faceDetected} match=${isMatch} liveness=${livenessPassed} spoof=${spoofSuspected} conf=${confidence.toFixed(2)}/${FACE_MATCH_THRESHOLD}`);
+      if (!verified && whyNotVerified.length > 0) {
+        console.log(`[FACE VERIFICATION] Reason(s) for rejection: ${whyNotVerified.join(', ')}`);
+      }
 
       return resValue.json({
         verified,
@@ -677,7 +713,13 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
         livenessPassed,
         spoofSuspected,
         confidence,
-        reason
+        reason,
+        debug: process.env.DEBUG_FACE_ID === 'true' ? {
+          elapsedMs,
+          timestamp: new Date().toISOString(),
+          threshold: FACE_MATCH_THRESHOLD,
+          allResults: { faceDetected, isMatch, livenessPassed, spoofSuspected, confidence }
+        } : undefined
       });
 
     } catch (error: any) {
