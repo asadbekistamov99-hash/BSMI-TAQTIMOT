@@ -1,4 +1,5 @@
 import express from 'express';
+import { faceVerificationError } from './src/lib/faceVerificationError.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
@@ -72,8 +73,8 @@ export async function createServerApp() {
   };
 
   const getAI = () => {
-    const key = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (!key) return null;
+    const key = (process.env.GEMINI_API_KEY || process.env.API_KEY || '').trim();
+    if (!key || key === 'MY_GEMINI_API_KEY') return null;
     return new GoogleGenAI({
       apiKey: key,
       httpOptions: {
@@ -505,7 +506,7 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
   const MIN_FRAMES_REQUIRED = 3;
 
   app.post('/api/verify-face', async (req: express.Request, resValue: any) => {
-    const denyClosed = (status: number, reason: string) => {
+    const denyClosed = (status: number, reason: string, code = 'FACE_VERIFICATION_FAILED', retryable = false) => {
       // Single choke point: every failure path returns through here so the
       // "fail closed" behavior can never accidentally be bypassed.
       console.warn(`[FACE VERIFICATION] DENIED (fail-closed): ${reason}`);
@@ -514,6 +515,8 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
         isMatch: false,
         livenessPassed: false,
         confidence: 0,
+        code,
+        retryable,
         reason
       });
     };
@@ -531,6 +534,11 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
         if (!f || typeof f.image !== 'string') {
           return denyClosed(400, "Kadrlar formati noto'g'ri.");
         }
+      }
+
+      if (!getAI()) {
+        const failure = faceVerificationError(new Error('GEMINI_API_KEY sozlanmagan'));
+        return denyClosed(failure.status, failure.reason, failure.code, failure.retryable);
       }
 
       console.log(`[FACE VERIFICATION] Initiating passive biometric liveness + face-matching with ${frames.length} frames...`);
@@ -606,6 +614,8 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
       let lastError: any = null;
 
       for (const modelName of models) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 18000);
         try {
           console.log(`[FACE VERIFICATION] Trying model: ${modelName}...`);
           response = await safeGenerateContent(modelName, {
@@ -613,7 +623,7 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
               role: "user",
               parts: [toPart(enrolledImage), ...frameParts, { text: prompt }]
             }],
-            config: { responseMimeType: "application/json", responseSchema }
+            config: { responseMimeType: "application/json", responseSchema, abortSignal: controller.signal }
           }, 1, 300);
           if (response && response.text) {
             console.log(`[FACE VERIFICATION] Success with model: ${modelName}`);
@@ -623,13 +633,18 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
           console.log(`[FACE VERIFICATION] Model ${modelName} unavailable, trying next model...`, err?.message);
           lastError = err;
           response = null;
+          const failure = faceVerificationError(err);
+          if (!failure.retryable) break;
+        } finally {
+          clearTimeout(timer);
         }
       }
 
       // NO FALLBACK: if every model failed or returned nothing, deny access.
       // This used to silently return isMatch:true here — that was the security hole.
       if (!response || !response.text) {
-        return denyClosed(503, "Biometrik tekshiruv xizmati vaqtincha ishlamayapti. Iltimos, birozdan so'ng qayta urinib ko'ring. Xavfsizlik nuqtai nazaridan kirish rad etildi.");
+        const failure = faceVerificationError(lastError);
+        return denyClosed(failure.status, failure.reason, failure.code, failure.retryable);
       }
 
       let result: any;
