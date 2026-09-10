@@ -1,6 +1,7 @@
+import { uploadToSupabasePresentation } from './presentationStorage';
+import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import { db, storage } from './firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { dbService } from './dbService';
 
 export interface UploadResult {
   url: string;
@@ -80,56 +81,19 @@ export async function uploadImageFile(
   throw new Error("Rasmni yuklab bo'lmadi. Iltimos qaytadan urinib ko'ring yoki rasm havolasini kiriting.");
 }
 
-/**
- * Robust file uploader for Anatomical Presentations (PPTX & PDF).
- * Delegates to dbService.uploadFileWithProgress, which already tries (in order):
- *   1. Local /api/upload (fast, only reliable on a persistent server, e.g. localhost)
- *   2. Appwrite Storage (if VITE_APPWRITE_* env vars are configured)
- *   3. Supabase Storage (if VITE_SUPABASE_* env vars are configured — free tier,
- *      no credit card / billing account required, a good escape hatch when
- *      Firebase Storage is blocked by a Google Cloud billing issue)
- *   4. Firebase Storage (requires the Blaze billing plan to be active on the
- *      Firebase project — Google now requires this even for small free-tier usage)
- *   5. Base64 Data URI (last resort, only for files under 3MB)
- * This means presentations automatically benefit from whichever backend is
- * actually configured and working, instead of being hard-locked to Firebase.
- */
+/** Upload presentations directly to durable storage; keep only the URL in Firestore. */
 export async function uploadPresentationFile(
   file: File,
   onProgress?: (percent: number) => void
 ): Promise<UploadResult> {
-  const fileName = file.name;
-  const extension = fileName.split('.').pop()?.toLowerCase() || '';
-  const fileType: 'pptx' | 'pdf' = extension === 'pdf' ? 'pdf' : 'pptx';
-  const MAX_SIZE = 150 * 1024 * 1024; // 150 MB
-
-  if (file.size > MAX_SIZE) {
-    throw new Error("Fayl hajmi 150 MB dan oshmasligi kerak. Iltimos, kichikroq fayl tanlang yoki Google Drive havolasidan foydalaning.");
-  }
-
-  const sanitized = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const filePath = `${Date.now()}_${sanitized}`;
-
-  try {
-    const url = await dbService.uploadFileWithProgress('presentations', filePath, file, (p) => onProgress?.(p));
-    return { url, fileName, fileType, fileSize: file.size };
-  } catch (err: any) {
-    const message = String(err?.message || err || '');
-    if (message.includes('storage/unauthorized')) {
-      throw new Error(
-        "STORAGE_RULES_MISSING: Firebase Storage xavfsizlik qoidalari 'presentations/' papkasiga yozishga ruxsat bermayapti. " +
-        "Admin: Firebase Console → Storage → Rules bo'limiga o'ting va storage.rules faylidagi yangilangan qoidalarni joylashtiring."
-      );
-    }
-    if (message.includes('billing') || message.includes('403') || message.includes('storage/unknown')) {
-      throw new Error(
-        "STORAGE_BILLING_BLOCKED: Firebase Storage ishlamayapti (loyihada Blaze to'lov rejasi faollashtirilmagan yoki billing xatoligi bor). " +
-        "Muqobil yechim: bepul Supabase (kartasiz) hisob oching va VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY o'zgaruvchilarini sozlang — " +
-        "shunda fayllar avtomatik Supabase Storage orqali yuklanadi."
-      );
-    }
-    throw new Error(message || "Faylni yuklashda xatolik yuz berdi. Iltimos, fayl hajmini tekshiring yoki Google Drive / tashqi havola orqali biriktiring.");
-  }
+  if (!supabase) throw new Error('Supabase manzili yoki kaliti sozlanmagan. VITE_SUPABASE_URL va VITE_SUPABASE_ANON_KEY ni tekshiring.');
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw new Error('Supabase sessiyasini tekshirib bo‘lmadi. Qayta kiring.');
+  return uploadToSupabasePresentation(file, {
+    url: supabaseUrl,
+    key: supabaseAnonKey,
+    token: data.session?.access_token || supabaseAnonKey,
+  }, onProgress);
 }
 
 /**

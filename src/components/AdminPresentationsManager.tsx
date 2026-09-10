@@ -31,11 +31,12 @@ import {
 } from 'lucide-react';
 import { ALL_39_TOPICS, CurriculumTopic } from '../data/allSemesterTopics';
 import { db, storage } from '../lib/firebase';
-import { collection, doc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { dbService } from '../lib/dbService';
 import { formatDocumentUrl } from './TopicLectureEditor';
 import { uploadPresentationFile, formatPresentationUrl, getPresentationEmbedUrl } from '../lib/uploadHelper';
+import { buildPresentationFields, assertInlinePresentationFits } from '../lib/presentationPayload';
 import { PresentationViewer } from './PresentationViewer';
 
 const STORAGE_RULES_SNIPPET = `rules_version = '2';
@@ -298,16 +299,16 @@ export default function AdminPresentationsManager({
         semester: Number(editingTopic.semester),
         order: Number(editingTopic.order),
         lectureType: modalFileType,
-        pptxUrl: modalFileType === 'pptx' ? cleanUrl : '',
-        pdfUrl: modalFileType === 'pdf' ? cleanUrl : '',
-        customLectureFile: {
-          fileUrl: cleanUrl,
-          fileName: modalFileName || `${editingTopic.order}-mavzu taqdimoti.${modalFileType}`,
-          fileType: modalFileType,
-          uploadedAt: new Date().toISOString()
-        },
+        ...buildPresentationFields(cleanUrl, modalFileType,
+          modalFileName || `${editingTopic.order}-mavzu taqdimoti.${modalFileType}`),
         updatedAt: new Date().toISOString()
       };
+
+      // Include existing theory and other fields in the inline-file size budget.
+      if (cleanUrl.startsWith('data:')) {
+        const existing = await getDoc(doc(db, 'topics', targetId));
+        assertInlinePresentationFits({ ...existing.data(), ...updatePayload });
+      }
 
       // 1. Save directly to Firestore
       await setDoc(doc(db, 'topics', targetId), updatePayload, { merge: true });
@@ -920,7 +921,7 @@ export default function AdminPresentationsManager({
                   </label>
                   {modalFileUrl && (
                     <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Fayl tayyor
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Fayl tayyor — saqlashni bosing
                     </span>
                   )}
                 </div>
@@ -934,7 +935,7 @@ export default function AdminPresentationsManager({
                     {isUploading ? "Fayl yuklanmoqda..." : "PPTX yoki PDF faylni tanlang yoki shu yerga tashlang"}
                   </span>
                   <span className="text-[10px] text-slate-400 mt-1">
-                    Maksimal tavsiya etilgan hajm: 25 MB gacha
+                    Maksimal hajm: 25 MB (26 214 400 bayt)
                   </span>
 
                   {uploadProgress !== null && (
