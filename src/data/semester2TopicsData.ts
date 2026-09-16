@@ -1,4 +1,5 @@
 import { Topic } from '../types';
+import { SEMESTER_2_GLOSSARY_TERMS } from './semester2GlossaryTerms';
 
 export const SEMESTER_2_DETAILED_TOPICS: Topic[] = [
   // 1-mavzu
@@ -68,7 +69,9 @@ Uzunligi 25–30 sm. **3 ta anatomik toraymasi bor:**
       ru: `## Полость рта, зубы, язык, глотка и пищевод. Лимфоидное кольцо Пирогова-Вальдейера.`,
       en: `## Oral cavity, teeth, tongue, pharynx, and esophagus. Waldeyer's tonsillar ring.`
     },
-    latinTerms: []
+    defaultModelId: "pharynx-floor-of-mouth",
+    latinTerms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 1).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 1)
   },
 
   // 2-mavzu
@@ -124,7 +127,9 @@ Yo'g'on ichak ingichka ichakdan quyidagi **3 ta anatomik xususiyati** bilan yaqq
       ru: `## Органы брюшной полости. Желудок, кишечник, печень, желчные пути, поджелудочная железа.`,
       en: `## Abdominal organs. Stomach, intestines, liver, biliary tree, and pancreas.`
     },
-    latinTerms: []
+    defaultModelId: "digestive-system",
+    latinTerms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 2).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 2)
   },
 
   // 3-mavzu
@@ -176,7 +181,9 @@ Ayollarda to'g'ri ichak va bachadon orasidagi qorin pardasining eng chuqur pastk
       ru: `## Топография брюшины. Сальники, сумки, синусы и углубления. Винслово отверстие.`,
       en: `## Topography of the Peritoneum. Omenta, bursae, recesses, and Douglas pouch.`
     },
-    latinTerms: []
+    defaultModelId: "abdomen-topography-umcg",
+    latinTerms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 3).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 3)
   },
 
   // 4-mavzu
@@ -235,7 +242,9 @@ Plevra bo'shlig'ida suyuqlik to'planganda eng pastki chuqur cho'ntak — **Sinus
       ru: `## Дыхательная система. Гортань, трахея, бронхи, топография ворот легких, плевра.`,
       en: `## Respiratory system. Larynx, tracheobronchial tree, hilum of lung, pleural sinuses.`
     },
-    latinTerms: []
+    defaultModelId: "lungs-neshallads",
+    latinTerms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 4).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 4)
   },
 
   // 5-mavzu
@@ -290,7 +299,9 @@ Har bir buyrakning yuqori qutbida yotadi (Th11–L1). 2 xil embriologik manbadan
       ru: `## Эндокринная система. Гипофиз, щитовидная железа, надпочечники.`,
       en: `## Endocrine glands. Pituitary, thyroid, parathyroid, and adrenal glands.`
     },
-    latinTerms: []
+    defaultModelId: "thyroid-shapeshiftingblob",
+    latinTerms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 5).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 5)
   },
 
   // 6-mavzu
@@ -345,7 +356,9 @@ Siydik tosh kasalligida (urolitiaz) toshlar tiqilib qoladigan 3 ta muhim torayma
       ru: `## Мочевыделительная система. Почки, нефрон, ворота почек, мочеточники и мочевой пузырь.`,
       en: `## Urinary system. Kidneys, nephron structure, ureteral constrictions, urinary bladder.`
     },
-    latinTerms: []
+    defaultModelId: "urinary-system",
+    latinTerms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 6).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 6)
   },
 
   // 7-mavzu
@@ -393,7 +406,9 @@ Uzunligi 10–12 sm bo'lgan juft nay:
       ru: `## Женская половая система. Матка, яичники, маточные трубы и топография малого таза.`,
       en: `## Female reproductive system. Uterus, ovaries, fallopian tubes, and ligaments.`
     },
-    latinTerms: []
+    defaultModelId: "uterus-vagina-adnexia",
+    latinTerms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 7).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 7)
   },
 
   // 8-mavzu
@@ -440,7 +455,9 @@ Kichik chanoqda siydik pufagining ostida joylashgan muskulli-bezli a'zo:
       ru: `## Мужская половая система. Яички, семенной канатик, предстательная железа.`,
       en: `## Male reproductive system. Testes, spermatic cord, and prostate gland.`
     },
-    latinTerms: []
+    defaultModelId: "male-genital-system-ahmed",
+    latinTerms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 8).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 8)
   },
 
   // 9-mavzu
@@ -495,7 +512,9 @@ Aorta yoyidan o'ngdan chapga qarab **3 ta yirik arteriya** chiqadi:
       ru: `## Сердце, клапанный аппарат, круги кровообращения. Дуга аорты и сонные артерии.`,
       en: `## Heart chambers, cardiac valves, circulatory loops, aortic arch, and carotid arteries.`
     },
-    latinTerms: []
+    defaultModelId: "heart-freddan",
+    latinTerms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 9).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 9)
   },
 
   // 10-mavzu
@@ -542,7 +561,9 @@ Qo'l panjasining boy kollateral qon ta'minoti 2 ta yoy orqali amalga oshadi:
       ru: `## Артерии верхней конечности. Подключичная, плечевая, лучевая, локтевая и ладонные дуги.`,
       en: `## Arteries of the upper limb. Subclavian, axillary, brachial, and palmar arches.`
     },
-    latinTerms: []
+    defaultModelId: "arteries-head-neck-chair",
+    latinTerms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 10).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 10)
   },
 
   // 11-mavzu
@@ -589,7 +610,9 @@ Diafragmaning hiatus aorticus teshigidan chiqishi bilanoq Th12 sathida qorin aor
       ru: `## Грудная и брюшная аорта. Чревный ствол, брыжеечные артерии, подвздошные артерии.`,
       en: `## Thoracic and abdominal aorta. Celiac trunk, mesenteric arteries, and iliac vessels.`
     },
-    latinTerms: []
+    defaultModelId: "artery-vein-system",
+    latinTerms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 11).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 11)
   },
 
   // 12-mavzu
@@ -643,7 +666,9 @@ Jigar sirrozi yoki darvoza venasi trombozida qon bosimi oshib (**Portal giperten
       ru: `## Полые вены, воротная вена. Портокавальные и кава-кавальные анастомозы. Синдром портальной гипертензии.`,
       en: `## Caval veins, hepatic portal system, portocaval and cavocaval anastomoses.`
     },
-    latinTerms: []
+    defaultModelId: "artery-vein-system",
+    latinTerms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 12).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 12)
   },
 
   // 13-mavzu
@@ -689,6 +714,8 @@ Chap o'mrov suyagi ustidagi limfa tugunining (*Nodus lymphaticus supraclavicular
       ru: `## Лимфатическая система. Грудной проток, правый лимфатический проток, лимфоузлы и селезенка.`,
       en: `## Lymphatic system. Thoracic duct, right lymphatic duct, lymph nodes, and spleen.`
     },
-    latinTerms: []
+    defaultModelId: "lymphatic-system-overview-umcg",
+    latinTerms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 13).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_2_GLOSSARY_TERMS.filter(t => t.topicOrder === 13)
   }
 ];

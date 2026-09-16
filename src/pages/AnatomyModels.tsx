@@ -136,13 +136,18 @@ export default function AnatomyModels({ isAdmin: isAdminProp }: { isAdmin?: bool
 
   // Mavzu sahifasidan "?model=<id>" orqali kelingan bo'lsa, mos modelni avtomatik ochish
   useEffect(() => {
-    const modelId = searchParams.get('model');
-    if (modelId && allModels.length > 0) {
-      const found = allModels.find((m) => m.id === modelId);
-      if (found) setSelected(found);
+    const rawId = searchParams.get('model');
+    if (rawId && allModels.length > 0) {
+      const targetId = decodeURIComponent(rawId).trim();
+      const found = allModels.find(
+        (m) => m.id === targetId || m.id.toLowerCase() === targetId.toLowerCase()
+      );
+      if (found) {
+        setSelected(found);
+        // Agar model GLB formatda bo'lsa, launch3D holatini ham tayyorlash
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allModels]);
+  }, [allModels, searchParams]);
 
   // Filtrlash
   const filtered = useMemo(() => {

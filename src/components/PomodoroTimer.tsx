@@ -74,6 +74,13 @@ export default function PomodoroTimer({ user }: PomodoroTimerProps) {
   const totalDuration = MODE_CONFIGS[mode].durationMinutes * 60;
   const progressPercent = Math.min(100, Math.max(0, ((totalDuration - timeLeft) / totalDuration) * 100));
 
+  // Listen for global open requests (from Study Goals, Topic page, etc.)
+  useEffect(() => {
+    const handleOpenTimer = () => setIsOpen(true);
+    window.addEventListener('open_pomodoro_timer', handleOpenTimer);
+    return () => window.removeEventListener('open_pomodoro_timer', handleOpenTimer);
+  }, []);
+
   // Retrieve current active topic from ActivityTracker's local storage
   useEffect(() => {
     try {
@@ -198,6 +205,9 @@ export default function PomodoroTimer({ user }: PomodoroTimerProps) {
       if (user?.uid && !user.isAnonymous) {
         dbService.savePomodoroSession(user.uid, newSession);
       }
+
+      // Notify dashboard and study goals components
+      window.dispatchEvent(new CustomEvent('pomodoro_session_completed', { detail: newSession }));
 
       setToastMessage(
         language === 'uz'

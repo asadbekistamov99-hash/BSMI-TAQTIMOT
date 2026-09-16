@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ShieldAlert, Terminal, LogIn, Lock, User, KeyRound } from 'lucide-react';
-import { auth, googleProvider } from '../lib/firebase';
+import { auth, googleProvider, robustSignInAnonymously } from '../lib/firebase';
 import { signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 
 interface AdminLoginProps {
@@ -21,6 +21,15 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
     setError("");
 
     try {
+      // Ensure Firebase Auth session exists so Firestore/Storage operations succeed
+      try {
+        if (!auth.currentUser) {
+          await robustSignInAnonymously(auth);
+        }
+      } catch (authErr) {
+        console.warn("Could not establish Firebase Auth session:", authErr);
+      }
+
       // 1. First authenticate with server-side /api/admin/login endpoint
       try {
         const response = await fetch('/api/admin/login', {

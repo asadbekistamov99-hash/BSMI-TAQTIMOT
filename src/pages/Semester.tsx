@@ -7,7 +7,9 @@ import { SEMESTER_1_TOPICS, SEMESTER_2_TOPICS, SEMESTER_3_TOPICS } from '../cons
 import { SEMESTER_1_DETAILED_TOPICS } from '../data/semester1TopicsData';
 import { SEMESTER_2_DETAILED_TOPICS } from '../data/semester2TopicsData';
 import { SEMESTER_3_DETAILED_TOPICS } from '../data/semester3TopicsData';
-import { ChevronRight, PlayCircle, FileText, CheckCircle2, Lock, Sparkles, Clock, Award, Download, X, Loader2, CreditCard, ShieldCheck, AlertCircle } from 'lucide-react';
+import { ANATOMY_MODELS, SEED_MODELS, type AnatomyModel } from '../data/anatomyModels';
+import TopicModelViewerModal from '../components/TopicModelViewerModal';
+import { ChevronRight, PlayCircle, FileText, CheckCircle2, Lock, Sparkles, Clock, Award, Download, X, Loader2, CreditCard, ShieldCheck, AlertCircle, Box } from 'lucide-react';
 import PaymentModal from '../components/PaymentModal';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
@@ -140,7 +142,7 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
   const navigate = useNavigate();
   const semesterId = Number(id);
   const { settings } = useSettings();
-  const { t, getLocalized } = useLanguage();
+  const { t, getLocalized, language } = useLanguage();
   const [topics, setTopics] = useState<Topic[]>([]);
   const [semesterInfo, setSemesterInfo] = useState<SemesterType | null>(null);
   const [midtermFile, setMidtermFile] = useState<MidtermFile | null>(null);
@@ -148,6 +150,7 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
   const [isPaid, setIsPaid] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selected3DModel, setSelected3DModel] = useState<AnatomyModel | null>(null);
   const isAdmin = isAdminProp ?? !!localStorage.getItem('adminToken');
 
   useEffect(() => {
@@ -512,6 +515,26 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
                         <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-brand-accent" /> {t('topic.theory').toUpperCase()}</span>
                         <span className="flex items-center gap-1.5"><PlayCircle className="w-3.5 h-3.5 text-brand-accent" /> {t('topic.video').toUpperCase()}</span>
                         <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> {t('quiz.questions').toUpperCase()}</span>
+                        {(() => {
+                          const topicModel = [...ANATOMY_MODELS, ...SEED_MODELS].find(
+                            m => m.topicIds?.includes(`sem_${semesterId}_top_${topic.order}`) || (topic.defaultModelId && m.id === topic.defaultModelId)
+                          );
+                          if (!topicModel) return null;
+                          return (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelected3DModel(topicModel);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 hover:border-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all shadow-xs cursor-pointer"
+                              title={getLocalized(topicModel.title)}
+                            >
+                              <Box className="w-3.5 h-3.5 text-emerald-600 group-hover:text-white" />
+                              <span>3D: {getLocalized(topicModel.title)}</span>
+                            </button>
+                          );
+                        })()}
                         {!isUnlocked && (
                           <span className="flex items-center gap-1 text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full font-bold">
                             <Lock className="w-3 h-3" /> Sotib olish uchun bosing
@@ -560,6 +583,14 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
           }}
         />
       )}
+
+      {/* Direct Topic 3D Model Modal */}
+      <TopicModelViewerModal
+        model={selected3DModel}
+        isOpen={!!selected3DModel}
+        onClose={() => setSelected3DModel(null)}
+        language={language}
+      />
     </div>
   );
 }

@@ -364,6 +364,13 @@ export default function TopicGlossaryViewer({
               Ushbu mavzuda uchraydigan barcha lotincha anatomik atamalar, ularning o'zbekcha va xalqaro tarjimalari hamda to'g'ri talaffuzi.
             </p>
           </div>
+
+          <Link
+            to={`/latin-glossary?semester=${semester || 1}&topic=${topicOrder || 1}&mode=dictation`}
+            className="inline-flex items-center gap-2.5 px-5 py-3 bg-brand-accent hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-lg hover:scale-105 active:scale-95 shrink-0 self-start md:self-center"
+          >
+            <span>✍️ Mavzu bo'yicha Diktant</span>
+          </Link>
         </div>
 
         {/* Search Input */}

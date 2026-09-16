@@ -87,6 +87,16 @@ export default function WeeklyStudyGoals({ user, compact = false }: WeeklyStudyG
     } else {
       setIsLoading(false);
     }
+
+    const handleNewSession = (e: any) => {
+      if (e.detail) {
+        setPomodoroSessions((prev) => [e.detail, ...prev.filter(p => p.id !== e.detail.id)]);
+      }
+    };
+    window.addEventListener('pomodoro_session_completed', handleNewSession);
+    return () => {
+      window.removeEventListener('pomodoro_session_completed', handleNewSession);
+    };
   }, [user]);
 
   // Helper to get start and end of current week (Monday to Sunday)
@@ -302,10 +312,16 @@ export default function WeeklyStudyGoals({ user, compact = false }: WeeklyStudyG
                 ⚡ Yaxshi sur’at! Haftalik maqsad yarim yo‘ldan o‘tdi.
               </span>
             ) : (
-              <span className="text-xs font-black text-indigo-600 dark:text-cyan-400 flex items-center gap-1.5">
-                <Zap className="w-4 h-4 text-indigo-500" />
-                🎯 Maqsadga erishish uchun Pomodoro dars taymerini ishga tushiring!
-              </span>
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('open_pomodoro_timer'))}
+                className="text-xs font-black text-indigo-600 dark:text-cyan-400 hover:text-indigo-700 dark:hover:text-cyan-300 flex items-center gap-1.5 transition-colors group cursor-pointer text-left"
+              >
+                <Zap className="w-4 h-4 text-indigo-500 animate-pulse shrink-0" />
+                <span className="underline decoration-indigo-400/50 underline-offset-2">
+                  🎯 Maqsadga erishish uchun Pomodoro dars taymerini ishga tushiring →
+                </span>
+              </button>
             )}
           </div>
         </div>
@@ -357,17 +373,21 @@ export default function WeeklyStudyGoals({ user, compact = false }: WeeklyStudyG
               </div>
 
               {/* Bar */}
-              <div className="w-full max-w-[28px] bg-slate-200 dark:bg-slate-800/80 rounded-xl h-full flex items-end p-0.5 overflow-hidden">
+              <div 
+                onClick={() => window.dispatchEvent(new CustomEvent('open_pomodoro_timer'))}
+                title="Taymerni ishga tushirish uchun bosing"
+                className="w-full max-w-[28px] bg-slate-200/70 dark:bg-slate-800/60 rounded-xl h-full flex items-end p-0.5 overflow-hidden cursor-pointer hover:ring-2 hover:ring-indigo-500/40 transition-all"
+              >
                 <motion.div
                   initial={{ height: 0 }}
-                  animate={{ height: `${Math.max(8, day.heightPercent)}%` }}
+                  animate={{ height: day.minutes > 0 ? `${Math.max(12, day.heightPercent)}%` : '4px' }}
                   transition={{ duration: 0.6, ease: 'easeOut' }}
                   className={`w-full rounded-lg transition-all ${
                     day.minutes > 0
                       ? day.isToday
                         ? 'bg-gradient-to-t from-cyan-500 to-indigo-500 shadow-md shadow-cyan-500/30'
                         : 'bg-gradient-to-t from-indigo-600 to-indigo-400 dark:from-indigo-500 dark:to-cyan-400'
-                      : 'bg-slate-300/50 dark:bg-slate-700/40'
+                      : 'bg-slate-300/40 dark:bg-slate-700/30'
                   }`}
                 />
               </div>

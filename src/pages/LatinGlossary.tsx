@@ -37,14 +37,27 @@ export default function LatinGlossary({ isAdmin: isAdminProp, user }: { isAdmin?
   // Selected semester (0 = All, 1 = 1-semestr, 2 = 2-semestr, 3 = 3-semestr)
   const initialSem = Number(searchParams.get('semester')) || 1;
   const initialTopic = Number(searchParams.get('topic')) || 0; // 0 = all topics in semester
+  const initialMode = searchParams.get('mode') === 'dictation' ? 'dictation' : 'glossary';
 
   const [selectedSemester, setSelectedSemester] = useState<number>(initialSem);
   const [selectedTopicOrder, setSelectedTopicOrder] = useState<number>(initialTopic);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAlpha, setSelectedAlpha] = useState<string | null>(null);
-  const [activeMode, setActiveMode] = useState<'glossary' | 'dictation'>('glossary');
+  const [activeMode, setActiveMode] = useState<'glossary' | 'dictation'>(initialMode);
   const [favorites, setFavorites] = useState<Record<string, any>>({});
   const [cloudTerms, setCloudTerms] = useState<LatinTerm[]>([]);
+
+  useEffect(() => {
+    if (searchParams.get('mode') === 'dictation') {
+      setActiveMode('dictation');
+    } else if (searchParams.get('mode') === 'glossary') {
+      setActiveMode('glossary');
+    }
+    const sem = Number(searchParams.get('semester'));
+    if (sem) setSelectedSemester(sem);
+    const top = Number(searchParams.get('topic'));
+    if (top !== null && !isNaN(top)) setSelectedTopicOrder(top);
+  }, [searchParams]);
 
   useEffect(() => {
     if (location.state?.search) {
@@ -519,7 +532,17 @@ export default function LatinGlossary({ isAdmin: isAdminProp, user }: { isAdmin?
 
         {/* View Mode Switching: Dictation or Topic Glossary */}
         {activeMode === 'dictation' ? (
-          <AnatomicalDictation user={user} terms={filteredTerms} getLocalizedTermStr={getLocalizedTermStr} />
+          <AnatomicalDictation 
+            user={user} 
+            allAvailableTerms={allAvailableTerms}
+            initialSemester={selectedSemester > 0 ? selectedSemester : 1}
+            initialTopic={selectedTopicOrder > 0 ? selectedTopicOrder : 1}
+            onSelectTopic={(sem, top) => {
+              setSelectedSemester(sem);
+              setSelectedTopicOrder(top);
+            }}
+            getLocalizedTermStr={getLocalizedTermStr} 
+          />
         ) : (
           <>
             {/* Alphabet Filter */}

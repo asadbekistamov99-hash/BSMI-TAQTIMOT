@@ -1,4 +1,4 @@
-import { createServerApp } from '../server.js';
+import { createServerApp } from '../server.ts';
 
 let cachedApp: any = null;
 
@@ -15,6 +15,11 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
+  }
+
+  // Normalize req.url if Vercel strips /api prefix during rewrite
+  if (req.url && !req.url.startsWith('/api')) {
+    req.url = `/api${req.url.startsWith('/') ? '' : '/'}${req.url}`;
   }
 
   try {

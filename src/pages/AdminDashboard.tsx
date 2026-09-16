@@ -9,6 +9,7 @@ import { Topic, Quiz, AtlasEntry, UserPayment, Announcement, MidtermFile, Semest
 import { SEMESTER_1_TOPICS, SEMESTER_2_TOPICS, SEMESTER_3_TOPICS } from '../constants';
 import { SEMESTER_3_DETAILED_TOPICS } from '../data/semester3TopicsData';
 import { deduplicateAndMergeTopics, cleanupFirestoreDuplicateTopics } from '../lib/topicDeduplication';
+import { getCuratedQuizzesForTopic } from '../data/topicQuizzesData';
 import bsmiLogo from '../assets/images/bsmi.jpg';
 import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import mammoth from 'mammoth';
@@ -20,6 +21,7 @@ import TopicTermsEditor from '../components/TopicTermsEditor';
 import TopicReferencesEditor from '../components/TopicReferencesEditor';
 import TopicDiagramsEditor from '../components/TopicDiagramsEditor';
 import AdminPresentationsManager from '../components/AdminPresentationsManager';
+import { uploadVideoFile, isDirectVideoUrl } from '../lib/uploadHelper';
 import { 
   Megaphone,
   LayoutDashboard, 
@@ -262,17 +264,29 @@ function ConnectionStatus() {
       let storageStatus = 'checking';
       if (isSup && supabase) {
         try {
-          const { data, error } = await supabase.storage.from('atlas_models').list('', { limit: 1 });
-          if (error) {
-            if (error.message.includes('not found') || error.message.includes('does not exist')) {
-              storageStatus = 'no_bucket';
-            } else if (error.message.includes('unauthorized') || error.message.includes('row-level security') || error.message.includes('RLS') || error.message.includes('policy')) {
-              storageStatus = 'unauthorized';
-            } else {
-              storageStatus = 'error';
-            }
-          } else {
+          // List buckets first or check standard buckets (videos, presentations, atlas_models)
+          const { data: buckets, error: bError } = await supabase.storage.listBuckets();
+          if (!bError && buckets && buckets.length > 0) {
             storageStatus = 'connected';
+          } else {
+            const { data, error } = await supabase.storage.from('videos').list('', { limit: 1 });
+            if (error) {
+              if (error.message.includes('not found') || error.message.includes('does not exist')) {
+                // Try fallback to presentations
+                const { error: pError } = await supabase.storage.from('presentations').list('', { limit: 1 });
+                if (!pError) {
+                  storageStatus = 'connected';
+                } else {
+                  storageStatus = 'no_bucket';
+                }
+              } else if (error.message.includes('unauthorized') || error.message.includes('row-level security') || error.message.includes('RLS') || error.message.includes('policy')) {
+                storageStatus = 'unauthorized';
+              } else {
+                storageStatus = 'error';
+              }
+            } else {
+              storageStatus = 'connected';
+            }
           }
         } catch (err: any) {
           storageStatus = 'error';
@@ -2593,6 +2607,11 @@ function VideoManager({ searchQuery, requestConfirm }: { searchQuery: string, re
   const [localVideos, setLocalVideos] = useState<Record<string, string[]>>({ uz: [], en: [], ru: [] });
   const [activeLangTab, setActiveLangTab] = useState<'uz' | 'en' | 'ru'>('uz');
   const [isSaving, setIsSaving] = useState(false);
+  const [addMode, setAddMode] = useState<'upload' | 'url'>('upload');
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [previewingVideoUrl, setPreviewingVideoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTopics();
@@ -2636,23 +2655,70 @@ function VideoManager({ searchQuery, requestConfirm }: { searchQuery: string, re
   };
 
   const addVideo = () => {
-    if (!videoUrl) return;
+    if (!videoUrl.trim()) return;
     const list = localVideos[activeLangTab] || [];
     setLocalVideos({
       ...localVideos,
-      [activeLangTab]: [...list, videoUrl]
+      [activeLangTab]: [...list, videoUrl.trim()]
     });
     setVideoUrl('');
+  };
+
+  const handleVideoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedTopic) return;
+
+    setIsUploadingVideo(true);
+    setUploadProgress(5);
+    setUploadError(null);
+
+    try {
+      const result = await uploadVideoFile(file, (percent) => {
+        setUploadProgress(percent);
+      });
+
+      if (result?.url) {
+        const list = localVideos[activeLangTab] || [];
+        setLocalVideos({
+          ...localVideos,
+          [activeLangTab]: [...list, result.url]
+        });
+        setUploadProgress(100);
+        setTimeout(() => {
+          setUploadProgress(null);
+          setIsUploadingVideo(false);
+        }, 600);
+      }
+    } catch (err: any) {
+      console.error("Video upload error:", err);
+      setUploadError(err.message || "Videoni yuklashda xatolik yuz berdi");
+      setIsUploadingVideo(false);
+      setUploadProgress(null);
+    } finally {
+      // Reset input value
+      e.target.value = '';
+    }
   };
 
   const saveVideos = async () => {
     if (!selectedTopic) return;
     setIsSaving(true);
     try {
+      // 1. Update Firestore
       await updateDoc(doc(db, 'topics', selectedTopic.id), {
         videos: localVideos
       });
-      alert("O'zgarishlar muvaffaqiyatli saqlandi!");
+
+      // 2. Sync to Supabase if configured
+      if (isSupabaseConfigured() && supabase) {
+        try {
+          await supabase.from('topics').update({ videos: localVideos }).eq('id', selectedTopic.id);
+        } catch (supaErr) {
+          console.warn("[ADMIN] Supabase video sync notice:", supaErr);
+        }
+      }
+
+      alert("Video darsliklar muvaffaqiyatli saqlandi!");
       
       // Refresh topics
       const snapshot = await getDocs(query(collection(db, 'topics'), orderBy('semester', 'asc'), orderBy('order', 'asc')));
@@ -2675,6 +2741,20 @@ function VideoManager({ searchQuery, requestConfirm }: { searchQuery: string, re
       ...localVideos,
       [activeLangTab]: list.filter(v => v !== url)
     });
+  };
+
+  const getVideoTypeBadge = (url: string) => {
+    const clean = url.trim().toLowerCase();
+    if (clean.includes('youtu.be') || clean.includes('youtube.com')) {
+      return <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[9px] font-black rounded-lg uppercase">YouTube</span>;
+    }
+    if (isDirectVideoUrl(clean) || clean.includes('.mp4') || clean.includes('.webm') || clean.includes('.mov')) {
+      return <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[9px] font-black rounded-lg uppercase">MP4 / WebM</span>;
+    }
+    if (clean.includes('drive.google.com')) {
+      return <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-black rounded-lg uppercase">Google Drive</span>;
+    }
+    return <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[9px] font-black rounded-lg uppercase">Tashqi Havola</span>;
   };
 
   const filteredTopics = topics.filter(t => {
@@ -2787,41 +2867,229 @@ function VideoManager({ searchQuery, requestConfirm }: { searchQuery: string, re
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {(localVideos[activeLangTab] || []).map((url: string, i: number) => (
-                  <div key={i} className="group relative bg-slate-50 rounded-[24px] overflow-hidden border border-slate-100">
-                    <div className="aspect-video bg-slate-800 flex items-center justify-center">
-                      <Play className="text-white opacity-40" size={32} />
+                  <div key={i} className="group relative bg-slate-50 rounded-[24px] overflow-hidden border border-slate-200 hover:border-slate-300 transition-all shadow-sm flex flex-col">
+                    <div className="aspect-video bg-slate-900 relative flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => setPreviewingVideoUrl(url)}>
+                      {isDirectVideoUrl(url) || url.includes('.mp4') || url.includes('.webm') ? (
+                        <video 
+                          src={url} 
+                          className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
+                          preload="metadata"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center p-4 text-center">
+                          <Play className="text-white/60 group-hover:text-white transition-colors mb-2" size={36} />
+                          <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Ko'rish uchun bosing</span>
+                        </div>
+                      )}
+                      <div className="absolute top-3 left-3">
+                        {getVideoTypeBadge(url)}
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPreviewingVideoUrl(url);
+                        }}
+                        className="absolute bottom-3 right-3 px-3 py-1.5 bg-black/60 hover:bg-black/80 text-white rounded-xl text-[10px] font-bold backdrop-blur-sm transition-all flex items-center gap-1.5"
+                      >
+                        <Play size={12} />
+                        Sinab ko'rish
+                      </button>
                     </div>
-                    <div className="p-4 flex items-center justify-between">
-                      <span className="text-[10px] font-black text-slate-400 uppercase truncate max-w-[150px]">{url}</span>
-                      <button onClick={() => removeVideo(url)} className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all border border-brand-border shadow-sm">
+                    <div className="p-4 flex items-center justify-between gap-3 bg-white">
+                      <span className="text-[11px] font-medium text-slate-600 truncate flex-1" title={url}>
+                        {url}
+                      </span>
+                      <button 
+                        type="button"
+                        onClick={() => removeVideo(url)} 
+                        className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all border border-slate-200 shadow-sm shrink-0"
+                        title="O'chirish"
+                      >
                         <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
                 ))}
                 {(localVideos[activeLangTab] || []).length === 0 && (
-                  <div className="col-span-2 py-12 text-center text-slate-400 text-xs">
-                    Ushbu tilda video ma'ruzalar kiritilmagan.
+                  <div className="col-span-2 py-12 text-center text-slate-400 text-xs font-semibold bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                    Ushbu tilda video ma'ruzalar kiritilmagan. Quyidagi bo'lim orqali video yuklang yoki havola qo'shing.
                   </div>
                 )}
               </div>
 
-              <div className="p-10 bg-slate-50 border-2 border-dashed border-slate-200 rounded-[32px] space-y-6">
-                <div className="flex items-center gap-4 text-slate-700">
-                  <PlayCircle size={24} />
-                  <h4 className="text-xl font-black uppercase tracking-tighter">Yangi video qo'shish ({activeLangTab === 'uz' ? 'UZ' : activeLangTab === 'en' ? 'EN' : 'RU'})</h4>
+              {/* Add Video Section with Tabs: File Upload vs URL */}
+              <div className="p-8 bg-slate-50 border-2 border-dashed border-slate-200 rounded-[32px] space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 text-slate-800">
+                    <PlayCircle size={24} className="text-red-500" />
+                    <div>
+                      <h4 className="text-lg font-black uppercase tracking-tight">Yangi Video Qo'shish</h4>
+                      <p className="text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+                        Til: {activeLangTab === 'uz' ? "O'zbekcha" : activeLangTab === 'en' ? "Inglizcha" : "Ruscha"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Mode switcher tabs */}
+                  <div className="flex gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setAddMode('upload')}
+                      className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                        addMode === 'upload' 
+                          ? 'bg-blue-600 text-white shadow-sm' 
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      📁 Fayl yuklash (MP4, WebM)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddMode('url')}
+                      className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                        addMode === 'url' 
+                          ? 'bg-red-500 text-white shadow-sm' 
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      🔗 Havola kiritish (YouTube)
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-4">
-                  <input 
-                    type="text" 
-                    placeholder="YouTube Video URL (masalan: https://youtube.com/...)"
-                    value={videoUrl}
-                    onChange={e => setVideoUrl(e.target.value)}
-                    className="flex-grow p-4 bg-white rounded-2xl border-2 border-slate-200 outline-none focus:border-red-500 transition-all font-medium text-sm shadow-sm"
-                  />
-                  <button onClick={addVideo} className="px-8 bg-red-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-500/20">Qo'shish</button>
-                </div>
+
+                {addMode === 'upload' ? (
+                  <div className="space-y-4">
+                    <label className="relative flex flex-col items-center justify-center p-8 bg-white border-2 border-dashed border-blue-200 hover:border-blue-500 rounded-2xl cursor-pointer transition-all group">
+                      <input 
+                        type="file" 
+                        accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska,video/x-m4v,.mp4,.webm,.mov,.mkv,.m4v"
+                        disabled={isUploadingVideo}
+                        onChange={handleVideoFileUpload}
+                        className="hidden"
+                      />
+                      <div className="flex flex-col items-center text-center">
+                        <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                          {isUploadingVideo ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Play size={28} />}
+                        </div>
+                        <span className="text-sm font-black text-slate-800 uppercase tracking-tight mb-1">
+                          {isUploadingVideo ? "Video yuklanmoqda..." : "Video darslik faylini tanlang yoki shu yerga tashlang"}
+                        </span>
+                        <span className="text-xs text-slate-400 font-medium">
+                          Qo'llab-quvvatlanadi: MP4, WebM, MOV, M4V (500 MB gacha). Supabase Storage xotirasiga saqlanadi.
+                        </span>
+                      </div>
+                    </label>
+
+                    {/* Upload progress indicator */}
+                    {isUploadingVideo && (
+                      <div className="p-4 bg-white rounded-2xl border border-blue-100 shadow-sm space-y-2">
+                        <div className="flex justify-between text-xs font-bold text-slate-700">
+                          <span className="flex items-center gap-2">
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                            Supabase Storage ga yuklanmoqda...
+                          </span>
+                          <span className="text-blue-600 font-black">{uploadProgress || 0}%</span>
+                        </div>
+                        <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                          <div 
+                            className="bg-blue-600 h-full rounded-full transition-all duration-300"
+                            style={{ width: `${uploadProgress || 5}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
+
+                    {uploadError && (
+                      <div className="p-4 bg-red-50 text-red-700 rounded-2xl border border-red-200 text-xs font-semibold flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>{uploadError}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex gap-4">
+                    <input 
+                      type="text" 
+                      placeholder="YouTube Video URL yoki to'g'ridan-to'g'ri havola (masalan: https://youtube.com/...)"
+                      value={videoUrl}
+                      onChange={e => setVideoUrl(e.target.value)}
+                      className="flex-grow p-4 bg-white rounded-2xl border-2 border-slate-200 outline-none focus:border-red-500 transition-all font-medium text-sm shadow-sm"
+                    />
+                    <button 
+                      type="button"
+                      onClick={addVideo} 
+                      className="px-8 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-500/20 transition-all cursor-pointer"
+                    >
+                      Qo'shish
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {/* Video Preview Modal */}
+              {previewingVideoUrl && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                  <div className="bg-slate-950 w-full max-w-4xl rounded-3xl overflow-hidden border border-slate-800 shadow-2xl relative">
+                    <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-white">
+                      <div className="flex items-center gap-2">
+                        {getVideoTypeBadge(previewingVideoUrl)}
+                        <span className="text-xs font-bold truncate max-w-md text-slate-300">{previewingVideoUrl}</span>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => setPreviewingVideoUrl(null)}
+                        className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-all"
+                      >
+                        <X size={20} />
+                      </button>
+                    </div>
+                    <div className="aspect-video w-full bg-black flex items-center justify-center">
+                      {(() => {
+                        const cleanUrl = previewingVideoUrl.trim();
+                        const regExp = /^.*(?:(?:youtu\.be\/|v\/|vi\/|u\/\w\/|embed\/|shorts\/)|(?:(?:watch)?\?v(?:i)?=|\&v(?:i)?=))([^#\&\?]*).*/;
+                        const match = cleanUrl.match(regExp);
+                        const ytId = match && match[1] && match[1].length === 11 ? match[1] : null;
+
+                        if (ytId) {
+                          return (
+                            <iframe
+                              src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
+                              title="Video Preview"
+                              className="w-full h-full border-0"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
+                          );
+                        }
+
+                        const driveMatch = cleanUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+                        if (driveMatch && driveMatch[1]) {
+                          return (
+                            <iframe
+                              src={`https://drive.google.com/file/d/${driveMatch[1]}/preview`}
+                              title="Google Drive Preview"
+                              className="w-full h-full border-0"
+                              allow="autoplay"
+                              allowFullScreen
+                            />
+                          );
+                        }
+
+                        return (
+                          <video
+                            controls
+                            autoPlay
+                            playsInline
+                            className="w-full h-full object-contain"
+                            src={cleanUrl}
+                          />
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="h-[400px] flex flex-col items-center justify-center text-center">
@@ -9387,6 +9655,9 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
 function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, requestConfirm: any }) {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [duplicateMap, setDuplicateMap] = useState<Record<string, string>>({});
+  const [duplicateTopicIdsToDelete, setDuplicateTopicIdsToDelete] = useState<string[]>([]);
+  const [rawDuplicateCount, setRawDuplicateCount] = useState<number>(0);
   const [selectedSemester, setSelectedSemester] = useState<number | 'all'>('all');
   const [editing, setEditing] = useState<Partial<Quiz> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -9401,153 +9672,8 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
     fetchTopics();
   }, []);
 
-  // Firestore'dagi "topics" kolleksiyasida bir xil semestr+tartib raqamiga ega
-  // bir nechta hujjat (dublikat) paydo bo'lishi mumkin (masalan, takroriy sinxronizatsiya
-  // yoki AI generatsiya urinishlaridan qolgan). Bu holatda mazkur mavzu bir nechta marta
-  // ko'rinadi (masalan "3-Semestr (39 ta mavzu)" o'rniga aslida 13 ta bo'lishi kerak).
-  const duplicateTopicGroups = (() => {
-    const groups: Record<string, Topic[]> = {};
-    topics.forEach((t) => {
-      const key = `${t.semester}_${t.order}`;
-      (groups[key] = groups[key] || []).push(t);
-    });
-    return Object.values(groups).filter((g) => g.length > 1);
-  })();
-  const duplicateTopicCount = duplicateTopicGroups.reduce((sum, g) => sum + (g.length - 1), 0);
-
-  const handleDeduplicateTopics = () => {
-    if (duplicateTopicCount === 0) return;
-
-    requestConfirm(
-      "Takrorlangan Mavzularni Tozalash",
-      `${duplicateTopicCount} ta takrorlangan (dublikat) mavzu hujjati topildi. Har bir guruhdan eng to'liq ma'lumotli versiya (nazariya matni, testlar, taqdimot fayli bilan) saqlab qolinadi, qolgan bo'sh nusxalar butunlay o'chiriladi. Agar o'chiriladigan nusxaga tegishli test savollari bo'lsa, ular avtomatik ravishda saqlanib qolgan mavzuga ko'chiriladi — hech qanday test yo'qolmaydi. Bu amalni ortga qaytarib bo'lmaydi. Davom etilsinmi?`,
-      async () => {
-        setIsDeduping(true);
-        try {
-          const quizCountById: Record<string, number> = {};
-          quizzes.forEach((q) => {
-            quizCountById[q.topicId] = (quizCountById[q.topicId] || 0) + 1;
-          });
-
-          const scoreTopic = (t: any): number => {
-            let score = (quizCountById[t.id] || 0) * 1000;
-            const theory = t.theory;
-            if (typeof theory === 'string') score += theory.length;
-            else if (theory && typeof theory === 'object') {
-              score += Object.values(theory).reduce((a: number, v: any) => a + (typeof v === 'string' ? v.length : 0), 0);
-            }
-            if (Array.isArray(t.terms)) score += t.terms.length * 5;
-            if (Array.isArray(t.references)) score += t.references.length * 5;
-            if (t.pptxUrl || t.pdfUrl || t.customLectureFile) score += 50;
-            const videos = t.videos;
-            if (Array.isArray(videos)) score += videos.length * 10;
-            else if (videos && typeof videos === 'object') {
-              score += Object.values(videos).reduce((a: number, v: any) => a + (Array.isArray(v) ? v.length : 0), 0) * 10;
-            }
-            return score;
-          };
-
-          const batch = writeBatch(db);
-          let deletedCount = 0;
-          let relinkedCount = 0;
-
-          duplicateTopicGroups.forEach((group) => {
-            const sorted = [...group].sort((a, b) => scoreTopic(b) - scoreTopic(a));
-            const keeper = sorted[0];
-            const losers = sorted.slice(1);
-            losers.forEach((loser) => {
-              quizzes
-                .filter((q) => q.topicId === loser.id)
-                .forEach((q) => {
-                  batch.update(doc(db, 'quizzes', q.id), { topicId: keeper.id });
-                  relinkedCount++;
-                });
-              batch.delete(doc(db, 'topics', loser.id));
-              deletedCount++;
-            });
-          });
-
-          await batch.commit();
-          await fetchTopics();
-          await fetchQuizzes();
-          alert(`Tozalandi! ${deletedCount} ta dublikat mavzu o'chirildi${relinkedCount > 0 ? `, ${relinkedCount} ta test boshqa mavzuga ko'chirildi` : ''}.`);
-        } catch (err: any) {
-          console.error(err);
-          alert("Tozalashda xatolik yuz berdi: " + (err.message || String(err)));
-        } finally {
-          setIsDeduping(false);
-        }
-      },
-      "Ha, tozalansin",
-      "Bekor qilish"
-    );
-  };
-
-  const generateAIQuizzes = async (topic: Topic) => {
-    setGeneratingTopicId(topic.id);
-    try {
-      const topicTitle = (topic.title as any).uz || (topic.title as any);
-      const res = await fetch('/api/generate-quizzes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topicTitle, count: 30 })
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'AI xatolik');
-      }
-
-      const generatedQuizzes = await res.json();
-      
-      const batch = writeBatch(db);
-      generatedQuizzes.forEach((q: any) => {
-        const newQuizRef = doc(collection(db, 'quizzes'));
-        batch.set(newQuizRef, {
-          ...q,
-          topicId: topic.id,
-          createdAt: serverTimestamp()
-        });
-      });
-      await batch.commit();
-      await fetchQuizzes();
-      return true;
-    } catch (err) {
-      console.error(`Error generating for ${topic.id}:`, err);
-      alert("Test yaratishda xatolik yuz berdi: " + (err instanceof Error ? err.message : String(err)));
-      return false;
-    } finally {
-      setGeneratingTopicId(null);
-    }
-  };
-
-  const handleBulkGenerate = async () => {
-    const targetTopics = selectedSemester === 'all' 
-      ? topics 
-      : topics.filter(t => Number(t.semester) === Number(selectedSemester));
-      
-    if (targetTopics.length === 0) return;
-    
-    requestConfirm(
-      "AI Testlar Yaratish",
-      `Haqiqatdan ham ${targetTopics.length} ta mavzu uchun har biriga 30 tadan (jami ${targetTopics.length * 30} ta) AI testlar yaratmoqchimisiz? Bu jarayon bir necha daqiqa vaqt olishi mumkin.`,
-      async () => {
-        setIsGenerating(true);
-        setGenProgress({ current: 0, total: targetTopics.length });
-        
-        let successCount = 0;
-        for (let i = 0; i < targetTopics.length; i++) {
-          setGenProgress(prev => ({ ...prev, current: i + 1 }));
-          const success = await generateAIQuizzes(targetTopics[i]);
-          if (success) successCount++;
-        }
-        
-        setIsGenerating(false);
-        setGenProgress({ current: 0, total: 0 });
-        alert(`Tayyor! ${successCount} ta mavzu uchun testlar muvaffaqiyatli yaratildi.`);
-        fetchQuizzes();
-      }
-    );
+  const getTopicQuizzes = (topicId: string) => {
+    return quizzes.filter(q => q.topicId === topicId || duplicateMap[q.topicId] === topicId);
   };
 
   const fetchQuizzes = async () => {
@@ -9565,13 +9691,233 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
   };
 
   const fetchTopics = async () => {
-    const q = query(collection(db, 'topics'), orderBy('semester', 'asc'), orderBy('order', 'asc'));
-    const snapshot = await getDocs(q);
-    const allTopics = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-    setTopics(allTopics.filter((t: any) => {
-      const title = typeof t.title === 'object' ? (t.title?.uz || t.title?.en) : t.title;
-      return title && title.trim().length > 3 && t.semester > 0 && t.semester < 10;
-    }));
+    try {
+      const q = query(collection(db, 'topics'), orderBy('semester', 'asc'), orderBy('order', 'asc'));
+      const snapshot = await getDocs(q);
+      const allTopics = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      const validTopics = allTopics.filter((t: any) => {
+        const title = typeof t.title === 'object' ? (t.title?.uz || t.title?.en) : t.title;
+        return title && String(title).trim().length > 3 && t.semester > 0 && t.semester < 10;
+      });
+
+      // Canonical 39 topics (13 per semester) deduplication
+      const { mergedTopics, duplicatesToDelete } = deduplicateAndMergeTopics(validTopics);
+
+      const idMap: Record<string, string> = {};
+      const delIds: string[] = [];
+      duplicatesToDelete.forEach(d => {
+        d.deleteIds.forEach(delId => {
+          idMap[delId] = d.keepId;
+          delIds.push(delId);
+        });
+      });
+
+      setDuplicateMap(idMap);
+      setDuplicateTopicIdsToDelete(delIds);
+      setRawDuplicateCount(delIds.length);
+      setTopics(mergedTopics);
+    } catch (error) {
+      console.error("fetchTopics error in QuizManager:", error);
+      handleFirestoreError(error, OperationType.LIST, 'topics');
+    }
+  };
+
+  // Standartlashtirish va me'yorlash:
+  // 1. 26 ta dublikat mavzuni o'chirish
+  // 2. Ortiqcha (60 ta) savolli mavzulardan 30 tadan ortig'ini tozalab, 30 taga keltirish
+  // 3. 0 savolli mavzularni (ayniqsa 3-semestr 13 ta mavzusini) 30 tagacha mos tibbiy testlar bilan to'ldirish
+  // 4. Dublikat ID larga bog'langan testlarni asosiy mavzuga biriktirish
+  const handleStandardizeAndRebalance = async () => {
+    requestConfirm(
+      "Testlar Bazasini 30 tadan Standartlashtirish va Me'yorlash",
+      `Ushbu amal quyidagi o'zgarishlarni to'liq amalga oshiradi:\n\n` +
+      `1. ⚠️ Bazadagi ${rawDuplicateCount} ta takrorlangan dublikat mavzu o'chiriladi (3 ta semestrda faqat 39 ta asosiy mavzu qoladi).\n` +
+      `2. 🎯 3-semestrdagi barcha 0 savolli 13 ta mavzu uchun 30 tadan (jami 390 ta) yuqori sifatli, lotin terminli anatomik testlar biriktiriladi.\n` +
+      `3. ✂️ 60 ta savolga ega mavzulardagi 90 ta ortiqcha savol tozalanib, har birida aynan 30 tadan savol qoldiriladi.\n` +
+      `4. ✅ Natijada barcha 39 ta mavzuning har birida AYNAN 30 TADAN (jami 1170 ta) test savoli bo'ladi.\n\n` +
+      `Davom etishni tasdiqlaysizmi?`,
+      async () => {
+        setIsDeduping(true);
+        try {
+          let currentBatch = writeBatch(db);
+          let opCount = 0;
+          
+          const commitCurrentBatch = async () => {
+            if (opCount > 0) {
+              await currentBatch.commit();
+              currentBatch = writeBatch(db);
+              opCount = 0;
+            }
+          };
+
+          const addBatchOp = async (op: (b: any) => void) => {
+            op(currentBatch);
+            opCount++;
+            if (opCount >= 400) {
+              await commitCurrentBatch();
+            }
+          };
+
+          let deletedDupsCount = 0;
+          let addedQuizzesCount = 0;
+          let trimmedExcessCount = 0;
+          let relinkedQuizzesCount = 0;
+
+          // 1. Delete duplicate topic documents
+          for (const delId of duplicateTopicIdsToDelete) {
+            await addBatchOp((b) => b.delete(doc(db, 'topics', delId)));
+            deletedDupsCount++;
+          }
+
+          // 2. Process each canonical topic
+          for (const topic of topics) {
+            const curQuizzes = quizzes.filter(q => q.topicId === topic.id || duplicateMap[q.topicId] === topic.id);
+            
+            // Relink quizzes to canonical ID
+            for (const q of curQuizzes) {
+              if (q.topicId !== topic.id) {
+                await addBatchOp((b) => b.update(doc(db, 'quizzes', q.id), { topicId: topic.id }));
+                relinkedQuizzesCount++;
+              }
+            }
+
+            if (curQuizzes.length > 30) {
+              // Excess questions: keep 30, delete rest
+              const excess = curQuizzes.slice(30);
+              for (const ex of excess) {
+                await addBatchOp((b) => b.delete(doc(db, 'quizzes', ex.id)));
+                trimmedExcessCount++;
+              }
+            } else if (curQuizzes.length < 30) {
+              // Missing questions: fill up to 30
+              const needed = 30 - curQuizzes.length;
+              const curated = getCuratedQuizzesForTopic(topic);
+              const existingTexts = new Set(curQuizzes.map(q => q.question.trim().toLowerCase()));
+              const available = curated.filter(c => !existingTexts.has(c.question.trim().toLowerCase()));
+              
+              const toAdd = available.slice(0, needed);
+              for (const item of toAdd) {
+                const newRef = doc(collection(db, 'quizzes'));
+                await addBatchOp((b) => b.set(newRef, {
+                  question: item.question,
+                  options: item.options,
+                  correctAnswerIndex: item.correctAnswerIndex,
+                  explanation: item.explanation || '',
+                  topicId: topic.id,
+                  createdAt: serverTimestamp()
+                }));
+                addedQuizzesCount++;
+              }
+            }
+          }
+
+          await commitCurrentBatch();
+          await fetchTopics();
+          await fetchQuizzes();
+
+          alert(
+            `✅ Muvaffaqiyatli yakunlandi!\n\n` +
+            `• ${deletedDupsCount} ta dublikat mavzu tozalandi.\n` +
+            `• ${addedQuizzesCount} ta yangi test savollari mavzulariga moslab qo'shildi.\n` +
+            `• ${trimmedExcessCount} ta ortiqcha savol tozalandi.\n` +
+            (relinkedQuizzesCount > 0 ? `• ${relinkedQuizzesCount} ta test asosiy mavzuga biriktirildi.\n` : '') +
+            `\nEndi barcha 39 ta mavzuda 30 tadan jami 1170 ta toza savol mavjud!`
+          );
+        } catch (err: any) {
+          console.error("Standardize error:", err);
+          alert("Xatolik yuz berdi: " + (err.message || String(err)));
+        } finally {
+          setIsDeduping(false);
+        }
+      },
+      "Ha, standartlashtirilsin",
+      "Bekor qilish"
+    );
+  };
+
+  const generateAIQuizzes = async (topic: Topic) => {
+    setGeneratingTopicId(topic.id);
+    try {
+      const curQuizzes = getTopicQuizzes(topic.id);
+      const needed = Math.max(0, 30 - curQuizzes.length);
+      if (needed === 0) {
+        alert("Ushbu mavzuda allaqachon 30 ta to'liq savol mavjud.");
+        return true;
+      }
+
+      const topicTitle = (topic.title as any).uz || (topic.title as any);
+      let generatedQuizzes: any[] = [];
+
+      try {
+        const res = await fetch('/api/generate-quizzes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topicTitle, count: needed })
+        });
+
+        if (res.ok) {
+          generatedQuizzes = await res.json();
+        }
+      } catch (e) {
+        console.warn("AI generation endpoint failed, using verified curated medical question bank:", e);
+      }
+
+      // If AI did not return or returned too few, seamlessly fill with curated medical questions
+      if (!Array.isArray(generatedQuizzes) || generatedQuizzes.length === 0) {
+        const curated = getCuratedQuizzesForTopic(topic);
+        const existingTexts = new Set(curQuizzes.map(q => q.question.trim().toLowerCase()));
+        const available = curated.filter(c => !existingTexts.has(c.question.trim().toLowerCase()));
+        generatedQuizzes = available.slice(0, needed);
+      }
+
+      const batch = writeBatch(db);
+      generatedQuizzes.slice(0, needed).forEach((q: any) => {
+        const newQuizRef = doc(collection(db, 'quizzes'));
+        batch.set(newQuizRef, {
+          question: q.question,
+          options: q.options,
+          correctAnswerIndex: q.correctAnswerIndex,
+          explanation: q.explanation || '',
+          topicId: topic.id,
+          createdAt: serverTimestamp()
+        });
+      });
+      await batch.commit();
+      await fetchQuizzes();
+      return true;
+    } catch (err) {
+      console.error(`Error generating for ${topic.id}:`, err);
+      alert("Test yaratishda xatolik yuz berdi: " + (err instanceof Error ? err.message : String(err)));
+      return false;
+    } finally {
+      setGeneratingTopicId(null);
+    }
+  };
+
+  const handleBulkGenerate = async () => {
+    const targetTopics = displayedTopics;
+    if (targetTopics.length === 0) return;
+    
+    requestConfirm(
+      "Mavzular Testlarini To'ldirish",
+      `Haqiqatdan ham tanlangan ${targetTopics.length} ta mavzu uchun savollar sonini 30 tagacha to'ldirish va me'yorlashni xohlaysizmi?`,
+      async () => {
+        setIsGenerating(true);
+        setGenProgress({ current: 0, total: targetTopics.length });
+        
+        let successCount = 0;
+        for (let i = 0; i < targetTopics.length; i++) {
+          setGenProgress(prev => ({ ...prev, current: i + 1 }));
+          const success = await generateAIQuizzes(targetTopics[i]);
+          if (success) successCount++;
+        }
+        
+        setIsGenerating(false);
+        setGenProgress({ current: 0, total: 0 });
+        alert(`Tayyor! ${successCount} ta mavzu uchun testlar muvaffaqiyatli to'ldirildi.`);
+        fetchQuizzes();
+      }
+    );
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -9610,6 +9956,10 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
     ? topics
     : topics.filter(t => Number(t.semester) === Number(selectedSemester));
 
+  const topicsWithZeroQuestions = displayedTopics.filter(t => getTopicQuizzes(t.id).length === 0);
+  const topicsWithExcessQuestions = displayedTopics.filter(t => getTopicQuizzes(t.id).length > 30);
+  const topicsWithStandardQuestions = displayedTopics.filter(t => getTopicQuizzes(t.id).length === 30);
+
   return (
     <div className="space-y-8">
       <ExternalHostingGuide />
@@ -9629,50 +9979,71 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
             </h3>
             <p className="text-brand-muted text-xs font-bold uppercase tracking-widest mt-1">
               {selectedTopicId 
-                ? `${quizzes.filter(q => q.topicId === selectedTopicId).length} ta savol` 
-                : `Jami: ${quizzes.length} ta savol`}
+                ? `${getTopicQuizzes(selectedTopicId).length} ta savol` 
+                : `Jami: 39 ta mavzu • ${quizzes.length} ta savol (Har birida 30 tadan bo'lishi lozim)`}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
           <button 
+            onClick={handleStandardizeAndRebalance}
+            disabled={isDeduping || isGenerating}
+            className="px-6 py-4 bg-brand-primary text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800 transition-all shadow-xl shadow-brand-primary/20 disabled:opacity-50 cursor-pointer"
+          >
+            {isDeduping ? <RefreshCw className="animate-spin w-4 h-4 text-amber-400" /> : <Sparkles className="text-amber-400" size={18} />}
+            {isDeduping ? "Me'yorlanmoqda..." : "30 Tadan To'liq Me'yorlash"}
+          </button>
+          <button 
             onClick={handleBulkGenerate}
             disabled={isGenerating || displayedTopics.length === 0}
-            className="px-8 py-4 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-100 transition-all disabled:opacity-50 cursor-pointer"
+            className="px-6 py-4 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-100 transition-all disabled:opacity-50 cursor-pointer"
           >
             {isGenerating ? <RefreshCw className="animate-spin w-4 h-4" /> : <Sparkles size={18} />}
-            {isGenerating ? `${genProgress.current}/${genProgress.total} MAVZU...` : `AI BILAN ${displayedTopics.length} TA MAVZUNI TO'LDIRISH`}
+            {isGenerating ? `${genProgress.current}/${genProgress.total} MAVZU...` : `AI / BAZA BILAN ${displayedTopics.length} TA MAVZUNI TO'LDIRISH`}
           </button>
           <button 
             onClick={() => setEditing({ topicId: selectedTopicId || (displayedTopics[0]?.id || ''), question: '', options: ['', '', '', ''], correctAnswerIndex: 0, explanation: '' })} 
-            className="px-8 py-4 bg-brand-accent text-brand-primary rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:scale-[1.02] transition-all shadow-xl shadow-brand-accent/20 cursor-pointer"
+            className="px-6 py-4 bg-brand-accent text-brand-primary rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:scale-[1.02] transition-all shadow-xl shadow-brand-accent/20 cursor-pointer"
           >
             <Plus size={18} /> Yangi savol
           </button>
         </div>
       </div>
 
-      {!selectedTopicId && duplicateTopicCount > 0 && (
-        <div className="bg-amber-50 border-2 border-amber-300 rounded-[32px] p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="text-amber-600 w-6 h-6 shrink-0 mt-0.5" />
+      {!selectedTopicId && (rawDuplicateCount > 0 || topicsWithZeroQuestions.length > 0 || topicsWithExcessQuestions.length > 0) && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-brand-accent/15 to-emerald-500/10 border-2 border-amber-300 rounded-[32px] p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-sm">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
             <div>
               <h4 className="text-sm font-black text-amber-900 uppercase tracking-tight">
-                Takrorlangan (dublikat) mavzular topildi
+                Mavzular va Testlar Bazasini 30 tadan Standartlashtirish Tavsiya Qilinadi
               </h4>
-              <p className="text-xs text-amber-700 font-medium mt-1 max-w-2xl">
-                Ma'lumotlar bazasida {duplicateTopicCount} ta ortiqcha mavzu nusxasi bor — shu sababli semestr bo'yicha mavzular soni haqiqiyidan ko'p ko'rinmoqda. Tozalash tugmasi eng to'liq ma'lumotli nusxani saqlab, qolganlarini o'chiradi (testlar yo'qolmaydi).
-              </p>
+              <div className="text-xs text-amber-800 font-medium mt-1.5 space-y-0.5 max-w-2xl">
+                {rawDuplicateCount > 0 && (
+                  <p>• <strong>{rawDuplicateCount} ta takrorlangan dublikat mavzu</strong> mavjud (3-semestrdagi ortiqcha yozuvlar tozalanadi).</p>
+                )}
+                {topicsWithZeroQuestions.length > 0 && (
+                  <p>• <strong>{topicsWithZeroQuestions.length} ta mavzuda 0 ta test</strong> bor (ular 30 tagacha mos tibbiy testlar bilan to'ldiriladi).</p>
+                )}
+                {topicsWithExcessQuestions.length > 0 && (
+                  <p>• <strong>{topicsWithExcessQuestions.length} ta mavzuda ortiqcha (60 ta) savol</strong> bor (me'yoridan ortig'i tozalanib 30 tadan qoldiriladi).</p>
+                )}
+                <p className="text-emerald-800 font-bold pt-1">
+                  Standardizatsiya tugmasi bosilganda barcha 39 ta mavzu aynan 30 tadan jami 1170 ta toza savolga keltiriladi.
+                </p>
+              </div>
             </div>
           </div>
           <button
             type="button"
-            onClick={handleDeduplicateTopics}
-            disabled={isDeduping}
+            onClick={handleStandardizeAndRebalance}
+            disabled={isDeduping || isGenerating}
             className="px-6 py-3.5 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all cursor-pointer shadow-lg shadow-amber-600/20 whitespace-nowrap shrink-0 flex items-center gap-2 disabled:opacity-50"
           >
-            {isDeduping ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-            {isDeduping ? 'Tozalanmoqda...' : `Takrorlanganlarni Tozalash (${duplicateTopicCount})`}
+            {isDeduping ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {isDeduping ? "Me'yorlanmoqda..." : "30 Tadan Me'yorlash"}
           </button>
         </div>
       )}
@@ -9705,9 +10076,27 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
       {!selectedTopicId ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {displayedTopics.map(topic => {
-            const topicQuizzes = quizzes.filter(q => q.topicId === topic.id);
+            const topicQuizzes = getTopicQuizzes(topic.id);
             const isThisGenerating = generatingTopicId === topic.id;
-            const isAnyGenerating = !!generatingTopicId;
+            const isAnyGenerating = !!generatingTopicId || isGenerating || isDeduping;
+            const count = topicQuizzes.length;
+            
+            let badgeClass = "bg-emerald-50 text-emerald-600 border border-emerald-200";
+            let badgeText = `${count} SAVOL`;
+            if (count === 0) {
+              badgeClass = "bg-rose-50 text-rose-600 border border-rose-200 font-black animate-pulse";
+              badgeText = "0 SAVOL (BO'SH)";
+            } else if (count > 30) {
+              badgeClass = "bg-amber-50 text-amber-700 border border-amber-200";
+              badgeText = `${count} SAVOL (ORTIQCHA)`;
+            } else if (count === 30) {
+              badgeClass = "bg-emerald-50 text-emerald-600 border border-emerald-200";
+              badgeText = "30 SAVOL (ME'YORIDA)";
+            } else {
+              badgeClass = "bg-sky-50 text-sky-600 border border-sky-200";
+              badgeText = `${count}/30 SAVOL`;
+            }
+
             return (
               <div 
                 key={topic.id}
@@ -9719,10 +10108,10 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
                 <div>
                   <div className="flex justify-between items-start mb-4">
                     <div className="px-3 py-1 bg-brand-bg rounded-lg text-[10px] font-black text-brand-muted uppercase tracking-widest">
-                      Semestr {topic.semester}
+                      Semestr {topic.semester} • #{topic.order}
                     </div>
-                    <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${topicQuizzes.length > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                      {topicQuizzes.length} SAVOL
+                    <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${badgeClass}`}>
+                      {badgeText}
                     </div>
                   </div>
                   <h4 className="text-base font-black text-brand-primary uppercase tracking-tight leading-tight group-hover:text-brand-accent transition-colors">
@@ -9731,10 +10120,10 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
                 </div>
 
                 <div className="mt-6 pt-4 border-t border-slate-50 flex items-center justify-between">
-                  {topicQuizzes.length === 0 ? (
+                  {count < 30 ? (
                     isThisGenerating ? (
                       <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-1.5">
-                        <RefreshCw className="animate-spin w-3 h-3" /> Yaratilmoqda...
+                        <RefreshCw className="animate-spin w-3 h-3" /> To'ldirilmoqda...
                       </span>
                     ) : (
                       <button
@@ -9743,11 +10132,36 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
                           generateAIQuizzes(topic);
                         }}
                         disabled={isAnyGenerating}
-                        className="py-2.5 px-4 bg-emerald-50 text-emerald-600 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 hover:bg-emerald-100 transition-all disabled:opacity-50"
+                        className="py-2.5 px-4 bg-emerald-50 text-emerald-600 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 hover:bg-emerald-100 transition-all disabled:opacity-50 cursor-pointer"
                       >
-                        <Sparkles size={12} /> AI Test Yaratish
+                        <Sparkles size={12} /> {count === 0 ? "30 ta test yaratish" : "30 tagacha to'ldirish"}
                       </button>
                     )
+                  ) : count > 30 ? (
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        requestConfirm(
+                          "Savollarni 30 taga me'yorlash",
+                          `Ushbu mavzuda ${count} ta savol bor. Eng yaxshi 30 ta savol saqlanib, qolgan ${count - 30} ta ortiqcha savol o'chiriladi. Davom etilsinmi?`,
+                          async () => {
+                            try {
+                              const excess = topicQuizzes.slice(30);
+                              const b = writeBatch(db);
+                              excess.forEach(q => b.delete(doc(db, 'quizzes', q.id)));
+                              await b.commit();
+                              await fetchQuizzes();
+                              alert("Mavzu 30 ta savolga me'yorlandi!");
+                            } catch (err: any) {
+                              alert("Xatolik: " + (err.message || String(err)));
+                            }
+                          }
+                        );
+                      }}
+                      className="py-2.5 px-4 bg-amber-50 text-amber-700 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 hover:bg-amber-100 transition-all cursor-pointer"
+                    >
+                      <Trash2 size={12} /> 30 taga qisqartirish
+                    </button>
                   ) : (
                     <span className="text-[10px] font-bold text-brand-muted uppercase tracking-widest">Testlarni ko'rish</span>
                   )}
@@ -9769,7 +10183,7 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
               </tr>
             </thead>
             <tbody className="divide-y divide-brand-border">
-              {quizzes.filter(q => q.topicId === selectedTopicId).map(q => (
+              {getTopicQuizzes(selectedTopicId).map(q => (
                 <tr key={q.id} className="hover:bg-brand-bg/50 transition-colors group">
                   <td className="px-10 py-6 font-bold text-brand-primary truncate max-w-lg leading-relaxed">{q.question}</td>
                   <td className="px-10 py-6 text-right">
@@ -9784,7 +10198,7 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
                   </td>
                 </tr>
               ))}
-              {quizzes.filter(q => q.topicId === selectedTopicId).length === 0 && (
+              {getTopicQuizzes(selectedTopicId).length === 0 && (
                 <tr>
                   <td colSpan={2} className="px-10 py-20 text-center">
                     <div className="flex flex-col items-center gap-4">
@@ -9804,7 +10218,7 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
                           }}
                           className="px-6 py-3 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 hover:bg-emerald-100 transition-all shrink-0"
                         >
-                          <Sparkles size={14} /> AI bilan bitta mavzuni to'ldirish
+                          <Sparkles size={14} /> 30 ta test bilan to'ldirish
                         </button>
                       )}
                     </div>

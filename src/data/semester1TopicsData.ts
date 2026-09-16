@@ -1,4 +1,5 @@
 import { Topic } from '../types';
+import { SEMESTER_1_GLOSSARY_TERMS } from './semester1GlossaryTerms';
 
 export const SEMESTER_1_DETAILED_TOPICS: Topic[] = [
   // 1-mavzu
@@ -79,7 +80,9 @@ Tik turuvchi insonda 4 ta fiziologik egrilik mavjud:
       ru: `## Позвоночный столб, терминология и анатомические плоскости. Подробный академический конспект.`,
       en: `## Vertebral column, anatomical planes, and terminology. Comprehensive lecture notes.`
     },
-    latinTerms: []
+    defaultModelId: "vertebral-column",
+    latinTerms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 1).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 1)
   },
 
   // 2-mavzu
@@ -140,7 +143,9 @@ Odamda **12 juft qovurg'a** bo'lib, orqada suyak qismi (*os costale*), oldinda t
       ru: `## Кости грудной клетки и пояса верхней конечности. Полная теория.`,
       en: `## Bones of the Thorax and Shoulder Girdle. Detailed clinical anatomy.`
     },
-    latinTerms: []
+    defaultModelId: "thorax-ribcage",
+    latinTerms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 2).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 2)
   },
 
   // 3-mavzu
@@ -198,7 +203,9 @@ Panja suyaklari 3 qismga bo'linadi:
       ru: `## Кости свободной верхней конечности. Плечо, предплечье и кисть.`,
       en: `## Skeleton of the upper limb. Humerus, forearm, and carpals.`
     },
-    latinTerms: []
+    defaultModelId: "hand-wrist-bones",
+    latinTerms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 3).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 3)
   },
 
   // 4-mavzu
@@ -262,7 +269,9 @@ Panja suyaklari 3 qismga bo'linadi:
       ru: `## Скелет нижней конечности. Таз, бедро, голень и стопа.`,
       en: `## Skeleton of the lower limb. Pelvis, femur, leg, and foot.`
     },
-    latinTerms: []
+    defaultModelId: "pelvic-bone",
+    latinTerms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 4).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 4)
   },
 
   // 5-mavzu
@@ -324,7 +333,9 @@ Kalla asosining markazidagi "kapalaksimon" suyak:
       ru: `## Кости мозгового черепа. Затылочная, лобная, височная, клиновидная, решетчатая.`,
       en: `## Neurocranium bones. Occipital, Frontal, Temporal, Sphenoid, Ethmoid bones.`
     },
-    latinTerms: []
+    defaultModelId: "skull-anatomy-kumar",
+    latinTerms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 5).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 5)
   },
 
   // 6-mavzu
@@ -374,7 +385,9 @@ Oldinda noksimon teshik (*Apertura piriformis*), orqada halqumga ochiluvchi ikki
       ru: `## Глазница, полость носа и околоносовые пазухи. Топография черепа.`,
       en: `## The Orbit, Nasal Cavity, and Paranasal Sinuses. Detailed topography.`
     },
-    latinTerms: []
+    defaultModelId: "demo-head-scan",
+    latinTerms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 6).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 6)
   },
 
   // 7-mavzu
@@ -426,7 +439,9 @@ Chaqaloq kallasida suyaklararo suyaklanmagan biriktiruvchi to'qima qatlamlari �
       ru: `## Крыловидно-нёбная ямка и череп новорожденного. Роднички.`,
       en: `## Pterygopalatine Fossa and Neonatal Skull. Fontanelles.`
     },
-    latinTerms: []
+    defaultModelId: "fetal-skull-childhood",
+    latinTerms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 7).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 7)
   },
 
   // 8-mavzu
@@ -480,7 +495,9 @@ Bitta umumiy bo'g'im xaltasi ichida **3 ta alohida bo'g'im** birlashgan murakkab
       ru: `## Соединения позвонков, грудной клетки и верхней конечности. Суставы.`,
       en: `## Articulations of the vertebral column, thorax, and upper limb.`
     },
-    latinTerms: []
+    defaultModelId: "shoulder-joint-ligaments-arloopa",
+    latinTerms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 8).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 8)
   },
 
   // 9-mavzu
@@ -533,7 +550,9 @@ Inson tanasidagi eng katta, eng murakkab va kompleks bo'g'im:
       ru: `## Тазобедренный, коленный, голеностопный суставы и ВНЧС. Рентгенанатомия.`,
       en: `## Hip, knee, ankle joints and TMJ. Functional biomechanics.`
     },
-    latinTerms: []
+    defaultModelId: "tmj-articular-disc-dundee",
+    latinTerms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 9).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 9)
   },
 
   // 10-mavzu
@@ -596,7 +615,9 @@ Chov sohasida qorin devorining pastki qismida joylashgan, uzunligi **4–5 sm** 
       ru: `## Мышцы и фасции груди, диафрагма, мышцы живота и паховый канал.`,
       en: `## Muscles of the thorax, diaphragm, abdominal wall, and inguinal canal.`
     },
-    latinTerms: []
+    defaultModelId: "muscular-system-simplified",
+    latinTerms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 10).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 10)
   },
 
   // 11-mavzu
@@ -648,7 +669,9 @@ Chov sohasida qorin devorining pastki qismida joylashgan, uzunligi **4–5 sm** 
       ru: `## Мышцы головы и шеи. Мимические и жевательные мышцы. Фасции и треугольники шеи.`,
       en: `## Muscles of the head and neck. Facial and masticatory muscles. Cervical triangles.`
     },
-    latinTerms: []
+    defaultModelId: "facial-muscles-ecorche",
+    latinTerms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 11).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 11)
   },
 
   // 12-mavzu
@@ -697,7 +720,9 @@ Chov sohasida qorin devorining pastki qismida joylashgan, uzunligi **4–5 sm** 
       ru: `## Мышцы спины и верхней конечности. Топография подмышечной ямки и предплечья.`,
       en: `## Muscles of the back and upper extremity. Axillary fossa and carpal tunnel.`
     },
-    latinTerms: []
+    defaultModelId: "arm-muscles-sgu",
+    latinTerms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 12).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 12)
   },
 
   // 13-mavzu
@@ -747,6 +772,8 @@ Katta quymich teshigidan *m. piriformis* o'tib, uni 2 ta teshikka ajratadi:
       ru: `## Мышцы таза, бедра, голени и стопы. Бедренный канал и сосудисто-нервные пучки.`,
       en: `## Muscles of the lower limb. Femoral triangle, popliteal fossa, and biomechanics.`
     },
-    latinTerms: []
+    defaultModelId: "leg-muscles",
+    latinTerms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 13).map(t => `${t.latin} (${t.uzbek})`),
+    terms: SEMESTER_1_GLOSSARY_TERMS.filter(t => t.topicOrder === 13)
   }
 ];

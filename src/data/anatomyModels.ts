@@ -1064,7 +1064,7 @@ export const SEED_MODELS: AnatomyModel[] = [
     thumbnail: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/Spinal_cord_diagram.svg/400px-Spinal_cord_diagram.svg.png',
     source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/human-nervous-system-full-body-3d-model-5d10d80150d34fe7b160302d0003092c',
     license: 'CC (Sketchfab)', author: 'gemaglob1n',
-    tags: ['vegetativ nerv tizimi', 'autonomic nervous system', 'systema nervosum autonomicum', 'вегетативная нервная система'],
-    topicIds: ['sem_3_top_12'],
+    tags: ['vegetativ nerv tizimi', 'autonomic nervous system', 'systema nervosum autonomicum', 'вегетативная нервная система', 'bel-dumgaza chigali', 'plexus lumbosacralis'],
+    topicIds: ['sem_3_top_7', 'sem_3_top_12'],
   },
 ];

@@ -22,7 +22,8 @@ import {
   Sparkles,
   Trash2,
   Undo2,
-  Check
+  Check,
+  ExternalLink
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { pptxToHtml } from '@jvmr/pptx-to-html';
@@ -90,6 +91,7 @@ export const PresentationViewer: React.FC<PresentationViewerProps> = ({
   const [loading, setLoading] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [useAlternativeEmbed, setUseAlternativeEmbed] = useState(false);
   const [scale, setScale] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -172,9 +174,26 @@ export const PresentationViewer: React.FC<PresentationViewerProps> = ({
       try {
         // Fetch file buffer with progress simulation
         setLoadingProgress(30);
-        const response = await fetch(fileUrl);
-        if (!response.ok) {
-          throw new Error(`Faylni yuklab bo'lmadi (${response.status} ${response.statusText})`);
+        let response: Response;
+        try {
+          response = await fetch(fileUrl);
+          if (!response.ok) {
+            throw new Error(`Faylni yuklab bo'lmadi (${response.status} ${response.statusText})`);
+          }
+        } catch (fetchErr: any) {
+          // If direct fetch fails (e.g. CORS or network error on external link), try server proxy
+          if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+            try {
+              response = await fetch(`/api/proxy-resource?url=${encodeURIComponent(fileUrl)}`);
+              if (!response.ok) {
+                throw new Error(`Faylni yuklab bo'lmadi (${response.status})`);
+              }
+            } catch {
+              throw fetchErr;
+            }
+          } else {
+            throw fetchErr;
+          }
         }
         setLoadingProgress(60);
 
@@ -630,18 +649,39 @@ export const PresentationViewer: React.FC<PresentationViewerProps> = ({
   const autoFitPptxScale = Math.min(availW / 960, availH / 540);
   const effectivePptxScale = +(Math.max(0.3, autoFitPptxScale * scale)).toFixed(3);
 
-  // If it's a Google Drive/Slides embed
-  if (isGoogleDrive) {
+  // If it's a Google Drive/Slides embed or alternative embed viewer
+  if (isGoogleDrive || useAlternativeEmbed) {
+    const embedSrc = isGoogleDrive
+      ? fileUrl
+      : fileType === 'pptx'
+        ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`
+        : `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(fileUrl)}`;
+
     return (
       <div ref={rootRef} className="w-full h-full relative bg-slate-950 flex flex-col select-none">
         {/* Security Watermark bar */}
         <div className="bg-slate-900/90 backdrop-blur px-4 py-2.5 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400 shrink-0">
           <div className="flex items-center gap-2">
             <ShieldAlert size={14} className="text-amber-500" />
-            <span className="font-semibold text-slate-300">{title}</span>
+            <span className="font-semibold text-slate-300 truncate max-w-xs">{title}</span>
             <span className="hidden sm:inline text-slate-500">• Himoyalangan ko'rinish</span>
           </div>
           <div className="flex items-center gap-2">
+            {useAlternativeEmbed && (
+              <button
+                onClick={() => {
+                  setUseAlternativeEmbed(false);
+                  setLoading(true);
+                  setError(null);
+                  setCurrentPage(1);
+                }}
+                className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-slate-200 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer"
+                title="Asosiy pleyerga qaytish"
+              >
+                <RotateCcw size={13} />
+                <span className="hidden xs:inline">Asosiy pleyer</span>
+              </button>
+            )}
             <button
               onClick={handleToggleFullscreen}
               className="p-1.5 hover:bg-white/10 rounded-lg text-slate-300 transition-colors cursor-pointer"
@@ -662,10 +702,10 @@ export const PresentationViewer: React.FC<PresentationViewerProps> = ({
         </div>
         <div className="flex-1 w-full h-full relative">
           <iframe
-            src={fileUrl}
+            src={embedSrc}
             className="w-full h-full border-0"
             title={title}
-            sandbox="allow-scripts allow-same-origin allow-presentation"
+            sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
           />
           {/* Subtle Watermark overlay to protect content */}
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-5 select-none font-black text-4xl sm:text-6xl text-white rotate-[-25deg]">
@@ -715,7 +755,7 @@ export const PresentationViewer: React.FC<PresentationViewerProps> = ({
         <p className="text-xs text-slate-400 mb-6 max-w-md text-center leading-relaxed">
           {error}
         </p>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap justify-center">
           <button
             onClick={() => {
               setLoading(true);
@@ -727,6 +767,18 @@ export const PresentationViewer: React.FC<PresentationViewerProps> = ({
             <RefreshCw size={14} />
             <span>Qayta urinib ko'rish</span>
           </button>
+          {fileUrl && (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) && !useAlternativeEmbed && (
+            <button
+              onClick={() => {
+                setError(null);
+                setUseAlternativeEmbed(true);
+              }}
+              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg"
+            >
+              <ExternalLink size={14} />
+              <span>Muqobil pleyerda ochish</span>
+            </button>
+          )}
           {onClose && (
             <button
               onClick={onClose}

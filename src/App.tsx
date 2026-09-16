@@ -93,6 +93,11 @@ function LayoutWrapper({ children, isAdmin, user, handleAdminLogout }: any) {
   );
 }
 
+function AtlasRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/models${location.search}`} replace />;
+}
+
 export default function App() {
   const { settings } = useSettings();
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
@@ -396,7 +401,7 @@ export default function App() {
               <Route path="/semester/:id" element={<Semester isAdmin={isAdmin} user={user} />} />
               <Route path="/topic/:id" element={<TopicDetail isAdmin={isAdmin} user={user} />} />
               <Route path="/quiz/:topicId" element={<QuizPage isAdmin={isAdmin} user={user} />} />
-              <Route path="/atlas" element={<Navigate to="/models" replace />} />
+              <Route path="/atlas" element={<AtlasRedirect />} />
               <Route path="/models" element={<AnatomyModels isAdmin={isAdmin} user={user} />} />
               <Route path="/latin-glossary" element={<LatinGlossary isAdmin={isAdmin} user={user} />} />
               <Route path="/pin-quiz" element={<Navigate to="/models" replace />} />

@@ -60,6 +60,8 @@ export interface Topic {
   pdfUrl?: string;
   pptxUrl?: string;
   diagramReplacements?: Record<string, any>;
+  modelUrl?: string;
+  defaultModelId?: string;
 }
 
 export interface Semester {

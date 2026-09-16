@@ -52,12 +52,28 @@ export default function UserProgressSection({
 }: UserProgressSectionProps) {
   const { language } = useLanguage();
   const [activeTab, setActiveTab] = useState<'overview' | 'categories' | 'analytics'>('overview');
+  const [isDark, setIsDark] = useState(false);
 
-  const sem1Completed = completedTopics.filter((item: any) => Number(item.semester) === 1).length;
-  const sem2Completed = completedTopics.filter((item: any) => Number(item.semester) === 2).length;
-  const sem3Completed = completedTopics.filter((item: any) => Number(item.semester) === 3).length;
+  useEffect(() => {
+    const updateTheme = () => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    };
+    updateTheme();
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
-  const totalTopics = sem1Total + sem2Total + sem3Total;
+  const safeCompleted = Array.isArray(completedTopics) ? completedTopics : [];
+  const s1Total = sem1Total > 0 ? sem1Total : 13;
+  const s2Total = sem2Total > 0 ? sem2Total : 13;
+  const s3Total = sem3Total > 0 ? sem3Total : 13;
+
+  const sem1Completed = safeCompleted.filter((item: any) => Number(item.semester) === 1).length;
+  const sem2Completed = safeCompleted.filter((item: any) => Number(item.semester) === 2).length;
+  const sem3Completed = safeCompleted.filter((item: any) => Number(item.semester) === 3).length;
+
+  const totalTopics = s1Total + s2Total + s3Total;
   const totalCompleted = sem1Completed + sem2Completed + sem3Completed;
 
   // Compute category estimations based on completed topics
@@ -68,32 +84,32 @@ export default function UserProgressSection({
     {
       name: language === 'uz' ? 'Tayanch-Harakat' : language === 'ru' ? 'Опорно-двигательная' : 'Locomotor',
       latin: 'Osteologia & Myologia',
-      completed: Math.min(sem1Completed, sem1Total),
-      total: sem1Total,
+      completed: Math.min(sem1Completed, s1Total),
+      total: s1Total,
       color: '#3b82f6',
       bgColor: 'bg-blue-500'
     },
     {
       name: language === 'uz' ? 'Ichki A’zolar' : language === 'ru' ? 'Внутренние органы' : 'Visceral Organs',
       latin: 'Splanchnologia',
-      completed: Math.min(sem2Completed, Math.ceil(sem2Total * 0.6)),
-      total: Math.ceil(sem2Total * 0.6),
+      completed: Math.min(sem2Completed, Math.ceil(s2Total * 0.6)),
+      total: Math.ceil(s2Total * 0.6),
       color: '#10b981',
       bgColor: 'bg-emerald-500'
     },
     {
       name: language === 'uz' ? 'Qon-Tomir Tizimi' : language === 'ru' ? 'Сосудистая система' : 'Cardiovascular',
       latin: 'Angiologia',
-      completed: Math.max(0, Math.min(sem2Completed - Math.ceil(sem2Total * 0.6), Math.ceil(sem2Total * 0.4))),
-      total: Math.ceil(sem2Total * 0.4),
+      completed: Math.max(0, Math.min(sem2Completed - Math.ceil(s2Total * 0.6), Math.ceil(s2Total * 0.4))),
+      total: Math.ceil(s2Total * 0.4),
       color: '#f59e0b',
       bgColor: 'bg-amber-500'
     },
     {
       name: language === 'uz' ? 'Markaziy Asab Tizimi' : language === 'ru' ? 'Нервная система' : 'Central Nervous System',
       latin: 'Systema Nervosum & Esthesiologia',
-      completed: Math.min(sem3Completed, sem3Total),
-      total: sem3Total,
+      completed: Math.min(sem3Completed, s3Total),
+      total: s3Total,
       color: '#8b5cf6',
       bgColor: 'bg-purple-500'
     }
@@ -111,25 +127,25 @@ export default function UserProgressSection({
       semester: language === 'uz' ? '1-Semestr' : language === 'ru' ? '1-Семестр' : 'Sem 1',
       fullName: language === 'uz' ? '1-Semestr: Tayanch-harakat (13 ta)' : language === 'ru' ? '1-Семестр: Опорно-двиг. (13 тем)' : 'Sem 1: Locomotor (13 topics)',
       "Tugatilgan": sem1Completed,
-      "Qolgan": Math.max(0, sem1Total - sem1Completed),
-      total: sem1Total,
-      completionRate: sem1Total > 0 ? Math.round((sem1Completed / sem1Total) * 100) : 0
+      "Qolgan": Math.max(0, s1Total - sem1Completed),
+      total: s1Total,
+      completionRate: s1Total > 0 ? Math.round((sem1Completed / s1Total) * 100) : 0
     },
     {
       semester: language === 'uz' ? '2-Semestr' : language === 'ru' ? '2-Семестр' : 'Sem 2',
       fullName: language === 'uz' ? '2-Semestr: Ichki a’zolar (13 ta)' : language === 'ru' ? '2-Семестр: Внутр. органы (13 тем)' : 'Sem 2: Visceral (13 topics)',
       "Tugatilgan": sem2Completed,
-      "Qolgan": Math.max(0, sem2Total - sem2Completed),
-      total: sem2Total,
-      completionRate: sem2Total > 0 ? Math.round((sem2Completed / sem2Total) * 100) : 0
+      "Qolgan": Math.max(0, s2Total - sem2Completed),
+      total: s2Total,
+      completionRate: s2Total > 0 ? Math.round((sem2Completed / s2Total) * 100) : 0
     },
     {
       semester: language === 'uz' ? '3-Semestr' : language === 'ru' ? '3-Семестр' : 'Sem 3',
       fullName: language === 'uz' ? '3-Semestr: Markaziy asab tizimi (13 ta)' : language === 'ru' ? '3-Семестр: ЦНС (13 тем)' : 'Sem 3: CNS (13 topics)',
       "Tugatilgan": sem3Completed,
-      "Qolgan": Math.max(0, sem3Total - sem3Completed),
-      total: sem3Total,
-      completionRate: sem3Total > 0 ? Math.round((sem3Completed / sem3Total) * 100) : 0
+      "Qolgan": Math.max(0, s3Total - sem3Completed),
+      total: s3Total,
+      completionRate: s3Total > 0 ? Math.round((sem3Completed / s3Total) * 100) : 0
     }
   ];
 
@@ -143,7 +159,7 @@ export default function UserProgressSection({
     {
       name: language === 'uz' ? 'O‘rganilayotgan' : language === 'ru' ? 'В процессе' : 'In Progress',
       value: Math.max(0, totalTopics - totalCompleted),
-      color: '#e2e8f0'
+      color: isDark ? '#1e293b' : '#e2e8f0'
     }
   ];
 
@@ -264,9 +280,9 @@ export default function UserProgressSection({
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={semesterChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.4} />
-                    <XAxis dataKey="semester" tick={{ fontSize: 12, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 12, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#cbd5e1'} opacity={0.4} />
+                    <XAxis dataKey="semester" tick={{ fontSize: 12, fontWeight: 700, fill: isDark ? '#94a3b8' : '#64748b' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 12, fontWeight: 700, fill: isDark ? '#94a3b8' : '#64748b' }} axisLine={false} tickLine={false} />
                     <Tooltip 
                       contentStyle={{ 
                         backgroundColor: '#0f172a', 
@@ -277,8 +293,8 @@ export default function UserProgressSection({
                         fontSize: '12px'
                       }} 
                     />
-                    <Bar dataKey="Tugatilgan" fill="#6366f1" radius={[8, 8, 0, 0]} name={language === 'uz' ? 'Tugatilgan mavzular' : 'Completed topics'} />
-                    <Bar dataKey="Qolgan" fill="#e2e8f0" radius={[8, 8, 0, 0]} name={language === 'uz' ? 'Qolgan mavzular' : 'Remaining topics'} />
+                    <Bar dataKey="Tugatilgan" stackId="sem" fill="#06b6d4" name={language === 'uz' ? 'Tugatilgan mavzular' : 'Completed topics'} />
+                    <Bar dataKey="Qolgan" stackId="sem" fill={isDark ? '#1e293b' : '#e2e8f0'} radius={[8, 8, 0, 0]} stroke={isDark ? '#334155' : 'transparent'} strokeWidth={1} name={language === 'uz' ? 'Qolgan mavzular' : 'Remaining topics'} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -332,6 +348,20 @@ export default function UserProgressSection({
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Informative helper when no topics completed yet */}
+        {totalCompleted === 0 && activeTab === 'overview' && (
+          <div className="mt-6 p-4 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 flex items-center gap-3 text-xs text-indigo-900 dark:text-indigo-200">
+            <Sparkles className="w-5 h-5 text-indigo-500 shrink-0" />
+            <p className="font-medium leading-relaxed">
+              {language === 'uz'
+                ? '💡 Darslarni boshlash: Istalgan mavzuni ochib, darslikni o‘qigach yoki videoni tomosha qilib bo‘lgach «Mavzuni tugatdim» tugmasini bosing — shunda bilim ko‘rsatkichingiz va unvoningiz avtomatik oshadi.'
+                : language === 'ru'
+                ? '💡 Как начать: Откройте любую тему, изучите материал или видео и нажмите «Завершить тему» — показатели прогресса обновятся автоматически.'
+                : '💡 Getting started: Open any topic, read the lecture or watch the video, then click "Complete Topic" to automatically update your anatomy mastery levels.'}
+            </p>
           </div>
         )}
 

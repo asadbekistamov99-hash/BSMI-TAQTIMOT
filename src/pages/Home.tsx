@@ -102,8 +102,35 @@ export default function Home({ isAdmin: isAdminProp, user }: { isAdmin?: boolean
       } else {
         setCompletedTopics([]);
       }
+
+      // Sync with cloud if authenticated
+      if (user?.uid && !user.isAnonymous) {
+        dbService.getCompletedTopics(user.uid).then((remote) => {
+          if (remote && remote.length > 0) {
+            setCompletedTopics(remote);
+            localStorage.setItem(completionKey, JSON.stringify(remote));
+          }
+        }).catch(err => console.warn("Error fetching remote topics in Home:", err));
+      }
     };
+
     fetchCompletions();
+
+    const handleProgressUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setCompletedTopics(e.detail);
+      } else {
+        fetchCompletions();
+      }
+    };
+
+    window.addEventListener('anatomy_progress_updated', handleProgressUpdate);
+    window.addEventListener('storage', fetchCompletions);
+
+    return () => {
+      window.removeEventListener('anatomy_progress_updated', handleProgressUpdate);
+      window.removeEventListener('storage', fetchCompletions);
+    };
   }, [user]);
 
   useEffect(() => {

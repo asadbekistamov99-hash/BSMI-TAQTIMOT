@@ -1,5 +1,6 @@
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import '@google/model-viewer';
 import { doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Topic, AtlasEntry } from '../types';
@@ -20,10 +21,12 @@ import ExportTopicPdfModal from '../components/ExportTopicPdfModal';
 import TopicGlossaryViewer from '../components/TopicGlossaryViewer';
 import TopicReferencesViewer from '../components/TopicReferencesViewer';
 import TopicTheoryReader from '../components/TopicTheoryReader';
+import TopicModelViewerModal from '../components/TopicModelViewerModal';
 import { ANATOMY_MODELS, SEED_MODELS, type AnatomyModel } from '../data/anatomyModels';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
 import { parseDate } from '../lib/dateUtils';
+import { isDirectVideoUrl } from '../lib/uploadHelper';
 import SEO from '../components/SEO';
 
 // Rasm yuklanmasa (buzuq havola) brauzerning xunuk "broken image" belgisi o'rniga
@@ -119,7 +122,9 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
   const [fontFamily, setFontFamily] = useState<'sans' | 'serif'>('sans');
 
   // Navigation Tab State
-  const [activeTab, setActiveTab] = useState<'theory' | 'video_lessons' | 'glossary' | 'references'>('theory');
+  const [activeTab, setActiveTab] = useState<'theory' | 'video_lessons' | 'glossary' | 'references' | 'models_3d'>('theory');
+  const [selected3DModel, setSelected3DModel] = useState<AnatomyModel | null>(null);
+  const [inlineModelIndex, setInlineModelIndex] = useState(0);
 
   // Video Lecture State
   const [selectedVidIndex, setSelectedVidIndex] = useState(0);
@@ -147,12 +152,32 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
   const [relatedAtlas, setRelatedAtlas] = useState<AtlasEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const [searchParams] = useSearchParams();
+  const requestedModelId = searchParams.get('model');
+  const requestedTab = searchParams.get('tab');
+
   // Ushbu mavzuga maxsus biriktirilgan 3D Anatomiya Modellari (src/data/anatomyModels.ts dagi topicIds orqali)
   const relatedModels: AnatomyModel[] = (() => {
     if (!topic || !topic.semester || !topic.order) return [];
     const curriculumTopicId = `sem_${topic.semester}_top_${topic.order}`;
-    return [...ANATOMY_MODELS, ...SEED_MODELS].filter((m) => m.topicIds?.includes(curriculumTopicId));
+    return [...ANATOMY_MODELS, ...SEED_MODELS].filter((m) => 
+      m.topicIds?.includes(curriculumTopicId) || (topic.defaultModelId && m.id === topic.defaultModelId)
+    );
   })();
+
+  // Deep-link: agar URL da ?model=... yoki ?tab=models_3d bo'lsa, avtomatik 3D modelni ochish
+  useEffect(() => {
+    if (requestedTab === 'models_3d' || requestedModelId) {
+      setActiveTab('models_3d');
+    }
+    if (requestedModelId) {
+      const allModels = [...ANATOMY_MODELS, ...SEED_MODELS];
+      const found = allModels.find(m => m.id === requestedModelId);
+      if (found) {
+        setSelected3DModel(found);
+      }
+    }
+  }, [requestedModelId, requestedTab]);
 
   // Completion Status Tracking state
   const [isCompleted, setIsCompleted] = useState(false);
@@ -482,6 +507,16 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
           console.error("Error reading topic completion:", e);
         }
       }
+
+      // Sync with cloud in background
+      if (user.uid && !user.isAnonymous) {
+        dbService.getCompletedTopics(user.uid).then((remoteList) => {
+          if (remoteList && remoteList.length > 0) {
+            setIsCompleted(remoteList.some((item: any) => item.topicId === topic.id));
+            localStorage.setItem(completionKey, JSON.stringify(remoteList));
+          }
+        }).catch(err => console.warn("Failed to fetch remote completions:", err));
+      }
     }
   }, [topic, user]);
 
@@ -514,6 +549,14 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
       setIsCompleted(true);
     }
     localStorage.setItem(completionKey, JSON.stringify(list));
+
+    // Save to cloud persistence (Firestore & Supabase)
+    if (user.uid && !user.isAnonymous) {
+      dbService.saveCompletedTopics(user.uid, list);
+    }
+
+    // Broadcast instant update to Home and other views
+    window.dispatchEvent(new CustomEvent('anatomy_progress_updated', { detail: list }));
   };
 
   useEffect(() => {
@@ -998,6 +1041,24 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                       {language === 'uz' ? "Foydalanilgan adabiyotlar" : language === 'ru' ? 'Использованная литература' : 'References'}
                     </span>
                   </button>
+                  {relatedModels.length > 0 && (
+                    <button
+                      onClick={() => setActiveTab('models_3d')}
+                      className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                        activeTab === 'models_3d'
+                          ? 'bg-white text-emerald-700 shadow-md border-b-2 border-emerald-500'
+                          : 'text-brand-muted hover:text-emerald-700'
+                      }`}
+                    >
+                      <Box className="w-4 h-4 text-emerald-600" />
+                      <span>{language === 'uz' ? "3D Modellar" : language === 'ru' ? "3D Модели" : "3D Models"}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                        activeTab === 'models_3d' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200/80 text-slate-600'
+                      }`}>
+                        {relatedModels.length}
+                      </span>
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
                   <button
@@ -1009,6 +1070,19 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     <FileText className="w-4 h-4 text-blue-600" />
                     <span>PDF Konspekt</span>
                   </button>
+                  {relatedModels.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelected3DModel(relatedModels[0]);
+                      }}
+                      className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-95 shadow-md shadow-emerald-600/25 border border-emerald-500/40 cursor-pointer"
+                      title={language === 'uz' ? "Ushbu mavzuga tegishli interaktiv 3D modelni ochish" : "Открыть 3D модель темы"}
+                    >
+                      <Box className="w-4 h-4 text-emerald-200" />
+                      <span>3D Model</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -1510,44 +1584,100 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                         {/* Video player Area */}
                         <div className="relative aspect-video w-full rounded-2xl overflow-hidden shadow-2xl border-4 border-white bg-black">
                           {(() => {
+                            const rawUrl = localizedVideos[selectedVidIndex || 0] || '';
+                            const cleanUrl = rawUrl.trim();
+
+                            // 1. Check YouTube
                             const getYoutubeId = (urlStr: string) => {
                               if (!urlStr) return null;
                               const regExp = /^.*(?:(?:youtu\.be\/|v\/|vi\/|u\/\w\/|embed\/|shorts\/)|(?:(?:watch)?\?v(?:i)?=|\&v(?:i)?=))([^#\&\?]*).*/;
                               const match = urlStr.match(regExp);
                               return (match && match[1] && match[1].length === 11) ? match[1] : null;
                             };
-                            const id = getYoutubeId(localizedVideos[selectedVidIndex || 0]);
-                            if (id) {
+                            const youtubeId = getYoutubeId(cleanUrl);
+                            if (youtubeId) {
                               return (
                                 <iframe
-                                  src={`https://www.youtube.com/embed/${id}?autoplay=0&rel=0`}
+                                  src={`https://www.youtube.com/embed/${youtubeId}?autoplay=0&rel=0`}
                                   title="Anatomy Video Lecture"
                                   className="absolute inset-0 w-full h-full border-0"
                                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                   allowFullScreen
                                 ></iframe>
                               );
-                            } else {
+                            }
+
+                            // 2. Check Google Drive
+                            const driveMatch = cleanUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+                            if (driveMatch && driveMatch[1]) {
                               return (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-slate-950 text-white">
-                                  <Play className="w-12 h-12 text-[#0ea5e9] mb-4 animate-bounce" />
-                                  <h4 className="text-base font-black uppercase tracking-wider mb-2">Tashqi Video Manbasi</h4>
-                                  <p className="text-xs text-slate-400 max-w-sm mb-6">
-                                    {language === 'uz' 
-                                      ? "Ushbu video formati faqat tashqi manzillarda qo'llab-quvvatlanadi. Quyidagi tugma orqali darslik sahifasiga o'ting:"
-                                      : "Этот формат видео не поддерживает встроенное воспроизведение. Откройте его по ссылке ниже:"}
-                                  </p>
-                                  <a
-                                    href={localizedVideos[selectedVidIndex || 0]}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="px-6 py-3.5 bg-indigo-600 text-white font-black text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all shadow-lg"
-                                  >
-                                    {language === 'uz' ? "Videoni ochish" : "Открыть видео"}
-                                  </a>
-                                </div>
+                                <iframe
+                                  src={`https://drive.google.com/file/d/${driveMatch[1]}/preview`}
+                                  title="Google Drive Video Lecture"
+                                  className="absolute inset-0 w-full h-full border-0"
+                                  allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+                                  allowFullScreen
+                                ></iframe>
                               );
                             }
+
+                            // 3. Direct HTML5 Video (Uploaded to Supabase Storage, Server, or Firebase)
+                            if (isDirectVideoUrl(cleanUrl) || cleanUrl.includes('.mp4') || cleanUrl.includes('.webm') || cleanUrl.includes('.mov')) {
+                              return (
+                                <video
+                                  controls
+                                  controlsList="nodownload"
+                                  playsInline
+                                  preload="metadata"
+                                  className="absolute inset-0 w-full h-full object-contain bg-black"
+                                  src={cleanUrl}
+                                >
+                                  <source src={cleanUrl} type="video/mp4" />
+                                  <p className="text-white p-4 text-center">
+                                    Brauzeringiz ushbu videoni to'g'ridan-to'g'ri o'ynatishni qo'llab-quvvatlamaydi.
+                                    <a href={cleanUrl} target="_blank" rel="noopener noreferrer" className="underline ml-2 text-cyan-400">
+                                      Yuklab olish
+                                    </a>
+                                  </p>
+                                </video>
+                              );
+                            }
+
+                            // 4. Default / External Link Handler with HTML5 attempt
+                            return (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-slate-950 text-white">
+                                <video
+                                  controls
+                                  playsInline
+                                  preload="metadata"
+                                  className="w-full h-full max-h-[70%] object-contain mb-3"
+                                  src={cleanUrl}
+                                  onError={(e) => {
+                                    // If video tag cannot play it directly, show fallback
+                                    (e.target as HTMLElement).style.display = 'none';
+                                    const fallback = document.getElementById('video-external-fallback');
+                                    if (fallback) fallback.style.display = 'flex';
+                                  }}
+                                />
+                                <div id="video-external-fallback" className="flex flex-col items-center justify-center">
+                                  <Play className="w-12 h-12 text-[#0ea5e9] mb-4 animate-bounce" />
+                                  <h4 className="text-base font-black uppercase tracking-wider mb-2">Video Darslik Manbasi</h4>
+                                  <p className="text-xs text-slate-400 max-w-sm mb-4">
+                                    {language === 'uz' 
+                                      ? "Ushbu videoni to'liq ekranda yoki tashqi manzil orqali tomosha qilishingiz mumkin:"
+                                      : "Вы можете просмотреть это видео по внешней ссылке:"}
+                                  </p>
+                                  <a
+                                    href={cleanUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-6 py-3.5 bg-cyan-600 text-white font-black text-xs uppercase tracking-widest rounded-xl hover:bg-cyan-700 transition-all shadow-lg"
+                                  >
+                                    {language === 'uz' ? "Videoni yangi oynada ochish" : "Открыть видео"}
+                                  </a>
+                                </div>
+                              </div>
+                            );
                           })()}
                         </div>
 
@@ -1579,6 +1709,145 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                   topicOrder={topic.order}
                   theory={getLocalized(topic.theory) || (typeof topic.theory === 'string' ? topic.theory : '')}
                 />
+              ) : activeTab === 'models_3d' ? (
+                <div className="space-y-6 animate-fadeIn">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                    <div>
+                      <h3 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2">
+                        <Box className="w-5 h-5 text-emerald-600" />
+                        {language === 'uz' ? "Interaktiv 3D Anatomiya Modellari" : language === 'ru' ? "Интерактивные 3D Модели" : "Interactive 3D Anatomy Models"}
+                      </h3>
+                      <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                        {language === 'uz' ? "Mavzuga doir anatomik tuzilmalarni to'liq 3D formatda o'rganing" : "Изучайте анатомические структуры темы в интерактивном 3D"}
+                      </p>
+                    </div>
+                    {relatedModels.length > 1 && (
+                      <div className="flex items-center gap-1.5 overflow-x-auto py-1 max-w-full">
+                        {relatedModels.map((m, idx) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => setInlineModelIndex(idx)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+                              inlineModelIndex === idx
+                                ? 'bg-emerald-600 text-white shadow-sm'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            {idx + 1}. {getLocalized(m.title)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {relatedModels[inlineModelIndex] && (
+                    <div className="bg-slate-950 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl relative">
+                      <div className="flex items-center justify-between px-5 py-3 bg-slate-900 border-b border-slate-800 text-white text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                          <span className="font-black truncate text-sm">
+                            {getLocalized(relatedModels[inlineModelIndex].title)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setSelected3DModel(relatedModels[inlineModelIndex])}
+                            className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <Maximize2 className="w-3.5 h-3.5" />
+                            <span>{language === 'uz' ? "Katta ekranda" : "На весь экран"}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="relative w-full aspect-video min-h-[380px] sm:min-h-[480px] bg-slate-950 flex items-center justify-center">
+                        {relatedModels[inlineModelIndex].fileUrl ? (
+                          <div className="w-full h-full relative flex items-center justify-center">
+                            {React.createElement('model-viewer', {
+                              src: relatedModels[inlineModelIndex].fileUrl,
+                              alt: getLocalized(relatedModels[inlineModelIndex].title),
+                              'auto-rotate': true,
+                              'camera-controls': true,
+                              'touch-action': 'pan-y',
+                              'shadow-intensity': '1',
+                              style: { width: '100%', height: '100%', minHeight: '440px', backgroundColor: '#020617' }
+                            })}
+                          </div>
+                        ) : relatedModels[inlineModelIndex].embedUrl ? (
+                          <iframe
+                            title={getLocalized(relatedModels[inlineModelIndex].title)}
+                            src={relatedModels[inlineModelIndex].embedUrl}
+                            className="w-full h-full border-0 min-h-[440px]"
+                            allow="autoplay; fullscreen; xr-spatial-tracking"
+                            allowFullScreen
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center text-white/70">
+                            <Box className="w-12 h-12 mb-3 text-emerald-400" />
+                            <p className="text-xs mb-4">
+                              {getLocalized(relatedModels[inlineModelIndex].description)}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setSelected3DModel(relatedModels[inlineModelIndex])}
+                              className="px-5 py-2.5 rounded-xl bg-emerald-500 text-white font-black text-xs uppercase tracking-wider hover:bg-emerald-600 transition-all cursor-pointer"
+                            >
+                              {language === 'uz' ? "Modelni ochish" : "Открыть модель"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {getLocalized(relatedModels[inlineModelIndex].description) && (
+                        <div className="p-4 bg-slate-900/90 border-t border-slate-800/80 text-xs text-slate-300 flex items-center justify-between gap-4">
+                          <p className="line-clamp-2 leading-relaxed">
+                            {getLocalized(relatedModels[inlineModelIndex].description)}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setSelected3DModel(relatedModels[inlineModelIndex])}
+                            className="shrink-0 text-emerald-400 hover:text-emerald-300 text-xs font-black uppercase tracking-wider underline cursor-pointer"
+                          >
+                            {language === 'uz' ? "Batafsil / Katta ko'rinish" : "Подробнее"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* All Related Models Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                    {relatedModels.map((m, idx) => (
+                      <div
+                        key={m.id}
+                        onClick={() => {
+                          setInlineModelIndex(idx);
+                          setSelected3DModel(m);
+                        }}
+                        className={`group p-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-3.5 bg-white hover:border-emerald-500 hover:shadow-md ${
+                          inlineModelIndex === idx ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200/80'
+                        }`}
+                      >
+                        <div className="w-16 h-16 rounded-xl bg-slate-50 border border-slate-100 overflow-hidden flex items-center justify-center shrink-0">
+                          <RelatedModelThumb src={m.thumbnail} alt={getLocalized(m.title)} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-xs font-black text-slate-800 line-clamp-1 group-hover:text-emerald-700 transition-colors">
+                            {getLocalized(m.title)}
+                          </h4>
+                          <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                            {getLocalized(m.description) || m.author || ''}
+                          </p>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-emerald-600 mt-1">
+                            {language === 'uz' ? "3D da ko'rish" : "Смотреть в 3D"} <ChevronRight className="w-3 h-3" />
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               ) : (
                 <TopicReferencesViewer
                   topicTitle={getLocalized(topic.title)}
@@ -1646,28 +1915,29 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                 </p>
                 <div className="space-y-3">
                   {relatedModels.slice(0, 4).map((m) => (
-                    <Link
+                    <button
                       key={m.id}
-                      to={`/atlas?model=${encodeURIComponent(m.id)}`}
-                      className="group flex items-center gap-3 p-2 rounded-2xl border border-slate-100 hover:border-brand-accent hover:bg-slate-50 transition-all"
+                      type="button"
+                      onClick={() => setSelected3DModel(m)}
+                      className="w-full text-left group flex items-center gap-3 p-2.5 rounded-2xl border border-slate-100 hover:border-emerald-500 hover:bg-emerald-50/30 transition-all cursor-pointer shadow-xs hover:shadow-md"
                     >
-                      <div className="w-14 h-14 rounded-xl bg-white border border-slate-100 shrink-0 overflow-hidden flex items-center justify-center">
+                      <div className="w-14 h-14 rounded-xl bg-slate-50 border border-slate-100 shrink-0 overflow-hidden flex items-center justify-center">
                         <RelatedModelThumb src={m.thumbnail} alt={getLocalized(m.title)} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <h4 className="text-[11px] font-black text-brand-primary line-clamp-2 uppercase tracking-tight leading-snug">
+                        <h4 className="text-[11px] font-black text-brand-primary line-clamp-2 uppercase tracking-tight leading-snug group-hover:text-emerald-700 transition-colors">
                           {getLocalized(m.title)}
                         </h4>
-                        <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-brand-accent mt-1">
-                          {language === 'uz' ? "3D da ko'rish" : language === 'ru' ? "Смотреть в 3D" : "View in 3D"} <ChevronRight className="w-3 h-3" />
+                        <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-emerald-600 mt-1">
+                          {language === 'uz' ? "To'g'ridan-to'g'ri ochish" : language === 'ru' ? "Открыть 3D модель" : "Open 3D model"} <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                         </span>
                       </div>
-                    </Link>
+                    </button>
                   ))}
                 </div>
                 {relatedModels.length > 4 && (
                   <Link
-                    to={`/atlas?topic=${encodeURIComponent(`sem_${topic?.semester}_top_${topic?.order}`)}`}
+                    to={`/models?topic=${encodeURIComponent(`sem_${topic?.semester}_top_${topic?.order}`)}`}
                     className="mt-4 w-full flex items-center justify-center gap-1.5 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-brand-primary text-[10px] font-black uppercase tracking-wider transition-all"
                   >
                     {language === 'uz' ? `Yana ${relatedModels.length - 4} tasini ko'rish` : language === 'ru' ? `Ещё ${relatedModels.length - 4}` : `See ${relatedModels.length - 4} more`}
@@ -2197,6 +2467,19 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                           {language === 'uz' ? "Adabiyotlar" : language === 'ru' ? 'Литература' : 'References'}
                         </span>
                       </button>
+                      {relatedModels.length > 0 && (
+                        <button
+                          onClick={() => setActiveTab('models_3d')}
+                          className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                            activeTab === 'models_3d'
+                              ? 'bg-emerald-600 text-white shadow-md'
+                              : 'text-brand-muted hover:text-emerald-600'
+                          }`}
+                        >
+                          <Box className="w-4 h-4" />
+                          <span>3D ({relatedModels.length})</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -2423,6 +2706,56 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                             theory={getLocalized(topic.theory) || (typeof topic.theory === 'string' ? topic.theory : '')}
                           />
                         </div>
+                      ) : activeTab === 'models_3d' ? (
+                        <div className="text-left space-y-6">
+                          {relatedModels[inlineModelIndex] && (
+                            <div className="bg-slate-950 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl">
+                              <div className="flex items-center justify-between px-5 py-3 bg-slate-900 border-b border-slate-800 text-white text-xs">
+                                <span className="font-black text-sm">{getLocalized(relatedModels[inlineModelIndex].title)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelected3DModel(relatedModels[inlineModelIndex])}
+                                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer"
+                                >
+                                  {language === 'uz' ? "Modalda ochish" : "Открыть в модале"}
+                                </button>
+                              </div>
+                              <div className="relative w-full aspect-video min-h-[380px] sm:min-h-[500px] bg-slate-950 flex items-center justify-center">
+                                {relatedModels[inlineModelIndex].fileUrl ? (
+                                  <div className="w-full h-full relative flex items-center justify-center">
+                                    {React.createElement('model-viewer', {
+                                      src: relatedModels[inlineModelIndex].fileUrl,
+                                      alt: getLocalized(relatedModels[inlineModelIndex].title),
+                                      'auto-rotate': true,
+                                      'camera-controls': true,
+                                      'touch-action': 'pan-y',
+                                      'shadow-intensity': '1',
+                                      style: { width: '100%', height: '100%', minHeight: '480px', backgroundColor: '#020617' }
+                                    })}
+                                  </div>
+                                ) : relatedModels[inlineModelIndex].embedUrl ? (
+                                  <iframe
+                                    title={getLocalized(relatedModels[inlineModelIndex].title)}
+                                    src={relatedModels[inlineModelIndex].embedUrl}
+                                    className="w-full h-full border-0 min-h-[480px]"
+                                    allow="autoplay; fullscreen; xr-spatial-tracking"
+                                    allowFullScreen
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center p-8 text-white/70">
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelected3DModel(relatedModels[inlineModelIndex])}
+                                      className="px-5 py-2.5 rounded-xl bg-emerald-500 text-white font-black text-xs cursor-pointer"
+                                    >
+                                      {language === 'uz' ? "Modelni ochish" : "Открыть модель"}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <div className="text-left">
                           <TopicReferencesViewer
@@ -2447,6 +2780,14 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
         topic={topic}
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
+      />
+
+      {/* Interactive 3D Anatomy Model Modal */}
+      <TopicModelViewerModal
+        model={selected3DModel}
+        isOpen={!!selected3DModel}
+        onClose={() => setSelected3DModel(null)}
+        language={language}
       />
     </div>
   );

@@ -1,10 +1,13 @@
 import { Topic } from '../types';
+import { SEMESTER_3_GLOSSARY_TERMS } from './semester3GlossaryTerms';
 
 export const SEMESTER_3_DETAILED_TOPICS: Topic[] = [
   {
     id: "sem_3_top_1",
     semester: 3,
     order: 1,
+    defaultModelId: "brain-labeled",
+    terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 1),
     title: {
       uz: "1-Mavzu: Orqa miya. Orqa miya pardalari. Bosh miyaning umumiy tuzilishi. Bosh miya asosi. 12 juft bosh miya nervlarining chiqishi. Uzunchoq miya. Voroliy ko‘prigi. Miyacha. Bosh miyaning IV qorinchasi",
       ru: "Тема 1: Спинной мозг и его оболочки. Общее строение головного мозга. Основание мозга. Выход 12 пар черепных нервов. Продоговатый мозг. Мост. Мозжечок. IV желудочек",
@@ -338,6 +341,8 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
     id: "sem_3_top_2",
     semester: 3,
     order: 2,
+    defaultModelId: "thalamus-brainsections",
+    terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 2),
     title: {
       uz: "2-Mavzu: O‘rta miya. Oraliq miya. Bosh miyaning III qorinchasi",
       ru: "Тема 2: Средний мозг. Промежуточный мозг. III желудочек головного мозга",
@@ -402,6 +407,8 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
     id: "sem_3_top_3",
     semester: 3,
     order: 3,
+    defaultModelId: "brain-cerebrum-brainstem",
+    terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 3),
     title: {
       uz: "3-Mavzu: Bosh miya po‘stlog‘i. Gumbaz, qadoqsimon tana. Bosh miyaning bazal o‘zaklari. Bosh miyaning yon qorinchalari. Bosh miyani o‘raydigan pardalar",
       ru: "Тема 3: Кора большого мозга. Свод, мозолистое тело. Базальные ядра. Боковые желудочки. Оболочки головного мозга",
@@ -485,6 +492,8 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
     id: "sem_3_top_4",
     semester: 3,
     order: 4,
+    defaultModelId: "spinothalamic-tract",
+    terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 4),
     title: {
       uz: "4-Mavzu: Bosh miya va orqa miyaning o‘tkazuv yo‘llari. Oddiy refleks yoyi. Sezuvchi va harakatlantiruvchi o‘tkazuv yo‘llari",
       ru: "Тема 4: Проводящие пути головного и спинного мозга. Рефлекторная дуга. Чувствительные и двигательные пути",
@@ -563,6 +572,8 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
     id: "sem_3_top_5",
     semester: 3,
     order: 5,
+    defaultModelId: "spinal-nerve-brachial-plexus",
+    terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 5),
     title: {
       uz: "5-Mavzu: Orqa miya nervlarining hosil bo‘lishi. Orqa tarmoqlari. Oldingi tarmoqlari. Qovurg‘alararo nervlar. Bo‘yin chigali",
       ru: "Тема 5: Формирование спинномозговых нервов. Задние и передние ветви. Межреберные нервы. Шейное сплетение",
@@ -639,6 +650,8 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
     id: "sem_3_top_6",
     semester: 3,
     order: 6,
+    defaultModelId: "brachial-plexus-ubc",
+    terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 6),
     title: {
       uz: "6-Mavzu: Yelka chigalining uzun va kalta tarmoqlari",
       ru: "Тема 6: Длинные и короткие ветви плечевого сплетения",
@@ -711,6 +724,8 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
     id: "sem_3_top_7",
     semester: 3,
     order: 7,
+    defaultModelId: "human-nervous-system-full-body",
+    terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 7),
     title: {
       uz: "7-Mavzu: Bel chigali. Dumg‘aza chigali",
       ru: "Тема 7: Поясничное сплетение. Крестцовое сплетение",
@@ -777,6 +792,8 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
     id: "sem_3_top_8",
     semester: 3,
     order: 8,
+    defaultModelId: "eye-anatomy-umcg",
+    terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 8),
     title: {
       uz: "8-Mavzu: I, II, VIII juft bosh miya nervlari",
       ru: "Тема 8: I, II, VIII пары черепных нервов (Обонятельный, Зрительный, Преддверно-улитковый)",
@@ -839,6 +856,8 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
     id: "sem_3_top_9",
     semester: 3,
     order: 9,
+    defaultModelId: "cranial-nerve-nuclei",
+    terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 9),
     title: {
       uz: "9-Mavzu: III, IV, VI, XI, XII juft bosh miya nervlari",
       ru: "Тема 9: III, IV, VI, XI, XII пары черепных нервов",
@@ -904,6 +923,8 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
     id: "sem_3_top_10",
     semester: 3,
     order: 10,
+    defaultModelId: "cranial-nerve-nuclei",
+    terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 10),
     title: {
       uz: "10-Mavzu: V juft bosh miya nervi. Uch shoxli nerv yo‘nalishi bo‘yicha parasimpatik tugunlar",
       ru: "Тема 10: V пара черепных нервов (Тройничный нерв). Парасимпатические узлы по ходу тройничного нерва",
@@ -968,6 +989,8 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
     id: "sem_3_top_11",
     semester: 3,
     order: 11,
+    defaultModelId: "cranial-nerve-nuclei",
+    terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 11),
     title: {
       uz: "11-Mavzu: VII va IX juft bosh miya nervlari. X juft bosh miya nervi",
       ru: "Тема 11: VII, IX и X пары черепных нервов (Лицевой, Языкоглоточный, Блуждающий)",
@@ -1032,6 +1055,8 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
     id: "sem_3_top_12",
     semester: 3,
     order: 12,
+    defaultModelId: "human-nervous-system-full-body",
+    terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 12),
     title: {
       uz: "12-Mavzu: Vegetativ nerv tizimining simpatik va parasimpatik bo‘limlari",
       ru: "Тема 12: Автономная (вегетативная) нервная система: симпатический и парасимпатический отделы",
@@ -1094,6 +1119,8 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
     id: "sem_3_top_13",
     semester: 3,
     order: 13,
+    defaultModelId: "inner-ear",
+    terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 13),
     title: {
       uz: "13-Mavzu: Eshituv va muvozanat a’zosi",
       ru: "Тема 13: Орган слуха и равновесия (Преддверно-улитковый орган)",

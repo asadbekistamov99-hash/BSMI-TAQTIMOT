@@ -265,3 +265,43 @@ $$ language plpgsql security definer;
 create or replace trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- ====================================================================
+--            SUPABASE STORAGE BUCKETS & POLICIES (FILES & MEDIA)
+-- ====================================================================
+-- Video darsliklar, PPTX taqdimotlar, PDF konspektlar va 3D modellar uchun
+-- saqlash xotiralari (Storage Buckets) va ommaviy yuklash huquqlari (RLS).
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values 
+  ('videos', 'videos', true, 524288000, array['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-matroska', 'video/x-m4v', 'video/avi']),
+  ('presentations', 'presentations', true, 262144000, array['application/pdf', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/octet-stream']),
+  ('lectures', 'lectures', true, 262144000, array['application/pdf', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/octet-stream']),
+  ('atlas_models', 'atlas_models', true, 262144000, null),
+  ('payments', 'payments', true, 31457280, array['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+on conflict (id) do update set 
+  public = true,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+-- Storage RLS siyosatlari
+drop policy if exists "Storage: Public Read Access" on storage.objects;
+create policy "Storage: Public Read Access"
+  on storage.objects for select
+  using ( bucket_id in ('videos', 'presentations', 'lectures', 'atlas_models', 'payments') );
+
+drop policy if exists "Storage: Public Upload Access" on storage.objects;
+create policy "Storage: Public Upload Access"
+  on storage.objects for insert
+  with check ( bucket_id in ('videos', 'presentations', 'lectures', 'atlas_models', 'payments') );
+
+drop policy if exists "Storage: Public Update Access" on storage.objects;
+create policy "Storage: Public Update Access"
+  on storage.objects for update
+  using ( bucket_id in ('videos', 'presentations', 'lectures', 'atlas_models', 'payments') );
+
+drop policy if exists "Storage: Public Delete Access" on storage.objects;
+create policy "Storage: Public Delete Access"
+  on storage.objects for delete
+  using ( bucket_id in ('videos', 'presentations', 'lectures', 'atlas_models', 'payments') );
+
