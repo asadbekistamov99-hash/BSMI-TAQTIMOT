@@ -1,5 +1,13 @@
 export const MAX_PRESENTATION_BYTES = 25 * 1024 * 1024;
 
+export function validatePresentation(file: { name: string; size: number }): 'pdf' | 'pptx' {
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  if (extension !== 'pdf' && extension !== 'pptx') throw new Error('Faqat PPTX yoki PDF fayl tanlang.');
+  if (file.size === 0) throw new Error('Tanlangan fayl bo‘sh.');
+  if (file.size > MAX_PRESENTATION_BYTES) throw new Error('Fayl hajmi 25 MB dan oshmasligi kerak.');
+  return extension;
+}
+
 export interface PresentationUploadResult {
   url: string;
   fileName: string;
@@ -7,11 +15,13 @@ export interface PresentationUploadResult {
   fileSize: number;
 }
 
-/** One storage service that can receive a presentation (Supabase, Firebase Storage, Appwrite, local server...). */
-export interface PresentationBackend {
+/** One storage service that can receive a file (Supabase, Firebase Storage, Appwrite, local server...). */
+export interface StorageBackend<T> {
   name: string;
-  upload: (file: File, onProgress?: (percent: number) => void) => Promise<PresentationUploadResult>;
+  upload: (file: File, onProgress?: (percent: number) => void) => Promise<T>;
 }
+
+export type PresentationBackend = StorageBackend<PresentationUploadResult>;
 
 /**
  * Try each storage backend in order and return the first successful upload.
@@ -19,14 +29,15 @@ export interface PresentationBackend {
  * If every backend fails, the thrown error lists what each service reported so the
  * administrator can see which configuration to fix.
  */
-export async function uploadWithFallbacks(
+export async function uploadWithFallbacks<T>(
   file: File,
-  backends: PresentationBackend[],
+  backends: StorageBackend<T>[],
   onProgress?: (percent: number) => void,
-): Promise<PresentationUploadResult & { backend: string }> {
-  validatePresentation(file);
+  validate: (file: { name: string; size: number }) => unknown = validatePresentation,
+): Promise<T & { backend: string }> {
+  validate(file);
   if (backends.length === 0) {
-    throw new Error('Taqdimot saqlash xizmati sozlanmagan. VITE_SUPABASE_URL va VITE_SUPABASE_ANON_KEY ni tekshiring.');
+    throw new Error('Fayl saqlash xizmati sozlanmagan. VITE_SUPABASE_URL va VITE_SUPABASE_ANON_KEY ni tekshiring.');
   }
   const failures: string[] = [];
   for (const backend of backends) {
@@ -35,24 +46,16 @@ export async function uploadWithFallbacks(
       return { ...result, backend: backend.name };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[PRESENTATION UPLOAD] ${backend.name} failed, trying next storage...`, error);
+      console.warn(`[UPLOAD] ${backend.name} failed, trying next storage...`, error);
       failures.push(`${backend.name}: ${message}`);
       onProgress?.(0);
     }
   }
   throw new Error(
-    'Taqdimotni birorta saqlash xizmatiga yuklab bo‘lmadi.\n' +
+    'Faylni birorta saqlash xizmatiga yuklab bo‘lmadi.\n' +
     failures.map(f => `• ${f}`).join('\n') +
-    '\nMuqobil yechim: faylni Google Drive’ga yuklab, 2-usul orqali havolasini kiriting.',
+    '\nMuqobil yechim: faylni Google Drive yoki YouTube’ga yuklab, havolasini kiriting.',
   );
-}
-
-export function validatePresentation(file: { name: string; size: number }): 'pdf' | 'pptx' {
-  const extension = file.name.split('.').pop()?.toLowerCase();
-  if (extension !== 'pdf' && extension !== 'pptx') throw new Error('Faqat PPTX yoki PDF fayl tanlang.');
-  if (file.size === 0) throw new Error('Tanlangan fayl bo‘sh.');
-  if (file.size > MAX_PRESENTATION_BYTES) throw new Error('Fayl hajmi 25 MB dan oshmasligi kerak.');
-  return extension;
 }
 
 export function storageUploadError(status: number, body: string): Error {

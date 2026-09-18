@@ -32,6 +32,12 @@ service firebase.storage {
       allow write: if isAdmin() && request.resource.size < 150 * 1024 * 1024; // 150MB gacha
     }
 
+    // Video ma'ruzalar (Admin panel → Video Ma'ruzalar). Supabase `videos` bucket'i ishlamaganda zaxira.
+    match /videos/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 500 * 1024 * 1024; // 500MB gacha
+    }
+
     // Diagramma va tasvirlar (masalan, mavzu diagrammalarini almashtirish, 3D model rasm-thumbnaillari)
     match /diagrams/{allPaths=**} {
       allow read: if true;

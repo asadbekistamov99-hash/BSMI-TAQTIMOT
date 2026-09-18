@@ -1,5 +1,5 @@
-import { uploadToSupabasePresentation, uploadWithFallbacks, validatePresentation, type PresentationBackend, type PresentationUploadResult } from './presentationStorage';
-import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
+import { uploadToSupabasePresentation, uploadWithFallbacks, validatePresentation, type PresentationBackend, type PresentationUploadResult, type StorageBackend } from './presentationStorage';
+import { supabase, supabaseUrl, supabaseAnonKey, isSupabaseConfigured, uploadToSupabaseWithProgress } from './supabase';
 import { storage } from './firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { ID } from 'appwrite';
@@ -143,44 +143,52 @@ function firebaseStorageMessage(err: any): string {
   return err?.message || 'noma’lum xatolik.';
 }
 
+/** Resumable Firebase Storage upload that gives up after 20 s without progress (the SDK alone retries for an hour). */
+function uploadToFirebaseFolder(folder: string, file: File, contentType: string, onProgress?: (percent: number) => void): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const storageRef = ref(storage, `${folder}/${safePresentationName(file)}`);
+    const task = uploadBytesResumable(storageRef, file, { contentType });
+    let lastLoaded = 0;
+    let idle: ReturnType<typeof setTimeout>;
+    const resetIdle = () => {
+      clearTimeout(idle);
+      idle = setTimeout(() => {
+        task.cancel();
+        reject(new Error('Firebase Storage javob bermayapti (20 soniya). Tarmoq va Storage holatini tekshiring.'));
+      }, 20000);
+    };
+    resetIdle();
+    onProgress?.(0);
+    task.on(
+      'state_changed',
+      snapshot => {
+        if (snapshot.bytesTransferred > lastLoaded) { lastLoaded = snapshot.bytesTransferred; resetIdle(); }
+        if (snapshot.totalBytes > 0) onProgress?.(Math.min(99, Math.round(snapshot.bytesTransferred / snapshot.totalBytes * 100)));
+      },
+      err => { clearTimeout(idle); reject(new Error(firebaseStorageMessage(err))); },
+      async () => {
+        clearTimeout(idle);
+        try {
+          const url = await getDownloadURL(task.snapshot.ref);
+          onProgress?.(100);
+          resolve(url);
+        } catch (e: any) {
+          reject(new Error(firebaseStorageMessage(e)));
+        }
+      },
+    );
+  });
+}
+
 /** 3. Firebase Storage `presentations/` folder (storage.rules allows admins up to 150 MB). */
 function firebaseBackend(): PresentationBackend {
   return {
     name: 'Firebase Storage',
-    upload: (file, onProgress) => new Promise<PresentationUploadResult>((resolve, reject) => {
+    upload: async (file, onProgress) => {
       const fileType = validatePresentation(file);
-      const storageRef = ref(storage, `presentations/${safePresentationName(file)}`);
-      const task = uploadBytesResumable(storageRef, file, { contentType: PRESENTATION_MIME[fileType] });
-      let lastLoaded = 0;
-      let idle: ReturnType<typeof setTimeout>;
-      const resetIdle = () => {
-        clearTimeout(idle);
-        idle = setTimeout(() => {
-          task.cancel();
-          reject(new Error('Firebase Storage javob bermayapti (20 soniya). Tarmoq va Storage holatini tekshiring.'));
-        }, 20000);
-      };
-      resetIdle();
-      onProgress?.(0);
-      task.on(
-        'state_changed',
-        snapshot => {
-          if (snapshot.bytesTransferred > lastLoaded) { lastLoaded = snapshot.bytesTransferred; resetIdle(); }
-          if (snapshot.totalBytes > 0) onProgress?.(Math.min(99, Math.round(snapshot.bytesTransferred / snapshot.totalBytes * 100)));
-        },
-        err => { clearTimeout(idle); reject(new Error(firebaseStorageMessage(err))); },
-        async () => {
-          clearTimeout(idle);
-          try {
-            const url = await getDownloadURL(task.snapshot.ref);
-            onProgress?.(100);
-            resolve({ url, fileName: file.name, fileType, fileSize: file.size });
-          } catch (e: any) {
-            reject(new Error(firebaseStorageMessage(e)));
-          }
-        },
-      );
-    }),
+      const url = await uploadToFirebaseFolder('presentations', file, PRESENTATION_MIME[fileType], onProgress);
+      return { url, fileName: file.name, fileType, fileSize: file.size };
+    },
   };
 }
 
@@ -216,6 +224,68 @@ export async function uploadPresentationFile(
     .filter((b): b is PresentationBackend => b !== null);
   const { backend, ...result } = await uploadWithFallbacks(file, backends, onProgress);
   console.log(`[PRESENTATION UPLOAD] Saved via ${backend}: ${result.url}`);
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Video lessons
+// ---------------------------------------------------------------------------
+
+export const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // matches the `videos` bucket limit in supabase-schema.sql
+const VIDEO_EXTENSIONS = ['mp4', 'webm', 'ogg', 'ogv', 'mov', 'mkv', 'm4v', 'avi'];
+
+/** True for URLs the <video> tag can play directly (file extension, blob: or data:video/ URLs). */
+export function isDirectVideoUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const clean = url.trim().toLowerCase();
+  if (clean.startsWith('blob:') || clean.startsWith('data:video/')) return true;
+  const path = clean.split(/[?#]/)[0];
+  return VIDEO_EXTENSIONS.some(ext => path.endsWith(`.${ext}`));
+}
+
+export function validateVideo(file: { name: string; size: number; type?: string }): void {
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  const isVideo = VIDEO_EXTENSIONS.includes(extension) || (file.type || '').startsWith('video/');
+  if (!isVideo) throw new Error('Faqat video fayl (MP4, WebM, MOV, MKV) tanlang.');
+  if (file.size === 0) throw new Error('Tanlangan fayl bo‘sh.');
+  if (file.size > MAX_VIDEO_BYTES) throw new Error('Video hajmi 500 MB dan oshmasligi kerak.');
+}
+
+/**
+ * Upload a video lesson to durable storage and return its public URL.
+ * Order: Supabase Storage `videos` bucket → Firebase Storage `videos/` → local dev server.
+ */
+export async function uploadVideoFile(
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<{ url: string; fileName: string; fileSize: number }> {
+  type VideoResult = { url: string; fileName: string; fileSize: number };
+  const contentType = file.type || 'video/mp4';
+  const backends: StorageBackend<VideoResult>[] = [
+    {
+      name: 'Supabase Storage',
+      upload: async (f, progress) => {
+        if (!isSupabaseConfigured()) throw new Error('sozlanmagan (VITE_SUPABASE_URL va VITE_SUPABASE_ANON_KEY yo‘q yoki noto‘g‘ri).');
+        const url = await uploadToSupabaseWithProgress('videos', safePresentationName(f), f, progress);
+        return { url, fileName: f.name, fileSize: f.size };
+      },
+    },
+    {
+      name: 'Firebase Storage',
+      upload: async (f, progress) => ({ url: await uploadToFirebaseFolder('videos', f, contentType, progress), fileName: f.name, fileSize: f.size }),
+    },
+  ];
+  if (isLocalDevHost()) {
+    backends.push({
+      name: 'Lokal server',
+      upload: async (f, progress) => {
+        const result = await uploadViaServerApi(f, progress);
+        return { url: result.url, fileName: result.fileName || f.name, fileSize: f.size };
+      },
+    });
+  }
+  const { backend, ...result } = await uploadWithFallbacks(file, backends, onProgress, validateVideo);
+  console.log(`[VIDEO UPLOAD] Saved via ${backend}: ${result.url}`);
   return result;
 }
 
