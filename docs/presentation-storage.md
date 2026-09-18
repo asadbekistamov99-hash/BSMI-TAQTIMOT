@@ -1,6 +1,14 @@
 # Supabase presentation storage
 
-Presentations upload as binary directly from the browser to Supabase Storage. The topic stores only the returned public URL. Maximum size: 25 MiB (26,214,400 bytes). No Base64 or local Vercel disk fallback is used for new presentation uploads.
+Presentations upload as binary directly from the browser to durable storage. The topic stores only the returned public URL. Maximum size: 25 MiB (26,214,400 bytes). No Base64 or Vercel disk fallback is used for new presentation uploads.
+
+Upload order (`uploadPresentationFile` in `src/lib/uploadHelper.ts`, chain in `uploadWithFallbacks`):
+1. Supabase Storage bucket `presentations` (primary).
+2. Appwrite Storage bucket `presentations`, only when `VITE_APPWRITE_PROJECT` is set.
+3. Firebase Storage folder `presentations/` (allowed for the admin account by `storage.rules`, requires Storage enabled on the Firebase project).
+4. Local dev server `/api/upload`, only when the page is served from localhost.
+
+A service that is unreachable (wrong `VITE_SUPABASE_URL`, paused project, DNS failure) or refuses the write (RLS, missing bucket) no longer blocks the upload: the next configured service is tried. If every service fails, the error shown in the admin modal lists what each one reported, and the Google Drive link option remains available.
 
 Deployment requirements:
 - Use the correct active project's HTTPS VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (or existing supported publishable-key variable). Rebuild after changing VITE_ variables.
