@@ -1732,5 +1732,45 @@ export const dbService = {
     } catch (err) {
       console.warn("Error saving weekly goal to Firestore:", err);
     }
+  },
+
+  // 15. TOPIC COMPLETION & STUDY PROGRESS
+  async getCompletedTopics(userId: string): Promise<any[]> {
+    if (!userId) return [];
+    try {
+      const snap = await getDoc(doc(db, 'users', userId, 'progress', 'topics'));
+      if (snap.exists() && Array.isArray(snap.data().completedList)) {
+        return snap.data().completedList;
+      }
+      return [];
+    } catch (err) {
+      console.warn("Error getting completed topics from Firestore:", err);
+      return [];
+    }
+  },
+
+  async saveCompletedTopics(userId: string, completedList: any[]): Promise<void> {
+    if (!userId || !Array.isArray(completedList)) return;
+    try {
+      const progRef = doc(db, 'users', userId, 'progress', 'topics');
+      await setDoc(progRef, {
+        completedList,
+        count: completedList.length,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      if (isSupabaseConfigured() && supabase) {
+        try {
+          await supabase.from('users').update({
+            completed_topics_count: completedList.length,
+            updated_at: new Date().toISOString()
+          }).eq('id', userId);
+        } catch (supaErr) {
+          // ignore
+        }
+      }
+    } catch (err) {
+      console.warn("Error saving completed topics to Firestore:", err);
+    }
   }
 };

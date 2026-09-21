@@ -21,6 +21,7 @@ import TopicTermsEditor from '../components/TopicTermsEditor';
 import TopicReferencesEditor from '../components/TopicReferencesEditor';
 import TopicDiagramsEditor from '../components/TopicDiagramsEditor';
 import AdminPresentationsManager from '../components/AdminPresentationsManager';
+import DiagnosticsPanel from '../components/DiagnosticsPanel';
 import { uploadVideoFile, isDirectVideoUrl } from '../lib/uploadHelper';
 import { 
   Megaphone,
@@ -1095,6 +1096,7 @@ export default function AdminDashboard({ onLogout }: { onLogout?: () => void }) 
 
         {/* Content Area */}
         <div className="p-12 pb-24">
+          <DiagnosticsPanel />
           <ConnectionStatus />
           
           {(isLegacyAdmin || authUser) && authUser?.email?.toLowerCase() !== 'asadbekistamov99@gmail.com' && (
