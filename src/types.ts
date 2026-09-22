@@ -218,5 +218,7 @@ export interface SystemSettings {
     enableNotifications: boolean;
     /** Global kill switch for the biometric gate. Missing/undefined = enabled. */
     enableFaceId?: boolean;
+    /** 'local' = face-api.js in the browser (default, no API key); 'gemini' = server AI. */
+    faceIdEngine?: 'local' | 'gemini';
   };
 }
