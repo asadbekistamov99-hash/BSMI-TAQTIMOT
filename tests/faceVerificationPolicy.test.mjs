@@ -16,7 +16,9 @@ import {
   classifyAiError,
   analyzeLuminance,
   assessFrameQuality,
-  shouldAutoRetry
+  shouldAutoRetry,
+  resolveApiKeys,
+  maskApiKey
 } from '../src/lib/faceVerificationPolicy.ts';
 
 const fakeImage = (mime = 'jpeg') => `data:image/${mime};base64,${'A'.repeat(400)}==`;
@@ -127,7 +129,24 @@ test('decision honours a custom threshold and never verifies from an empty verdi
   assert.equal(decideVerification(normalizeVerdict({ verified: true })).verified, false, 'a bare verified:true from the model is ignored');
 });
 
+test('api keys: several sources, priority order, dedupe, garbage dropped', () => {
+  assert.deepEqual(resolveApiKeys({}), []);
+  assert.deepEqual(resolveApiKeys(undefined), []);
+  assert.deepEqual(resolveApiKeys({ GEMINI_API_KEY: 'AIzaSyKEYNUMBER1' }), ['AIzaSyKEYNUMBER1']);
+  assert.deepEqual(
+    resolveApiKeys({ GEMINI_API_KEYS: ' AIzaSyKEYNUMBER2 , AIzaSyKEYNUMBER3,short, bad key', GEMINI_API_KEY: 'AIzaSyKEYNUMBER2', API_KEY: 'AIzaSyKEYNUMBER4' }),
+    ['AIzaSyKEYNUMBER2', 'AIzaSyKEYNUMBER3', 'AIzaSyKEYNUMBER4']
+  );
+  assert.equal(maskApiKey('AIzaSyKEYNUMBER1'), 'AIza…BER1');
+  assert.equal(maskApiKey('abc'), '****');
+});
+
 test('AI error classification', () => {
+  const billing = classifyAiError({ status: 403, message: 'PERMISSION_DENIED: Billing account for project is disabled' });
+  assert.equal(billing.code, 'AI_NOT_CONFIGURED');
+  assert.match(billing.reason, /billing/i);
+  assert.equal(billing.transient, false);
+
   const quota = classifyAiError({ status: 429, message: 'RESOURCE_EXHAUSTED: quota exceeded. Please retry in 24.5s.' });
   assert.equal(quota.code, 'AI_QUOTA');
   assert.equal(quota.httpStatus, 429);

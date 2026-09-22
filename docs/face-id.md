@@ -51,11 +51,22 @@ barqaror ishlashi uchun Vercel'dagi `GEMINI_API_KEY` **billing yoqilgan** loyiha
 (AI Studio → API keys → loyiha → "Hisob-kitobni sozlash"). Kalitni almashtirgach Redeploy qiling va
 admin Diagnostika panelida "Face ID" qatori yashil bo'lishini tekshiring.
 
+2026-09-22 holati: "Standart Gemini loyihasi" bog'langan to'lov hisobi AI Studio'da "nofaol yoki
+qo'llab-quvvatlanmaydi" deb ko'rsatilgan, kredit balansi $0. Bunday hisobga bog'langan kalitlar API dan
+403 (`billing`) yoki 429 olishi mumkin. Ikki yo'l bor, ikkalasini birga qilish eng ishonchli:
+
+1. Google Cloud Console → Billing da to'lov hisobini tiklash (karta qo'shish / yangi billing account
+   yaratib loyihaga biriktirish), keyin shu loyihaning kalitini `GEMINI_API_KEY` ga qo'yish.
+2. Boshqa loyihaning (masalan, billing'ga bog'lanmagan "Mening birinchi loyiham") kalitini yaratib
+   `GEMINI_API_KEYS` ga zaxira sifatida qo'shish. Kod bitta kalit ishlamasa keyingisiga o'tadi, va
+   `?check=key` health tekshiruvi har bir kalitning holatini alohida ko'rsatadi.
+
 ## Sozlamalar (Vercel → Environment Variables)
 
 | O'zgaruvchi | Majburiy | Tavsif |
 |---|---|---|
-| `GEMINI_API_KEY` | **Ha** | Usiz har bir tekshiruv `AI_NOT_CONFIGURED` bilan rad etiladi |
+| `GEMINI_API_KEY` | **Ha** (yoki `GEMINI_API_KEYS`) | Usiz har bir tekshiruv `AI_NOT_CONFIGURED` bilan rad etiladi |
+| `GEMINI_API_KEYS` | yo'q | Vergul bilan ajratilgan qo'shimcha kalitlar (turli loyihalardan). Navbat bilan sinaladi: biri billing/limit sababli ishlamasa, keyingisi ishlatiladi |
 | `FACE_MATCH_THRESHOLD` | yo'q | Moslik chegarasi, `0.5–0.99` (yoki `50–99`). Standart `0.75` |
 | `FACE_ID_MODELS` | yo'q | Vergul bilan ajratilgan model ro'yxati. Standart: `gemini-2.5-flash,gemini-3.7-flash,gemini-flash-latest,gemini-3.1-flash-lite` |
 

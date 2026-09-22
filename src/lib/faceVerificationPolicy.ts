@@ -74,6 +74,33 @@ export function resolveThreshold(envValue: string | undefined | null, fallback =
   return parsed;
 }
 
+/**
+ * Every Gemini API key the server may use, in priority order:
+ * GEMINI_API_KEYS (comma separated, e.g. keys from two different Google Cloud
+ * projects), then GEMINI_API_KEY, then API_KEY. A key whose billing account is
+ * suspended or whose free-tier quota is exhausted no longer locks students out —
+ * the next key is tried.
+ */
+export function resolveApiKeys(env: Record<string, string | undefined> | undefined | null): string[] {
+  const keys: string[] = [];
+  const push = (raw?: string) => {
+    if (!raw) return;
+    raw.split(',').map(s => s.trim()).filter(s => s.length >= 10 && !/\s/.test(s)).forEach(k => {
+      if (!keys.includes(k)) keys.push(k);
+    });
+  };
+  push(env?.GEMINI_API_KEYS);
+  push(env?.GEMINI_API_KEY);
+  push(env?.API_KEY);
+  return keys;
+}
+
+/** Safe representation of a key for logs and the admin panel. */
+export function maskApiKey(key: string): string {
+  if (!key || key.length <= 8) return '****';
+  return `${key.slice(0, 4)}…${key.slice(-4)}`;
+}
+
 export function resolveModelList(envValue: string | undefined | null, fallback = DEFAULT_FACE_ID_MODELS): string[] {
   if (!envValue) return [...fallback];
   const list = String(envValue)
@@ -287,6 +314,15 @@ export function classifyAiError(err: unknown): ClassifiedAiError {
   const status = Number(e.status ?? e.code ?? e.statusCode ?? NaN);
   const text = `${Number.isFinite(status) ? status : ''} ${message} ${safeJson(err)}`.toLowerCase();
 
+  if (text.includes('billing')) {
+    return {
+      code: 'AI_NOT_CONFIGURED',
+      httpStatus: 503,
+      reason: "Gemini to'lov hisobi (billing) nofaol yoki kredit balansi 0 — bu kalit ishlamaydi. Google AI Studio → Billing bo'limini tekshiring yoki boshqa loyihaning kalitini qo'shing.",
+      transient: false,
+      skipModel: false
+    };
+  }
   if (message.includes('GEMINI_API_KEY') || text.includes('api key not valid') || text.includes('api_key_invalid') || text.includes('permission_denied') || status === 401 || status === 403) {
     return {
       code: 'AI_NOT_CONFIGURED',

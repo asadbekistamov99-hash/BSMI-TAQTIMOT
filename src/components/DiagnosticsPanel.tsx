@@ -420,12 +420,24 @@ export default function DiagnosticsPanel() {
           details: `${data.keyCheck.message || ''} ${data.keyCheck.detail ? '— ' + data.keyCheck.detail : ''} (${latency}ms). Google AI Studio → API keys → tegishli loyihada Billing ni yoqing yoki yangi kalit yarating va Vercel’da GEMINI_API_KEY ni yangilab Redeploy qiling.`,
           latencyMs: latency
         });
+      } else if (data.aiConfigured && data.keyCheck && data.keyCheck.ok && typeof data.keyCheck.working === 'number' && data.keyCheck.working < data.keyCheck.total) {
+        setFaceIdStatus({
+          id: 'face_id_service',
+          name: 'Face ID (AI yuz tekshiruvi)',
+          status: 'warning',
+          message: `${data.keyCheck.working}/${data.keyCheck.total} ta Gemini kaliti ishlayapti — Face ID ishlaydi, lekin zaxira kamaydi`,
+          details: `${data.keyCheck.message || ''} (${latency}ms). Ishlamayotgan kalitni AI Studio’da tekshiring yoki Vercel’dagi GEMINI_API_KEYS dan olib tashlang.`,
+          latencyMs: latency
+        });
       } else if (data.aiConfigured) {
+        const keyNote = data.keyCheck?.ok
+          ? ` · ${data.keyCheck.working ?? 1}/${data.keyCheck.total ?? 1} kalit tekshirildi`
+          : '';
         setFaceIdStatus({
           id: 'face_id_service',
           name: 'Face ID (AI yuz tekshiruvi)',
           status: 'healthy',
-          message: `Xizmat tayyor. Moslik chegarasi: ${Math.round((data.threshold || 0) * 100)}%${data.keyCheck?.ok ? ' · kalit tekshirildi' : ''}`,
+          message: `Xizmat tayyor. Moslik chegarasi: ${Math.round((data.threshold || 0) * 100)}%${keyNote}`,
           details: `Modellar: ${(data.models || []).join(', ')} (${latency}ms)`,
           latencyMs: latency
         });

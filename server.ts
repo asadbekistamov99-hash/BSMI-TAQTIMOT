@@ -10,6 +10,8 @@ import { getAnatomyFallbackResponse } from './src/data/anatomyFallbackEngine.js'
 import {
   resolveThreshold,
   resolveModelList,
+  resolveApiKeys,
+  maskApiKey,
   validateVerifyRequest,
   cleanBase64,
   detectMimeType,
@@ -539,7 +541,16 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
   const FACE_MATCH_THRESHOLD = resolveThreshold(process.env.FACE_MATCH_THRESHOLD);
   const FACE_ID_MODELS = resolveModelList(process.env.FACE_ID_MODELS);
 
-  const isFaceIdConfigured = () => !!(process.env.GEMINI_API_KEY || process.env.API_KEY);
+  // Several keys (GEMINI_API_KEYS="key1,key2" — ideally from different Google
+  // Cloud projects / billing accounts) are tried in order. A suspended billing
+  // account or an exhausted free-tier quota on one key then costs a few hundred
+  // milliseconds instead of locking every student out.
+  const getFaceIdKeys = () => resolveApiKeys(process.env as Record<string, string | undefined>);
+  const isFaceIdConfigured = () => getFaceIdKeys().length > 0;
+  const makeFaceIdAI = (apiKey: string) => new GoogleGenAI({
+    apiKey,
+    httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+  });
 
   const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
     return new Promise<T>((resolve, reject) => {
@@ -565,27 +576,44 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
       models: FACE_ID_MODELS,
       minFrames: MIN_FRAMES_REQUIRED,
       totalBudgetMs: FACE_ID_TOTAL_BUDGET_MS,
+      keyCount: getFaceIdKeys().length,
       message: configured
         ? 'Face ID xizmati tayyor.'
-        : "Face ID xizmati sozlanmagan: serverda GEMINI_API_KEY muhit o'zgaruvchisi yo'q."
+        : "Face ID xizmati sozlanmagan: serverda GEMINI_API_KEY (yoki GEMINI_API_KEYS) muhit o'zgaruvchisi yo'q."
     };
 
     if (configured && String(req.query?.check || '') === 'key') {
-      const aiInstance = getAI();
-      try {
-        if (!aiInstance) throw new Error('GEMINI_API_KEY sozlanmagan');
-        const pager: any = await withTimeout(aiInstance.models.list({ config: { pageSize: 1 } }), 8000, 'Gemini key check');
-        const firstPage = Array.isArray(pager?.page) ? pager.page : [];
-        payload.keyCheck = {
-          ok: true,
-          message: "Gemini kaliti yaroqli, API javob berdi.",
-          sampleModel: firstPage[0]?.name || null
-        };
-      } catch (err: any) {
-        const c = classifyAiError(err);
-        payload.keyCheck = { ok: false, code: c.code, message: c.reason, detail: String(err?.message || err).slice(0, 200) };
+      const keys = getFaceIdKeys().slice(0, 5);
+      const checks: Record<string, unknown>[] = [];
+      for (let i = 0; i < keys.length; i++) {
+        const apiKey = keys[i];
+        try {
+          const pager: any = await withTimeout(makeFaceIdAI(apiKey).models.list({ config: { pageSize: 1 } }), 7000, 'Gemini key check');
+          const firstPage = Array.isArray(pager?.page) ? pager.page : [];
+          checks.push({ index: i + 1, key: maskApiKey(apiKey), ok: true, message: 'Kalit yaroqli, API javob berdi.', sampleModel: firstPage[0]?.name || null });
+        } catch (err: any) {
+          const c = classifyAiError(err);
+          checks.push({ index: i + 1, key: maskApiKey(apiKey), ok: false, code: c.code, message: c.reason, detail: String(err?.message || err).slice(0, 200) });
+        }
+      }
+      const working = checks.filter(c => c.ok === true).length;
+      const firstFailure = checks.find(c => c.ok !== true);
+      payload.keyChecks = checks;
+      payload.keyCheck = {
+        ok: working > 0,
+        working,
+        total: checks.length,
+        code: working > 0 ? null : (firstFailure?.code ?? 'AI_UNAVAILABLE'),
+        message: working > 0
+          ? (working === checks.length
+            ? `Barcha ${checks.length} ta Gemini kaliti ishlayapti.`
+            : `${working}/${checks.length} ta Gemini kaliti ishlayapti; qolganlari: ${String(firstFailure?.message || '')}`)
+          : String(firstFailure?.message || 'Hech bir kalit ishlamayapti.'),
+        detail: firstFailure?.detail ?? null
+      };
+      if (working === 0) {
         payload.ok = false;
-        payload.message = c.reason;
+        payload.message = String(firstFailure?.message || 'Hech bir Gemini kaliti ishlamayapti.');
       }
     }
 
@@ -688,15 +716,23 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
         required: ["faceDetected", "isMatch", "livenessPassed", "spoofSuspected", "confidence", "reason"]
       };
 
-      const aiInstance = getAI();
-      if (!aiInstance) {
+      const apiKeys = getFaceIdKeys();
+      if (apiKeys.length === 0) {
         return denyClosed(503, 'AI_NOT_CONFIGURED', "Face ID xizmati serverda sozlanmagan (GEMINI_API_KEY yo'q). Iltimos, administratorga xabar bering.");
       }
 
       const MAX_ATTEMPTS_PER_MODEL = 2;
       let responseText: string | null = null;
       let usedModel: string | null = null;
+      let usedKey: string | null = null;
       let lastClassified: ClassifiedAiError | null = null;
+
+      keyLoop:
+      for (let keyIdx = 0; keyIdx < apiKeys.length; keyIdx++) {
+      const apiKey = apiKeys[keyIdx];
+      const aiInstance = makeFaceIdAI(apiKey);
+      if (remaining() < FACE_ID_MIN_REMAINING_MS) break;
+      if (keyIdx > 0) console.warn(`[FACE VERIFICATION] Switching to fallback key #${keyIdx + 1} (${maskApiKey(apiKey)})`);
 
       modelLoop:
       for (const modelName of FACE_ID_MODELS) {
@@ -729,8 +765,9 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
             if (text.trim()) {
               responseText = text;
               usedModel = modelName;
-              console.log(`[FACE VERIFICATION] Success with model: ${modelName} in ${Date.now() - startedAt}ms`);
-              break modelLoop;
+              usedKey = maskApiKey(apiKey);
+              console.log(`[FACE VERIFICATION] Success with model: ${modelName} (key ${usedKey}) in ${Date.now() - startedAt}ms`);
+              break keyLoop;
             }
             // Empty body (e.g. safety block) — treat as a bad response and move on.
             lastClassified = { code: 'AI_BAD_RESPONSE', httpStatus: 502, reason: "AI javobi bo'sh keldi.", transient: false, skipModel: true };
@@ -740,7 +777,8 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
             const classified = classifyAiError(err);
             lastClassified = classified;
             console.warn(`[FACE VERIFICATION] Model ${modelName} attempt ${attempt} failed (${classified.code}): ${err?.message || err}`);
-            if (classified.code === 'AI_NOT_CONFIGURED') break modelLoop;
+            // Invalid key / billing problem: no model on this key will work — next key.
+            if (classified.code === 'AI_NOT_CONFIGURED') continue keyLoop;
             if (classified.skipModel) break;
             const waitMs = classified.retryAfterSec ? classified.retryAfterSec * 1000 : 600 * attempt;
             const canRetrySameModel = classified.transient && attempt < MAX_ATTEMPTS_PER_MODEL && waitMs + FACE_ID_MIN_REMAINING_MS < remaining();
@@ -752,8 +790,9 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
           }
         }
       }
+      }
 
-      // NO FALLBACK: if every model failed or returned nothing, deny access.
+      // NO FALLBACK: if every key/model failed or returned nothing, deny access.
       // This used to silently return isMatch:true here — that was the security hole.
       if (!responseText) {
         const c = lastClassified || { code: 'AI_UNAVAILABLE' as FaceDenyCode, httpStatus: 503, reason: "Biometrik tekshiruv xizmati vaqtincha ishlamayapti. Iltimos, birozdan so'ng qayta urinib ko'ring.", transient: true, skipModel: false };
@@ -783,6 +822,7 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
         retryable: decision.retryable,
         reason: decision.reason,
         model: usedModel,
+        key: usedKey,
         durationMs: Date.now() - startedAt
       });
 
