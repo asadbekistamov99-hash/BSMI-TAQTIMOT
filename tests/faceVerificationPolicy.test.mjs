@@ -18,7 +18,8 @@ import {
   assessFrameQuality,
   shouldAutoRetry,
   resolveApiKeys,
-  maskApiKey
+  maskApiKey,
+  sanitizeErrorDetail
 } from '../src/lib/faceVerificationPolicy.ts';
 
 const fakeImage = (mime = 'jpeg') => `data:image/${mime};base64,${'A'.repeat(400)}==`;
@@ -141,7 +142,21 @@ test('api keys: several sources, priority order, dedupe, garbage dropped', () =>
   assert.equal(maskApiKey('abc'), '****');
 });
 
+test('error detail never leaks an API key', () => {
+  const d = sanitizeErrorDetail(new Error('fetch https://x.googleapis.com/v1?key=AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ12345 failed: 403\n  PERMISSION_DENIED'));
+  assert.ok(!d.includes('AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ12345'));
+  assert.match(d, /PERMISSION_DENIED/);
+  assert.ok(!d.includes('\n'));
+  assert.equal(sanitizeErrorDetail(undefined), '');
+  assert.equal(sanitizeErrorDetail('x'.repeat(500)).length, 220);
+});
+
 test('AI error classification', () => {
+  const region = classifyAiError({ status: 400, message: 'User location is not supported for the API use.' });
+  assert.equal(region.code, 'AI_NOT_CONFIGURED');
+  assert.match(region.reason, /region/i);
+  assert.equal(region.transient, false);
+
   const billing = classifyAiError({ status: 403, message: 'PERMISSION_DENIED: Billing account for project is disabled' });
   assert.equal(billing.code, 'AI_NOT_CONFIGURED');
   assert.match(billing.reason, /billing/i);
