@@ -1,4 +1,7 @@
-import { createServerApp } from '../server.ts';
+// NOTE: keep the '.js' specifier. Vercel's TypeScript bundler resolves it to
+// server.ts; a literal '../server.ts' import fails without
+// allowImportingTsExtensions and took every /api route down with it (Sep 2026).
+import { createServerApp } from '../server.js';
 
 let cachedApp: any = null;
 

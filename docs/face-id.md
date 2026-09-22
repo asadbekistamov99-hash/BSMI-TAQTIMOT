@@ -8,6 +8,24 @@
 4. Server (`server.ts`) kadrlarni Gemini modeliga beradi, javobni `src/lib/faceVerificationPolicy.ts` dagi **sinovdan o'tgan** qoida bilan baholaydi va `verified: true/false` qaytaradi.
 5. Faqat `verified === true` bo'lsagina talaba ichkariga kiritiladi. Boshqa har qanday holat (xato, timeout, noaniq javob) — **rad etish**.
 
+## Asosiy sabab (2026-09-22 da ko'rilgan "Tizim ulanishida muammo yuz berdi")
+
+Bu xabar faqat bitta holatda chiqadi: brauzer `/api/verify-face` dan **JSON bo'lmagan** javob olganda
+(Vercel'ning HTML 404/500 sahifasi). Ya'ni AI "yuz mos kelmadi" demagan — API funksiyasining o'zi ishlamagan.
+
+16-sentyabrdagi `4af72e1` commit ikkita ishlayotgan sozlamani o'zgartirgan:
+
+| Fayl | Ishlagan holat (26-avgust, `90eaaba`) | Buzilgan holat (`4af72e1`) |
+|---|---|---|
+| `vercel.json` rewrite | `"destination": "/api"` | `"destination": "/api/index.ts"` |
+| `api/index.ts` import | `from '../server.js'` | `from '../server.ts'` |
+
+Ikkalasi ham ishlagan holatga qaytarildi. Endi mijoz `GET /api/verify-face/health` dan JSON o'rniga
+HTTP 404/405/5xx olsa, "Server API funksiyasi ishlamayapti (HTTP ...)" deb aniq ko'rsatadi, va rad
+xabarlarida HTTP status kodi bo'ladi — "tizim ulanishida muammo" degan noaniq matn endi yo'q.
+
+**Diqqat:** `vercel.json` dagi `/api` rewrite manzilini va `api/index.ts` dagi `.js` importni o'zgartirmang.
+
 ## Ilgari nima buzilgan edi (va endi qanday oldini olingan)
 
 | Muammo | Oqibati | Yechim |

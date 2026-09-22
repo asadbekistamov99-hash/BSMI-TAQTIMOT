@@ -172,7 +172,19 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     fetch('/api/verify-face/health', { signal: controller.signal, cache: 'no-store' })
       .then(async res => {
         const data = await res.json().catch(() => null);
-        if (cancelled || !data || typeof data.aiConfigured !== 'boolean') return;
+        if (cancelled) return;
+        if (!data || typeof data.aiConfigured !== 'boolean') {
+          // The server answered, but not with our JSON: the API function itself is
+          // not running (wrong vercel.json rewrite, failed build, crashed function).
+          // This is exactly what students used to see as a vague "tizim ulanishida muammo".
+          if (res.status === 404 || res.status === 405 || res.status >= 500) {
+            setServiceHealth({
+              state: 'down',
+              message: `Server API funksiyasi ishlamayapti (HTTP ${res.status}). Bu Face ID emas, deploy muammosi: administrator Vercel deploy loglarini va vercel.json dagi "/api" rewrite sozlamasini tekshirishi kerak.`
+            });
+          }
+          return;
+        }
         setServiceHealth(data.aiConfigured
           ? { state: 'ok' }
           : { state: 'down', message: data.message || "Face ID xizmati serverda sozlanmagan. Administratorga xabar bering." });
@@ -600,10 +612,14 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
         failure = {
           success: false,
           code: 'BAD_GATEWAY',
-          retryable: true,
-          message: response.status >= 500
-            ? "Server vaqtincha javob bermayapti. Bir necha soniyadan so'ng qayta urinib ko'ring."
-            : "Server javobini o'qib bo'lmadi. Qayta urinib ko'ring."
+          retryable: response.status >= 500 && response.status !== 501,
+          message: response.status === 404 || response.status === 405
+            ? `Server API yo'nalishi topilmadi (HTTP ${response.status}). Bu deploy muammosi — administratorga xabar bering.`
+            : response.status === 413
+              ? "Yuborilgan kadrlar hajmi juda katta (HTTP 413). Yuzni qayta ro'yxatdan o'tkazib, kichikroq surat saqlang."
+              : response.status >= 500
+                ? `Server vaqtincha javob bermayapti (HTTP ${response.status}). Bir necha soniyadan so'ng qayta urinib ko'ring.`
+                : `Server javobini o'qib bo'lmadi (HTTP ${response.status}). Qayta urinib ko'ring.`
         };
       }
     } catch (err: any) {
