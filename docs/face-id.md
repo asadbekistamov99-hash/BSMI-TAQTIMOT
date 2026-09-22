@@ -61,6 +61,13 @@ qo'llab-quvvatlanmaydi" deb ko'rsatilgan, kredit balansi $0. Bunday hisobga bog'
    `GEMINI_API_KEYS` ga zaxira sifatida qo'shish. Kod bitta kalit ishlamasa keyingisiga o'tadi, va
    `?check=key` health tekshiruvi har bir kalitning holatini alohida ko'rsatadi.
 
+## Favqulodda o'chirish (kill switch)
+
+Admin panel → **Tizim Sozlamalari** → **Modulni Boshqarish** → **Face ID (biometrik kirish)** tugmasini
+o'chirsangiz, talabalar Face ID siz kiradi. AI provayderi yoki billing tuzatilguncha o'quv jarayonini
+to'xtatmaslik uchun. Tuzatilgach qayta yoqing. Sozlama `settings/global.features.enableFaceId` da saqlanadi;
+mavjud bo'lmasa yoqilgan hisoblanadi.
+
 ## Sozlamalar (Vercel → Environment Variables)
 
 | O'zgaruvchi | Majburiy | Tavsif |

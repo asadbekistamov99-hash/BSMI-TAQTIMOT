@@ -3706,7 +3706,8 @@ function SettingsManager() {
       enableQuizzes: true,
       enableMidterms: true,
       enableLatin: true,
-      enableNotifications: true
+      enableNotifications: true,
+      enableFaceId: true
     }
   });
   const [loading, setLoading] = useState(true);
@@ -4699,24 +4700,32 @@ function SettingsManager() {
                    { id: 'enableVideos', label: 'Video Ma\'ruzalar', icon: <Play size={20} /> },
                    { id: 'enableQuizzes', label: 'Testlar Tizimi', icon: <ClipboardList size={20} /> },
                    { id: 'enableMidterms', label: 'Oraliq Nazorat', icon: <ShieldAlert size={20} /> },
-                   { id: 'enableLatin', label: 'Terminlar Lug\'ati', icon: <Globe size={20} /> }
-                 ].map((feature) => (
+                   { id: 'enableLatin', label: 'Terminlar Lug\'ati', icon: <Globe size={20} /> },
+                   { id: 'enableFaceId', label: 'Face ID (biometrik kirish)', icon: <Fingerprint size={20} />, hint: "O'chirilsa talabalar Face ID siz kiradi (AI/billing muammosida vaqtinchalik)" }
+                 ].map((feature: { id: string; label: string; icon: React.ReactNode; hint?: string }) => {
+                   // A feature that was never saved (undefined) counts as enabled — same rule as useSettings defaults.
+                   const isOn = (settings.features as any)[feature.id] !== false;
+                   return (
                    <div key={feature.id} className="p-8 bg-slate-50 rounded-[32px] border border-slate-100 flex flex-col items-center gap-6 group hover:bg-white hover:shadow-xl hover:shadow-slate-200/50 transition-all">
-                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${settings.features[feature.id] ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-400'}`}>
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${isOn ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-400'}`}>
                         {feature.icon as React.ReactElement}
                       </div>
-                      <span className="text-[10px] font-black text-slate-800 uppercase tracking-widest">{feature.label}</span>
+                      <span className="text-[10px] font-black text-slate-800 uppercase tracking-widest text-center">{feature.label}</span>
+                      {feature.hint && (
+                        <span className="text-[10px] text-slate-500 text-center leading-snug -mt-3">{feature.hint}</span>
+                      )}
                       <button 
                         onClick={() => setSettings({
                           ...settings, 
-                          features: { ...settings.features, [feature.id]: !settings.features[feature.id] }
+                          features: { ...settings.features, [feature.id]: !isOn }
                         })}
-                        className={`w-14 h-8 rounded-full transition-all flex items-center p-1 ${settings.features[feature.id] ? 'bg-emerald-500 justify-end' : 'bg-slate-300 justify-start'}`}
+                        className={`w-14 h-8 rounded-full transition-all flex items-center p-1 ${isOn ? 'bg-emerald-500 justify-end' : 'bg-slate-300 justify-start'}`}
                       >
                         <div className="w-6 h-6 bg-white rounded-full shadow-md"></div>
                       </button>
                    </div>
-                 ))}
+                   );
+                 })}
               </div>
             </div>
           </div>

@@ -381,7 +381,13 @@ export default function App() {
     );
   }
 
+  // Global kill switch: Admin → Tizim Sozlamalari → Modulni Boshqarish → "Face ID".
+  // Lets the administrator keep students working while the AI provider / billing
+  // is being fixed. Missing setting = enabled (fail-safe default).
+  const faceIdFeatureEnabled = settings?.features?.enableFaceId !== false;
+
   const needsFaceVerification = 
+    faceIdFeatureEnabled &&
     user && 
     !isAdmin &&
     !user.isAnonymous && 
