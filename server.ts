@@ -551,10 +551,14 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
     });
   };
 
-  app.get('/api/verify-face/health', (_req: express.Request, resValue: any) => {
+  // GET /api/verify-face/health            → is the key configured at all (cheap, used by the gate)
+  // GET /api/verify-face/health?check=key  → additionally calls the Gemini API once (models.list,
+  //                                          no generation quota) so the admin panel can tell
+  //                                          "key invalid" / "quota exhausted" from "all good".
+  app.get('/api/verify-face/health', async (req: express.Request, resValue: any) => {
     const configured = isFaceIdConfigured();
     resValue.setHeader('Cache-Control', 'no-store');
-    return resValue.status(configured ? 200 : 503).json({
+    const payload: Record<string, unknown> = {
       ok: configured,
       aiConfigured: configured,
       threshold: FACE_MATCH_THRESHOLD,
@@ -564,7 +568,28 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
       message: configured
         ? 'Face ID xizmati tayyor.'
         : "Face ID xizmati sozlanmagan: serverda GEMINI_API_KEY muhit o'zgaruvchisi yo'q."
-    });
+    };
+
+    if (configured && String(req.query?.check || '') === 'key') {
+      const aiInstance = getAI();
+      try {
+        if (!aiInstance) throw new Error('GEMINI_API_KEY sozlanmagan');
+        const pager: any = await withTimeout(aiInstance.models.list({ config: { pageSize: 1 } }), 8000, 'Gemini key check');
+        const firstPage = Array.isArray(pager?.page) ? pager.page : [];
+        payload.keyCheck = {
+          ok: true,
+          message: "Gemini kaliti yaroqli, API javob berdi.",
+          sampleModel: firstPage[0]?.name || null
+        };
+      } catch (err: any) {
+        const c = classifyAiError(err);
+        payload.keyCheck = { ok: false, code: c.code, message: c.reason, detail: String(err?.message || err).slice(0, 200) };
+        payload.ok = false;
+        payload.message = c.reason;
+      }
+    }
+
+    return resValue.status(payload.ok ? 200 : 503).json(payload);
   });
 
   app.post('/api/verify-face', async (req: express.Request, resValue: any) => {

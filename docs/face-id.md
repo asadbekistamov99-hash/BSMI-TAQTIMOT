@@ -42,6 +42,15 @@ xabarlarida HTTP status kodi bo'ladi — "tizim ulanishida muammo" degan noaniq 
 | GEMINI_API_KEY yo'qligi hech qayerda ko'rinmasdi | Hamma "xizmat ishlamayapti" ko'rardi, sabab noma'lum | `GET /api/verify-face/health` + admin Diagnostika panelida "Face ID (AI yuz tekshiruvi)" qatori |
 | Ro'yxatdan o'tgach `faceIdEnrolled` o'zgarishi `faceIdVerified` ni qayta `false` qilardi | Ro'yxatdan o'tish bilanoq gate qayta ochilish xavfi | `App.tsx` endi faqat `uid` o'zgarganda holatni tiklaydi |
 
+## Gemini kaliti va bepul daraja (free tier) haqida
+
+Har bir Face ID tekshiruvi modelga 6 ta rasm yuboradi. Google AI Studio'dagi "Bepul daraja" kalitlarining
+kunlik so'rov limiti kichik; talabalar soni ko'p bo'lsa kun o'rtasida limit tugaydi va hamma `AI_QUOTA`
+(429) oladi. Turli modellarga alohida limit berilgani uchun kod 4 ta modelni navbat bilan sinaydi, lekin
+barqaror ishlashi uchun Vercel'dagi `GEMINI_API_KEY` **billing yoqilgan** loyihaning kaliti bo'lishi kerak
+(AI Studio → API keys → loyiha → "Hisob-kitobni sozlash"). Kalitni almashtirgach Redeploy qiling va
+admin Diagnostika panelida "Face ID" qatori yashil bo'lishini tekshiring.
+
 ## Sozlamalar (Vercel → Environment Variables)
 
 | O'zgaruvchi | Majburiy | Tavsif |
@@ -57,6 +66,10 @@ O'zgartirgandan keyin **Redeploy** qiling.
 ```bash
 # Xizmat holati (200 = tayyor, 503 = kalit yo'q)
 curl -s https://<domen>/api/verify-face/health
+
+# Kalitni Gemini API da haqiqatan sinash (generatsiya limitini sarflamaydi):
+# keyCheck.ok=false va code=AI_QUOTA → limit tugagan (bepul daraja), AI_NOT_CONFIGURED → kalit yaroqsiz
+curl -s "https://<domen>/api/verify-face/health?check=key"
 
 # Sof mantiq testlari (tarmoq va brauzer kerak emas)
 node --test tests/faceVerificationPolicy.test.mjs tests/faceIdSession.test.mjs

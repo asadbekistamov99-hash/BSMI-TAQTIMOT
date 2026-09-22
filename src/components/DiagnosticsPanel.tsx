@@ -393,7 +393,7 @@ export default function DiagnosticsPanel() {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 10000);
-      const res = await fetch('/api/verify-face/health', { signal: controller.signal, cache: 'no-store' });
+      const res = await fetch('/api/verify-face/health?check=key', { signal: controller.signal, cache: 'no-store' });
       clearTimeout(timer);
       const latency = Math.round(performance.now() - startFace);
       const data: any = await res.json().catch(() => null);
@@ -406,12 +406,26 @@ export default function DiagnosticsPanel() {
           details: 'Vercel funksiyasi ishlamayotgan yoki eski build. Deploy loglarini tekshiring.',
           latencyMs: latency
         });
+      } else if (data.aiConfigured && data.keyCheck && data.keyCheck.ok === false) {
+        const code = String(data.keyCheck.code || '');
+        setFaceIdStatus({
+          id: 'face_id_service',
+          name: 'Face ID (AI yuz tekshiruvi)',
+          status: 'error',
+          message: code === 'AI_QUOTA'
+            ? 'Gemini limiti tugagan — bepul daraja (free tier) Face ID uchun yetmayapti'
+            : code === 'AI_NOT_CONFIGURED'
+              ? 'GEMINI_API_KEY yaroqsiz yoki bekor qilingan'
+              : `Gemini API javob bermadi (${code || 'noma’lum'})`,
+          details: `${data.keyCheck.message || ''} ${data.keyCheck.detail ? '— ' + data.keyCheck.detail : ''} (${latency}ms). Google AI Studio → API keys → tegishli loyihada Billing ni yoqing yoki yangi kalit yarating va Vercel’da GEMINI_API_KEY ni yangilab Redeploy qiling.`,
+          latencyMs: latency
+        });
       } else if (data.aiConfigured) {
         setFaceIdStatus({
           id: 'face_id_service',
           name: 'Face ID (AI yuz tekshiruvi)',
           status: 'healthy',
-          message: `Xizmat tayyor. Moslik chegarasi: ${Math.round((data.threshold || 0) * 100)}%`,
+          message: `Xizmat tayyor. Moslik chegarasi: ${Math.round((data.threshold || 0) * 100)}%${data.keyCheck?.ok ? ' · kalit tekshirildi' : ''}`,
           details: `Modellar: ${(data.models || []).join(', ')} (${latency}ms)`,
           latencyMs: latency
         });
