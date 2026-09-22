@@ -157,6 +157,11 @@ test('AI error classification', () => {
   assert.match(region.reason, /region/i);
   assert.equal(region.transient, false);
 
+  const blocked = classifyAiError({ status: 403, message: '{"error":{"code":403,"message":"Your access has been denied. Please contact support.","status":"PERMISSION_DENIED"}}' });
+  assert.equal(blocked.code, 'AI_NOT_CONFIGURED');
+  assert.match(blocked.reason, /bloklagan/);
+  assert.match(blocked.reason, /GEMINI_API_KEYS/);
+
   const billing = classifyAiError({ status: 403, message: 'PERMISSION_DENIED: Billing account for project is disabled' });
   assert.equal(billing.code, 'AI_NOT_CONFIGURED');
   assert.match(billing.reason, /billing/i);

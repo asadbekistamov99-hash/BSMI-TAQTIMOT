@@ -77,6 +77,17 @@ Deploy tuzalgach Face ID "GEMINI_API_KEY yo'q yoki yaroqsiz" (403) bilan rad etd
 
 Vercel panelidan region qo'lda o'zgartirilgan bo'lsa, `vercel.json` dagi qiymat ustun turadi.
 
+## Google loyihasi bloklangan (2026-09-22, haqiqiy sabab)
+
+Region tuzatilgach health haqiqiy javobni ko'rsatdi:
+`403 PERMISSION_DENIED — "Your access has been denied. Please contact support."`
+Bu kalit noto'g'ri degani emas: Google "Standart Gemini loyihasi" (gen-lang-client-0984131035) ga kirishni
+bloklagan (to'lov profili nofaol). Bunday kalit hech qayerdan ishlamaydi. Yechim: Google AI Studio →
+"API kalitini yarating" → **yangi loyihada** (yoki "Mening birinchi loyiham" da, u billing'ga bog'lanmagan)
+kalit yaratish, Vercel'da `GEMINI_API_KEYS=<yangi>,<eski>` qilib Redeploy. Agar yangi loyihaning kaliti ham
+403 bersa — blok Google hisobi darajasida: boshqa Google hisobidan kalit oling yoki Cloud Console → Billing
+orqali Google support bilan hal qiling.
+
 ## Favqulodda o'chirish (kill switch)
 
 Admin panel → **Tizim Sozlamalari** → **Modulni Boshqarish** → **Face ID (biometrik kirish)** tugmasini
