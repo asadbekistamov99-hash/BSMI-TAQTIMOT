@@ -216,5 +216,7 @@ export interface SystemSettings {
     enableMidterms: boolean;
     enableLatin: boolean;
     enableNotifications: boolean;
+    /** Global kill switch for the biometric gate. Missing/undefined = enabled. */
+    enableFaceId?: boolean;
   };
 }

@@ -7,6 +7,25 @@ import fs from 'fs';
 import https from 'https';
 import { execSync } from 'child_process';
 import { getAnatomyFallbackResponse } from './src/data/anatomyFallbackEngine.js';
+import {
+  resolveThreshold,
+  resolveModelList,
+  resolveApiKeys,
+  maskApiKey,
+  validateVerifyRequest,
+  cleanBase64,
+  detectMimeType,
+  parseModelJson,
+  normalizeVerdict,
+  decideVerification,
+  classifyAiError,
+  MIN_FRAMES_REQUIRED,
+  FACE_ID_TOTAL_BUDGET_MS,
+  FACE_ID_PER_CALL_TIMEOUT_MS,
+  FACE_ID_MIN_REMAINING_MS,
+  type FaceDenyCode,
+  type ClassifiedAiError
+} from './src/lib/faceVerificationPolicy.js';
 
 dotenv.config();
 
@@ -505,71 +524,166 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
   // liveness from natural micro-movement between frames and from spoofing artifacts
   // (identical frames, screen glare/moire, printed-photo edges, unnaturally flat
   // lighting), the same way a passive liveness check (e.g. OneID-style) works.
-  const FACE_MATCH_THRESHOLD = 0.75;
-  const MIN_FRAMES_REQUIRED = 3;
+  //
+  // Reliability design (why students no longer get locked out by infrastructure):
+  //   * the decision itself lives in src/lib/faceVerificationPolicy.ts and is unit-tested;
+  //   * several models are tried in order — each has its own API quota, so one 429
+  //     never blocks everyone;
+  //   * transient errors (429/503/timeouts) are retried with backoff, non-transient
+  //     ones (404 model missing, 400) skip straight to the next model;
+  //   * every model call has its own timeout and the whole handler respects a total
+  //     budget below Vercel's 60 s limit, so the browser always gets a JSON answer
+  //     instead of a platform 504 page;
+  //   * every denial carries a machine-readable `code` so the UI can auto-retry the
+  //     soft ones (LOW_CONFIDENCE, timeouts) and give precise guidance for the rest;
+  //   * GET /api/verify-face/health tells the UI and the admin diagnostics panel
+  //     whether the service is configured at all.
+  const FACE_MATCH_THRESHOLD = resolveThreshold(process.env.FACE_MATCH_THRESHOLD);
+  const FACE_ID_MODELS = resolveModelList(process.env.FACE_ID_MODELS);
+
+  // Several keys (GEMINI_API_KEYS="key1,key2" — ideally from different Google
+  // Cloud projects / billing accounts) are tried in order. A suspended billing
+  // account or an exhausted free-tier quota on one key then costs a few hundred
+  // milliseconds instead of locking every student out.
+  const getFaceIdKeys = () => resolveApiKeys(process.env as Record<string, string | undefined>);
+  const isFaceIdConfigured = () => getFaceIdKeys().length > 0;
+  const makeFaceIdAI = (apiKey: string) => new GoogleGenAI({
+    apiKey,
+    httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+  });
+
+  const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      promise.then(
+        value => { clearTimeout(timer); resolve(value); },
+        err => { clearTimeout(timer); reject(err); }
+      );
+    });
+  };
+
+  // GET /api/verify-face/health            → is the key configured at all (cheap, used by the gate)
+  // GET /api/verify-face/health?check=key  → additionally calls the Gemini API once (models.list,
+  //                                          no generation quota) so the admin panel can tell
+  //                                          "key invalid" / "quota exhausted" from "all good".
+  app.get('/api/verify-face/health', async (req: express.Request, resValue: any) => {
+    const configured = isFaceIdConfigured();
+    resValue.setHeader('Cache-Control', 'no-store');
+    const payload: Record<string, unknown> = {
+      ok: configured,
+      aiConfigured: configured,
+      threshold: FACE_MATCH_THRESHOLD,
+      models: FACE_ID_MODELS,
+      minFrames: MIN_FRAMES_REQUIRED,
+      totalBudgetMs: FACE_ID_TOTAL_BUDGET_MS,
+      keyCount: getFaceIdKeys().length,
+      message: configured
+        ? 'Face ID xizmati tayyor.'
+        : "Face ID xizmati sozlanmagan: serverda GEMINI_API_KEY (yoki GEMINI_API_KEYS) muhit o'zgaruvchisi yo'q."
+    };
+
+    if (configured && String(req.query?.check || '') === 'key') {
+      const keys = getFaceIdKeys().slice(0, 5);
+      const checks: Record<string, unknown>[] = [];
+      for (let i = 0; i < keys.length; i++) {
+        const apiKey = keys[i];
+        try {
+          const pager: any = await withTimeout(makeFaceIdAI(apiKey).models.list({ config: { pageSize: 1 } }), 7000, 'Gemini key check');
+          const firstPage = Array.isArray(pager?.page) ? pager.page : [];
+          checks.push({ index: i + 1, key: maskApiKey(apiKey), ok: true, message: 'Kalit yaroqli, API javob berdi.', sampleModel: firstPage[0]?.name || null });
+        } catch (err: any) {
+          const c = classifyAiError(err);
+          checks.push({ index: i + 1, key: maskApiKey(apiKey), ok: false, code: c.code, message: c.reason, detail: String(err?.message || err).slice(0, 200) });
+        }
+      }
+      const working = checks.filter(c => c.ok === true).length;
+      const firstFailure = checks.find(c => c.ok !== true);
+      payload.keyChecks = checks;
+      payload.keyCheck = {
+        ok: working > 0,
+        working,
+        total: checks.length,
+        code: working > 0 ? null : (firstFailure?.code ?? 'AI_UNAVAILABLE'),
+        message: working > 0
+          ? (working === checks.length
+            ? `Barcha ${checks.length} ta Gemini kaliti ishlayapti.`
+            : `${working}/${checks.length} ta Gemini kaliti ishlayapti; qolganlari: ${String(firstFailure?.message || '')}`)
+          : String(firstFailure?.message || 'Hech bir kalit ishlamayapti.'),
+        detail: firstFailure?.detail ?? null
+      };
+      if (working === 0) {
+        payload.ok = false;
+        payload.message = String(firstFailure?.message || 'Hech bir Gemini kaliti ishlamayapti.');
+      }
+    }
+
+    return resValue.status(payload.ok ? 200 : 503).json(payload);
+  });
 
   app.post('/api/verify-face', async (req: express.Request, resValue: any) => {
-    const denyClosed = (status: number, reason: string) => {
+    const startedAt = Date.now();
+    const deadline = startedAt + FACE_ID_TOTAL_BUDGET_MS;
+    const remaining = () => deadline - Date.now();
+
+    const denyClosed = (status: number, code: FaceDenyCode, reason: string, extra: Record<string, unknown> = {}) => {
       // Single choke point: every failure path returns through here so the
       // "fail closed" behavior can never accidentally be bypassed.
-      console.warn(`[FACE VERIFICATION] DENIED (fail-closed): ${reason}`);
+      console.warn(`[FACE VERIFICATION] DENIED (fail-closed) code=${code}: ${reason}`);
       return resValue.status(status).json({
         verified: false,
         isMatch: false,
+        faceDetected: false,
         livenessPassed: false,
+        spoofSuspected: false,
         confidence: 0,
-        reason
+        code,
+        retryable: code === 'AI_UNAVAILABLE' || code === 'AI_TIMEOUT' || code === 'AI_BAD_RESPONSE',
+        reason,
+        durationMs: Date.now() - startedAt,
+        ...extra
       });
     };
 
     try {
-      const { enrolledImage, frames } = req.body || {};
+      const validation = validateVerifyRequest(req.body);
+      if (!validation.ok) {
+        return denyClosed(400, validation.code, validation.reason);
+      }
+      const { enrolledImage, frames } = validation.value;
 
-      if (!enrolledImage || typeof enrolledImage !== 'string') {
-        return denyClosed(400, "Ro'yxatdan o'tgan surat topilmadi.");
-      }
-      if (!Array.isArray(frames) || frames.length < MIN_FRAMES_REQUIRED) {
-        return denyClosed(400, "Jonlilik tekshiruvi uchun yetarli kadr yuborilmadi.");
-      }
-      for (const f of frames) {
-        if (!f || typeof f.image !== 'string') {
-          return denyClosed(400, "Kadrlar formati noto'g'ri.");
-        }
+      if (!isFaceIdConfigured()) {
+        return denyClosed(503, 'AI_NOT_CONFIGURED', "Face ID xizmati serverda sozlanmagan (GEMINI_API_KEY yo'q). Iltimos, administratorga xabar bering.");
       }
 
-      console.log(`[FACE VERIFICATION] Initiating passive biometric liveness + face-matching with ${frames.length} frames...`);
-
-      const cleanBase64 = (img: string) => (img.includes(',') ? img.split(',')[1] : img);
-      const detectMimeType = (img: string) => {
-        if (img.includes('image/png')) return 'image/png';
-        if (img.includes('image/webp')) return 'image/webp';
-        return 'image/jpeg';
-      };
+      console.log(`[FACE VERIFICATION] Initiating passive biometric liveness + face-matching with ${frames.length} frames (threshold ${FACE_MATCH_THRESHOLD})...`);
 
       const toPart = (img: string) => ({
         inlineData: { mimeType: detectMimeType(img), data: cleanBase64(img) }
       });
 
-      const frameParts: any[] = [];
-      const frameManifest = frames.map((f: any, idx: number) => {
-        frameParts.push(toPart(f.image));
-        return `Rasm ${idx + 2} = kameradan taxminan ${idx === 0 ? '0' : (idx * 700)}ms momentida olingan ketma-ket kadr.`;
-      }).join('\n');
+      // Interleave a label before every image so the model can never confuse
+      // which picture is the enrolled reference and which are the live frames.
+      const imageParts: any[] = [
+        { text: "Rasm 1 — RO'YXATDAN O'TGAN (enrolled) profil surati:" },
+        toPart(enrolledImage)
+      ];
+      frames.forEach((f, idx) => {
+        imageParts.push({ text: `Rasm ${idx + 2} — jonli kadr ${idx + 1}/${frames.length} (taxminan ${idx * 700}ms):` });
+        imageParts.push(toPart(f.image));
+      });
 
       const prompt = `Siz tibbiyot ta'lim platformasi uchun ishlaydigan QAT'IY (zero-trust) biometrik yuz autentifikatsiya va passiv jonlilik (anti-spoofing) tizimisiz. Xato qilish narxi juda yuqori — begona odamni, bo'sh kadrni yoki foto/video orqali firibgarlikni ichkariga kiritib yubormang. Ammo shu bilan birga, haqiqiy, jonli talabalarni bekorga rad etib, ularning kirishiga to'sqinlik qilmang — bu ham jiddiy muammo.
 
-Rasm 1 = Foydalanuvchining ro'yxatdan o'tgan (enrolled) profil surati.
-${frameManifest}
-
-Yuqoridagi ${frames.length} ta kadr veb-kameradan ~2.5-3 soniyalik oraliqda (har biri ~700ms farq bilan), foydalanuvchiga HECH QANDAY ko'rsatma berilmasdan, u kameraga oddiy qarab turgan holatda avtomatik olingan.
+Rasm 1 = Foydalanuvchining ro'yxatdan o'tgan (enrolled) profil surati. U oddiy veb-kamerada olingan bo'lishi mumkin: sifati past, yorug'ligi boshqacha, burchagi boshqacha bo'lishi tabiiy.
+Rasm 2..${frames.length + 1} = veb-kameradan ~2.5-3 soniyalik oraliqda (har biri ~700ms farq bilan), foydalanuvchiga HECH QANDAY ko'rsatma berilmasdan, u kameraga oddiy qarab turgan holatda avtomatik olingan ketma-ket jonli kadrlar.
 
 Sizning to'rtta vazifangiz bor, BIRINCHISINI ALBATTA ENG AVVAL TEKSHIRING:
 
-0) YUZ MAVJUDLIGI (face presence) — ENG MUHIM SHART: Har bir kadrni alohida diqqat bilan ko'rib chiqing. Kadrlarning HAMMASIDA aniq, tanib bo'ladigan inson yuzi ko'rinishi SHART. Agar kadrlarning BIRORTASIDA HAM aniq inson yuzi ko'rinmasa — bo'sh xona, bo'sh stul, devor, qorong'i/xira tasvir, yuzning faqat qisman ko'rinishi, yuz kameradan juda uzoq yoki noaniq bo'lsa — bunda faceDetected=false, isMatch=false, livenessPassed=false, confidence=0 qiling va boshqa hech narsani tahlil qilmang. Bu shart bajarilmasa, qolgan vazifalarni BAJARMANG.
+0) YUZ MAVJUDLIGI (face presence) — ENG MUHIM SHART: Jonli kadrlarning har birini alohida diqqat bilan ko'rib chiqing. Kadrlarning HAMMASIDA aniq, tanib bo'ladigan inson yuzi ko'rinishi SHART. Agar kadrlarning BIRORTASIDA HAM aniq inson yuzi ko'rinmasa — bo'sh xona, bo'sh stul, devor, qorong'i/xira tasvir, yuzning faqat kichik bir qismi, yuz kameradan juda uzoq yoki noaniq bo'lsa — bunda faceDetected=false, isMatch=false, livenessPassed=false, confidence=0 qiling va boshqa hech narsani tahlil qilmang. Bu shart bajarilmasa, qolgan vazifalarni BAJARMANG.
 
 Faqat faceDetected=true bo'lgandagina quyidagi vazifalarni bajaring:
 
-1) YUZ MOSLIGI (identity match): Rasm 1 dagi shaxs bilan yuqoridagi kadrlardagi shaxs bir xil odammi? Yorug'lik, burchak, veb-kamera sifatidagi tabiiy farqlarga tolerant bo'ling, lekin shaxs boshqa odam bo'lsa hech qachon moslikni tasdiqlamang.
+1) YUZ MOSLIGI (identity match): Rasm 1 dagi shaxs bilan jonli kadrlardagi shaxs bir xil odammi? Yuzning barqaror belgilariga tayaning: ko'zlar orasidagi masofa, burun shakli, jag' va peshona chiziqlari, lablar shakli, quloq holati. Yorug'lik, burchak, veb-kamera sifati, soch turmagi, soqol, ko'zoynak, bosh kiyim, makiyaj yoki vaqt o'tishi bilan bo'ladigan tabiiy farqlar shaxsni o'zgartirmaydi — bularga tolerant bo'ling. Lekin shaxs boshqa odam bo'lsa hech qachon moslikni tasdiqlamang.
 
 2) PASSIV JONLILIK (liveness / anti-spoofing): MUHIM QOIDA — real odam kameraga tik, tinch o'tirganda, ayniqsa yaxshi yoritilgan xonada, ~2.5-3 soniya ichida kadrlar orasida farq JUDA KICHIK yoki deyarli sezilmas bo'lishi TABIIY holat — bu spoofing dalili EMAS. Faqat quyidagi ANIQ, ijobiy (pozitiv) firibgarlik belgilaridan kamida bittasi haqiqatan ko'rinsa livenessPassed=false va spoofSuspected=true qiling:
    - Qog'ozga chop etilgan fotosurat belgilari: qog'oz qirralari/burchaklari, uni ushlab turgan qo'l yoki barmoqlar ko'rinishi, notekis egilgan sirt.
@@ -577,117 +691,145 @@ Faqat faceDetected=true bo'lgandagina quyidagi vazifalarni bajaring:
    - Kadrlarda tasvir umuman harakatsiz (nafaqat yuz, balki fon, kamera shovqini va hattoki kompressiya artefaktlari ham) piksel-piksel AYNAN bir xil bo'lsa (bu ekrandan takroran ko'rsatilgan statik screenshot ekanini bildiradi).
    Agar bunday ANIQ belgi topilmasa — hattoki kadrlar juda o'xshash bo'lsa ham — buni spoofing deb hisoblamang, livenessPassed=true qiling. Shubha uchun asossiz ravishda rad etish xato hisoblanadi.
 
-3) ISHONCH DARAJASI: 0.0 dan 1.0 gacha, shaxsning mosligi qanchalik ishonchli ekanini bering. Web-kamera yorug'ligi, fokus, ekspozitsiya va bosh burchagidagi tabiiy farqlar uchun ballni asossiz pasaytirmang. Faqat shaxs boshqa odam bo'lsa yoki tasvir juda xira/noaniq bo'lsa past ball bering.
+3) ISHONCH DARAJASI: 0.0 dan 1.0 gacha o'nlik son (masalan 0.82), shaxsning mosligi qanchalik ishonchli ekanini bering. Web-kamera yorug'ligi, fokus, ekspozitsiya va bosh burchagidagi tabiiy farqlar uchun ballni asossiz pasaytirmang. Bir xil odam bo'lsa odatda 0.8 va undan yuqori bering; faqat shaxs boshqa odam bo'lsa yoki tasvir juda xira/noaniq bo'lsa past ball bering.
 
 Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
 {
-  "faceDetected": true yoki false (barcha kadrlarda aniq inson yuzi ko'rinadimi),
+  "faceDetected": true yoki false (barcha jonli kadrlarda aniq inson yuzi ko'rinadimi),
   "isMatch": true yoki false (shaxs mosligi; faceDetected=false bo'lsa avtomatik false),
   "livenessPassed": true yoki false (faqat ANIQ spoofing dalili topilsa false qiling, aks holda true; faceDetected=false bo'lsa avtomatik false),
   "spoofSuspected": true yoki false (faqat ANIQ foto/ekran belgisi topilsa true qiling),
-  "confidence": 0.0 dan 1.0 gacha son (faceDetected=false bo'lsa 0),
+  "confidence": 0.0 dan 1.0 gacha o'nlik son (faceDetected=false bo'lsa 0),
   "reason": "O'zbek tilida qisqa, aniq tushuntirish"
 }`;
 
-      // Try fast multimodal models supporting vision
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
       const responseSchema = {
         type: Type.OBJECT,
         properties: {
-          faceDetected: { type: Type.BOOLEAN, description: "true only if a clear human face is visible in every frame" },
+          faceDetected: { type: Type.BOOLEAN, description: "true only if a clear human face is visible in every live frame" },
           isMatch: { type: Type.BOOLEAN, description: "true if the identity in the frames matches the enrolled photo" },
           livenessPassed: { type: Type.BOOLEAN, description: "true only if passive liveness is confirmed with no spoofing signs" },
           spoofSuspected: { type: Type.BOOLEAN, description: "true if there is any sign of a photo, screen or video replay attack" },
-          confidence: { type: Type.NUMBER, description: "Identity match confidence from 0.0 to 1.0" },
+          confidence: { type: Type.NUMBER, description: "Identity match confidence as a decimal from 0.0 to 1.0" },
           reason: { type: Type.STRING, description: "Brief explanation in Uzbek" }
         },
         required: ["faceDetected", "isMatch", "livenessPassed", "spoofSuspected", "confidence", "reason"]
       };
 
-      let response: any = null;
-      let lastError: any = null;
+      const apiKeys = getFaceIdKeys();
+      if (apiKeys.length === 0) {
+        return denyClosed(503, 'AI_NOT_CONFIGURED', "Face ID xizmati serverda sozlanmagan (GEMINI_API_KEY yo'q). Iltimos, administratorga xabar bering.");
+      }
 
-      for (const modelName of models) {
-        try {
-          console.log(`[FACE VERIFICATION] Trying model: ${modelName}...`);
-          response = await safeGenerateContent(modelName, {
-            contents: [{
-              role: "user",
-              parts: [toPart(enrolledImage), ...frameParts, { text: prompt }]
-            }],
-            config: { responseMimeType: "application/json", responseSchema }
-          }, 1, 300);
-          if (response && response.text) {
-            console.log(`[FACE VERIFICATION] Success with model: ${modelName}`);
-            break;
+      const MAX_ATTEMPTS_PER_MODEL = 2;
+      let responseText: string | null = null;
+      let usedModel: string | null = null;
+      let usedKey: string | null = null;
+      let lastClassified: ClassifiedAiError | null = null;
+
+      keyLoop:
+      for (let keyIdx = 0; keyIdx < apiKeys.length; keyIdx++) {
+      const apiKey = apiKeys[keyIdx];
+      const aiInstance = makeFaceIdAI(apiKey);
+      if (remaining() < FACE_ID_MIN_REMAINING_MS) break;
+      if (keyIdx > 0) console.warn(`[FACE VERIFICATION] Switching to fallback key #${keyIdx + 1} (${maskApiKey(apiKey)})`);
+
+      modelLoop:
+      for (const modelName of FACE_ID_MODELS) {
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_MODEL; attempt++) {
+          const timeLeft = remaining();
+          if (timeLeft < FACE_ID_MIN_REMAINING_MS) {
+            console.warn(`[FACE VERIFICATION] Time budget exhausted before trying ${modelName} (attempt ${attempt}).`);
+            if (!lastClassified) {
+              lastClassified = { code: 'AI_TIMEOUT', httpStatus: 504, reason: "AI tekshiruv javobi kechikdi. Iltimos, qayta urinib ko'ring.", transient: true, skipModel: false };
+            }
+            break modelLoop;
           }
-        } catch (err: any) {
-          console.log(`[FACE VERIFICATION] Model ${modelName} unavailable, trying next model...`, err?.message);
-          lastError = err;
-          response = null;
-        }
-      }
-
-      // NO FALLBACK: if every model failed or returned nothing, deny access.
-      // This used to silently return isMatch:true here — that was the security hole.
-      if (!response || !response.text) {
-        const errorMsg = lastError?.message || "Barcha AI modellari band yoki xizmat javob bermadi";
-        console.error(`[FACE VERIFICATION] All models failed. Last error: ${errorMsg}`);
-        return denyClosed(503, `Biometrik tekshiruv xizmati vaqtincha ishlamayapti (${errorMsg.slice(0, 100)}). Iltimos, birozdan so'ng qayta urinib ko'ring.`);
-      }
-
-      let result: any;
-      try {
-        let cleanText = response.text.trim();
-        if (cleanText.startsWith('```')) {
-          cleanText = cleanText.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
-        }
-        result = JSON.parse(cleanText);
-      } catch (parseErr) {
-        console.warn('[FACE VERIFICATION] JSON parse failed. Raw text:', response.text);
-        const firstBrace = response.text.indexOf('{');
-        const lastBrace = response.text.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          const callTimeout = Math.min(FACE_ID_PER_CALL_TIMEOUT_MS, timeLeft - 1000);
           try {
-            result = JSON.parse(response.text.substring(firstBrace, lastBrace + 1));
-          } catch {
-            return denyClosed(502, "AI javobini o'qib bo'lmadi. Xavfsizlik nuqtai nazaridan kirish rad etildi.");
+            console.log(`[FACE VERIFICATION] Trying model ${modelName} (attempt ${attempt}/${MAX_ATTEMPTS_PER_MODEL}, timeout ${callTimeout}ms)...`);
+            const response: any = await withTimeout(
+              aiInstance.models.generateContent({
+                model: modelName,
+                contents: [{ role: "user", parts: [...imageParts, { text: prompt }] }],
+                config: {
+                  responseMimeType: "application/json",
+                  responseSchema,
+                  temperature: 0.1
+                }
+              }),
+              callTimeout,
+              `Face ID model ${modelName}`
+            );
+            const text = typeof response?.text === 'string' ? response.text : '';
+            if (text.trim()) {
+              responseText = text;
+              usedModel = modelName;
+              usedKey = maskApiKey(apiKey);
+              console.log(`[FACE VERIFICATION] Success with model: ${modelName} (key ${usedKey}) in ${Date.now() - startedAt}ms`);
+              break keyLoop;
+            }
+            // Empty body (e.g. safety block) — treat as a bad response and move on.
+            lastClassified = { code: 'AI_BAD_RESPONSE', httpStatus: 502, reason: "AI javobi bo'sh keldi.", transient: false, skipModel: true };
+            console.warn(`[FACE VERIFICATION] Model ${modelName} returned an empty answer; trying next model.`);
+            break;
+          } catch (err: any) {
+            const classified = classifyAiError(err);
+            lastClassified = classified;
+            console.warn(`[FACE VERIFICATION] Model ${modelName} attempt ${attempt} failed (${classified.code}): ${err?.message || err}`);
+            // Invalid key / billing problem: no model on this key will work — next key.
+            if (classified.code === 'AI_NOT_CONFIGURED') continue keyLoop;
+            if (classified.skipModel) break;
+            const waitMs = classified.retryAfterSec ? classified.retryAfterSec * 1000 : 600 * attempt;
+            const canRetrySameModel = classified.transient && attempt < MAX_ATTEMPTS_PER_MODEL && waitMs + FACE_ID_MIN_REMAINING_MS < remaining();
+            if (canRetrySameModel) {
+              await new Promise(resolve => setTimeout(resolve, waitMs));
+              continue;
+            }
+            break; // next model
           }
-        } else {
-          return denyClosed(502, "AI javobini o'qib bo'lmadi. Xavfsizlik nuqtai nazaridan kirish rad etildi.");
         }
       }
+      }
 
-      // faceDetected defaults to false (fail-closed) unless the AI explicitly confirms it.
-      const faceDetected = result?.faceDetected === true;
-      const isMatch = result?.isMatch === true;
-      const livenessPassed = result?.livenessPassed === true;
-      const spoofSuspected = result?.spoofSuspected === true;
-      const confidence = typeof result?.confidence === 'number' ? result.confidence : parseFloat(result?.confidence) || 0;
-      const reason = typeof result?.reason === 'string' && result.reason
-        ? result.reason
-        : (!faceDetected ? "Kadrlarda aniq inson yuzi topilmadi." : "Tekshiruv natijasi noaniq.");
+      // NO FALLBACK: if every key/model failed or returned nothing, deny access.
+      // This used to silently return isMatch:true here — that was the security hole.
+      if (!responseText) {
+        const c = lastClassified || { code: 'AI_UNAVAILABLE' as FaceDenyCode, httpStatus: 503, reason: "Biometrik tekshiruv xizmati vaqtincha ishlamayapti. Iltimos, birozdan so'ng qayta urinib ko'ring.", transient: true, skipModel: false };
+        return denyClosed(c.httpStatus, c.code, c.reason, c.retryAfterSec ? { retryAfterSec: c.retryAfterSec } : {});
+      }
 
-      // faceDetected is checked first and independently: no face in frame means
-      // automatic denial regardless of what isMatch/confidence the model returned.
-      const verified = faceDetected && isMatch && livenessPassed && !spoofSuspected && confidence >= FACE_MATCH_THRESHOLD;
+      const parsed = parseModelJson(responseText);
+      if (!parsed) {
+        console.warn('[FACE VERIFICATION] JSON parse failed. Raw text:', responseText.slice(0, 500));
+        return denyClosed(502, 'AI_BAD_RESPONSE', "AI javobini o'qib bo'lmadi. Xavfsizlik nuqtai nazaridan kirish rad etildi. Iltimos, qayta urinib ko'ring.");
+      }
 
-      console.log(`[FACE VERIFICATION] Result: verified=${verified} faceDetected=${faceDetected} isMatch=${isMatch} liveness=${livenessPassed} spoof=${spoofSuspected} confidence=${confidence}`);
+      // The decision is made by the unit-tested policy module: faceDetected is
+      // checked first, then spoof/liveness, then identity, then the threshold.
+      const decision = decideVerification(normalizeVerdict(parsed), FACE_MATCH_THRESHOLD);
+
+      console.log(`[FACE VERIFICATION] Result: verified=${decision.verified} code=${decision.code || 'OK'} faceDetected=${decision.faceDetected} isMatch=${decision.isMatch} liveness=${decision.livenessPassed} spoof=${decision.spoofSuspected} confidence=${decision.confidence} model=${usedModel} took=${Date.now() - startedAt}ms`);
 
       return resValue.json({
-        verified,
-        isMatch: verified, // kept for frontend backward-compatibility; only true when fully verified
-        faceDetected,
-        livenessPassed,
-        spoofSuspected,
-        confidence,
-        reason
+        verified: decision.verified,
+        isMatch: decision.verified, // kept for frontend backward-compatibility; only true when fully verified
+        faceDetected: decision.faceDetected,
+        livenessPassed: decision.livenessPassed,
+        spoofSuspected: decision.spoofSuspected,
+        confidence: decision.confidence,
+        code: decision.code ?? null,
+        retryable: decision.retryable,
+        reason: decision.reason,
+        model: usedModel,
+        key: usedKey,
+        durationMs: Date.now() - startedAt
       });
 
     } catch (error: any) {
       console.error('[FACE VERIFICATION] Unexpected error:', error);
       // NO FALLBACK on exceptions either — deny closed.
-      return denyClosed(500, error?.message || 'Yuzni tekshirish jarayonida kutilmagan xatolik yuz berdi. Xavfsizlik nuqtai nazaridan kirish rad etildi.');
+      return denyClosed(500, 'AI_UNAVAILABLE', 'Yuzni tekshirish jarayonida kutilmagan xatolik yuz berdi. Xavfsizlik nuqtai nazaridan kirish rad etildi. Iltimos, qayta urinib ko\'ring.');
     }
   });
 

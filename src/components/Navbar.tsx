@@ -3,6 +3,7 @@ import { Menu, X, BookOpen, Microscope, LogOut, User as UserIcon, ChevronDown, S
 import { useState, useEffect } from 'react';
 import { signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth';
 import { auth, googleProvider, robustSignInAnonymously, reconnectFirestore } from '../lib/firebase';
+import { clearFaceIdSession } from '../lib/faceIdSession';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
 import GlobalSearch from './GlobalSearch';
@@ -656,6 +657,7 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
 
   const handleGoogleLogout = async () => {
     try {
+      clearFaceIdSession(auth.currentUser?.uid);
       await signOut(auth);
       onLogout();
     } catch (error) {
