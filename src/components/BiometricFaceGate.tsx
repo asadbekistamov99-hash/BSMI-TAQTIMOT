@@ -221,7 +221,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     };
 
     if (isEnrolled && enrolledPhoto && cameraActive && videoPlayable && !capturedImage && !verifying && !verificationResult && livenessStage === 'idle') {
-      retryTimer = setTimeout(attemptStart, 1500); // let exposure settle first
+      retryTimer = setTimeout(attemptStart, 1000); // let camera exposure settle smoothly
     }
 
     return () => {
@@ -243,13 +243,13 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    const targetWidth = 400;
+    const targetWidth = 480;
     const aspectRatio = video.videoWidth / video.videoHeight;
     const targetHeight = Math.round(targetWidth / aspectRatio);
     canvas.width = targetWidth;
     canvas.height = targetHeight;
     ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-    return canvas.toDataURL('image/jpeg', 0.80);
+    return canvas.toDataURL('image/jpeg', 0.85);
   };
 
   // Legacy single-shot capture used only for the enrollment photo (no liveness needed there).
@@ -270,8 +270,8 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
   // face never looks pixel-identical between frames) and for spoofing signs (a
   // held-up photo or a phone/monitor screen). Nothing here grants access — only
   // the backend's verdict does.
-  const PASSIVE_FRAME_COUNT = 5;
-  const PASSIVE_FRAME_INTERVAL_MS = 700;
+  const PASSIVE_FRAME_COUNT = 3;
+  const PASSIVE_FRAME_INTERVAL_MS = 600;
 
   const runLivenessSequence = async () => {
     if (livenessStage !== 'idle') return;

@@ -505,7 +505,7 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
   // liveness from natural micro-movement between frames and from spoofing artifacts
   // (identical frames, screen glare/moire, printed-photo edges, unnaturally flat
   // lighting), the same way a passive liveness check (e.g. OneID-style) works.
-  const FACE_MATCH_THRESHOLD = 0.85;
+  const FACE_MATCH_THRESHOLD = 0.75;
   const MIN_FRAMES_REQUIRED = 3;
 
   app.post('/api/verify-face', async (req: express.Request, resValue: any) => {
@@ -589,10 +589,8 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
   "reason": "O'zbek tilida qisqa, aniq tushuntirish"
 }`;
 
-      // Only two fast models are tried for this endpoint (unlike other endpoints)
-      // to stay comfortably inside the serverless function's time budget even
-      // when sending several images per request.
-      const models = ["gemini-2.5-flash", "gemini-flash-latest"];
+      // Try fast multimodal models supporting vision
+      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
       const responseSchema = {
         type: Type.OBJECT,
         properties: {
@@ -633,7 +631,9 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
       // NO FALLBACK: if every model failed or returned nothing, deny access.
       // This used to silently return isMatch:true here — that was the security hole.
       if (!response || !response.text) {
-        return denyClosed(503, "Biometrik tekshiruv xizmati vaqtincha ishlamayapti. Iltimos, birozdan so'ng qayta urinib ko'ring. Xavfsizlik nuqtai nazaridan kirish rad etildi.");
+        const errorMsg = lastError?.message || "Barcha AI modellari band yoki xizmat javob bermadi";
+        console.error(`[FACE VERIFICATION] All models failed. Last error: ${errorMsg}`);
+        return denyClosed(503, `Biometrik tekshiruv xizmati vaqtincha ishlamayapti (${errorMsg.slice(0, 100)}). Iltimos, birozdan so'ng qayta urinib ko'ring.`);
       }
 
       let result: any;
