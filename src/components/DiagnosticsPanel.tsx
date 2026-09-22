@@ -93,6 +93,13 @@ export default function DiagnosticsPanel() {
     message: 'Tekshirilmoqda...'
   });
 
+  const [faceIdStatus, setFaceIdStatus] = useState<ServiceCheckResult>({
+    id: 'face_id_service',
+    name: 'Face ID (AI yuz tekshiruvi)',
+    status: 'pending',
+    message: 'Tekshirilmoqda...'
+  });
+
   const maskSecret = (val: string | undefined): string => {
     if (!val || val === 'undefined' || val === 'null' || val.trim() === '') {
       return "O'rnatilmagan (bo'sh)";
@@ -380,6 +387,54 @@ export default function DiagnosticsPanel() {
       }
     }
 
+    // 7. Face ID verification service (server-side Gemini key + model list).
+    // A missing key here is the #1 reason every student gets "xizmat ishlamayapti".
+    const startFace = performance.now();
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch('/api/verify-face/health', { signal: controller.signal, cache: 'no-store' });
+      clearTimeout(timer);
+      const latency = Math.round(performance.now() - startFace);
+      const data: any = await res.json().catch(() => null);
+      if (!data || typeof data.aiConfigured !== 'boolean') {
+        setFaceIdStatus({
+          id: 'face_id_service',
+          name: 'Face ID (AI yuz tekshiruvi)',
+          status: 'error',
+          message: `Server /api/verify-face/health uchun noto‘g‘ri javob qaytardi (HTTP ${res.status})`,
+          details: 'Vercel funksiyasi ishlamayotgan yoki eski build. Deploy loglarini tekshiring.',
+          latencyMs: latency
+        });
+      } else if (data.aiConfigured) {
+        setFaceIdStatus({
+          id: 'face_id_service',
+          name: 'Face ID (AI yuz tekshiruvi)',
+          status: 'healthy',
+          message: `Xizmat tayyor. Moslik chegarasi: ${Math.round((data.threshold || 0) * 100)}%`,
+          details: `Modellar: ${(data.models || []).join(', ')} (${latency}ms)`,
+          latencyMs: latency
+        });
+      } else {
+        setFaceIdStatus({
+          id: 'face_id_service',
+          name: 'Face ID (AI yuz tekshiruvi)',
+          status: 'error',
+          message: 'GEMINI_API_KEY serverda sozlanmagan — talabalar Face ID dan o‘ta olmaydi',
+          details: 'Vercel → Settings → Environment Variables bo‘limida GEMINI_API_KEY ni kiriting va Redeploy qiling.',
+          latencyMs: latency
+        });
+      }
+    } catch (err: any) {
+      setFaceIdStatus({
+        id: 'face_id_service',
+        name: 'Face ID (AI yuz tekshiruvi)',
+        status: 'error',
+        message: 'Face ID xizmatiga ulanib bo‘lmadi',
+        details: err?.name === 'AbortError' ? 'Server 10 soniyada javob bermadi' : (err?.message || String(err))
+      });
+    }
+
     setLastCheckTime(new Date());
     setIsRunningChecks(false);
   }, [evaluateEnvVariables]);
@@ -394,7 +449,8 @@ export default function DiagnosticsPanel() {
     firebaseStorageStatus,
     supabaseConfigStatus,
     supabaseAuthStatus,
-    supabaseStorageStatus
+    supabaseStorageStatus,
+    faceIdStatus
   ];
 
   const healthyCount = allServices.filter(s => s.status === 'healthy').length;

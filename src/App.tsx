@@ -19,6 +19,7 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import AnnouncementBar from './components/AnnouncementBar';
 import BiometricFaceGate from './components/BiometricFaceGate';
+import { readFaceIdSession, clearFaceIdSession } from './lib/faceIdSession';
 import ActivityTracker from './components/ActivityTracker';
 import DailyRevisionReminder from './components/DailyRevisionReminder';
 import PomodoroTimer from './components/PomodoroTimer';
@@ -117,10 +118,16 @@ export default function App() {
         }
       });
     } catch (e) {}
-    // Face verification starts as false every time the application is loaded, user switches accounts,
-    // or when the user's face ID enrollment state changes.
-    setFaceIdVerified(false);
-  }, [user?.uid, user?.faceIdEnrolled]);
+    // Face verification resets whenever the account changes. A check passed in
+    // THIS browser tab within the last few hours is remembered (see
+    // src/lib/faceIdSession.ts) so a page reload does not force another AI
+    // round-trip. Enrollment state is deliberately NOT a dependency here: the
+    // moment a student enrolls, the live user document flips faceIdEnrolled to
+    // true, and resetting here would have re-opened the gate right after
+    // enrollment. An admin reset (faceIdEnrolled → false) still re-opens the
+    // gate through needsFaceVerification below.
+    setFaceIdVerified(readFaceIdSession(user?.uid));
+  }, [user?.uid]);
 
   useEffect(() => {
     // Check if we have a locally saved virtual guest session
@@ -236,6 +243,7 @@ export default function App() {
 
   const handleAdminLogout = async () => {
     try {
+      clearFaceIdSession(user?.uid);
       await signOut(auth);
       sessionStorage.removeItem('adminToken');
       sessionStorage.removeItem('virtualGuestUser');

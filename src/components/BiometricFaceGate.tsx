@@ -1,20 +1,93 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { doc, getDoc, updateDoc, setDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
-import { Camera, ShieldCheck, ShieldAlert, UserCheck, RefreshCw, LogOut, CheckCircle2, AlertTriangle, Eye } from 'lucide-react';
+import { Camera, ShieldCheck, ShieldAlert, UserCheck, RefreshCw, LogOut, CheckCircle2, AlertTriangle, Eye, ShieldOff } from 'lucide-react';
+import {
+  analyzeLuminance,
+  assessFrameQuality,
+  shouldAutoRetry,
+  FACE_ID_CLIENT_TIMEOUT_MS,
+  type FaceResultCode
+} from '../lib/faceVerificationPolicy';
+import { writeFaceIdSession, clearFaceIdSession } from '../lib/faceIdSession';
 
 interface BiometricFaceGateProps {
   user: any;
   onVerified: () => void;
 }
 
+interface VerificationOutcome {
+  success: boolean;
+  isMatch?: boolean;
+  confidence?: number;
+  code?: FaceResultCode;
+  retryable?: boolean;
+  reason?: string;
+  message?: string;
+}
+
+// === Capture settings ===
+// 480px wide JPEG frames (~50-90 KB each) give the model enough facial detail
+// without blowing the request past Vercel's 4.5 MB body limit (5 frames + the
+// enrolled photo ≈ 0.5 MB).
+const CAPTURE_WIDTH = 480;
+const CAPTURE_QUALITY = 0.85;
+const PASSIVE_FRAME_COUNT = 5;
+const PASSIVE_FRAME_INTERVAL_MS = 700;
+const CAMERA_START_TIMEOUT_MS = 12000;
+const ENROLL_SAVE_TIMEOUT_MS = 20000;
+const MAX_AUTO_RETRIES = 1;
+const AUTO_RETRY_DELAY_MS = 1500;
+
+const sleep = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      v => { clearTimeout(timer); resolve(v); },
+      e => { clearTimeout(timer); reject(e); }
+    );
+  });
+}
+
+function describeCameraError(err: any): string {
+  const name = String(err?.name || '');
+  const msg = String(err?.message || '');
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || /permission/i.test(msg)) {
+    return "Kameraga ruxsat berilmadi. Brauzer manzil satridagi qulf belgisini bosib, kameraga ruxsat bering va sahifani yangilang.";
+  }
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    return "Qurilmada kamera topilmadi. Iltimos, kamerasi bor qurilmadan foydalaning.";
+  }
+  if (name === 'NotReadableError' || name === 'TrackStartError' || name === 'AbortError') {
+    return "Kamera boshqa dastur (Zoom, Telegram, boshqa brauzer oynasi) tomonidan band. Uni yopib, qayta urinib ko'ring.";
+  }
+  if (name === 'SecurityError' || /secure/i.test(msg)) {
+    return "Kamera faqat xavfsiz (HTTPS) ulanishda ishlaydi. Sayt manzili https:// bilan boshlanishini tekshiring.";
+  }
+  if (/timed out|Timeout/i.test(msg) || name === 'TimeoutError') {
+    return "Kameradan javob kelishi cho'zilib ketdi. Qurilma kamerasini va brauzer ruxsatlarini tekshirib, qayta urinib ko'ring.";
+  }
+  return "Kameraga ulanishda xatolik yuz berdi. Iltimos, kamera ruxsatini yoqing va qayta urinib ko'ring.";
+}
+
 export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGateProps) {
   const [profile, setProfile] = useState<any>(user);
-  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [loadingProfile] = useState(false);
+  // When the student explicitly asks to re-enroll, this overrides whatever the
+  // Firestore document says until the new photo is saved. (Previously the
+  // "re-take photo" button silently did nothing for enrolled users, because the
+  // enrolled flag from the live user document could never be cleared locally —
+  // students with a bad enrollment photo were locked out permanently.)
+  const [forceEnroll, setForceEnroll] = useState(false);
 
-  const isEnrolled = !!(user?.faceIdEnrolled || profile?.faceIdEnrolled);
-  const enrolledPhoto = profile?.faceIdPhoto || user?.faceIdPhoto;
+  const enrolledPhoto: string | null = profile?.faceIdPhoto || user?.faceIdPhoto || null;
+  const enrolledFlag = !!(user?.faceIdEnrolled || profile?.faceIdEnrolled);
+  // An "enrolled" flag without a stored photo is unusable → treat as not enrolled
+  // so the student can (re)enroll instead of waiting forever for a check that can't start.
+  const isEnrolled = !forceEnroll && enrolledFlag && !!enrolledPhoto;
 
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
@@ -22,15 +95,11 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [videoPlayable, setVideoPlayable] = useState(false);
-  const [verificationResult, setVerificationResult] = useState<{
-    success: boolean;
-    isMatch?: boolean;
-    confidence?: number;
-    reason?: string;
-    message?: string;
-  } | null>(null);
+  const [verificationResult, setVerificationResult] = useState<VerificationOutcome | null>(null);
   const [enrolling, setEnrolling] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
+  const [statusNote, setStatusNote] = useState<string | null>(null);
+  const [serviceHealth, setServiceHealth] = useState<{ state: 'unknown' | 'ok' | 'down'; message?: string }>({ state: 'unknown' });
 
   // === Passive liveness state ===
   // No visible instructions are ever shown to the user (no "blink", "turn head", etc).
@@ -38,20 +107,52 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
   // camera normally; the backend AI compares them for natural micro-movement and
   // for spoofing signs (identical frames, screen glare, paper edges, flat lighting).
   const [livenessStage, setLivenessStage] = useState<'idle' | 'capturing' | 'done'>('idle');
-  const capturedFramesRef = useRef<{ type: string; image: string }[]>([]);
+  const livenessStageRef = useRef<'idle' | 'capturing' | 'done'>('idle');
+  const autoRetryCountRef = useRef(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const sampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const scanIntervalRef = useRef<any>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const mountedRef = useRef(true);
+  const startingCameraRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const setStage = (stage: 'idle' | 'capturing' | 'done') => {
+    livenessStageRef.current = stage;
+    setLivenessStage(stage);
+  };
+
+  // Fire-and-forget audit log. Firestore write promises do not resolve while the
+  // device is offline, so these must NEVER be awaited on the path that lets the
+  // student in — a flaky connection used to freeze the gate on "Yuz tasdiqlandi".
+  const writeAudit = useCallback((entry: Record<string, unknown>) => {
+    try {
+      addDoc(collection(db, 'biometric_audit'), {
+        userId: user?.uid || 'noma\'lum',
+        userEmail: user?.email || 'noma\'lum',
+        userName: profile?.displayName || user?.displayName || 'Foydalanuvchi',
+        timestamp: serverTimestamp(),
+        ...entry
+      }).catch(err => console.error("Error writing biometric audit log:", err));
+    } catch (err) {
+      console.error("Error queuing biometric audit log:", err);
+    }
+  }, [user, profile]);
 
   // Load user profile from Firestore to see Face ID state in background
   useEffect(() => {
     async function loadUserProfile() {
-      if (!user) return;
+      if (!user?.uid) return;
       try {
         const userRef = doc(db, 'users', user.uid);
         const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
+        if (userSnap.exists() && mountedRef.current) {
           setProfile(userSnap.data());
         }
       } catch (err) {
@@ -59,97 +160,147 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
       }
     }
     loadUserProfile();
-  }, [user]);
+  }, [user?.uid]);
 
-  // Start webcam
-  const startCamera = async () => {
-    try {
-      setCameraError(null);
-      setCapturedImage(null);
-      setVerificationResult(null);
-      setVideoPlayable(false);
+  // Pre-flight: ask the server whether Face ID is configured at all. If the API
+  // key is missing we say so immediately instead of making the student go through
+  // the camera flow only to be told "service unavailable" every single time.
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    fetch('/api/verify-face/health', { signal: controller.signal, cache: 'no-store' })
+      .then(async res => {
+        const data = await res.json().catch(() => null);
+        if (cancelled || !data || typeof data.aiConfigured !== 'boolean') return;
+        setServiceHealth(data.aiConfigured
+          ? { state: 'ok' }
+          : { state: 'down', message: data.message || "Face ID xizmati serverda sozlanmagan. Administratorga xabar bering." });
+      })
+      .catch(() => { /* unknown → proceed normally; the verify call reports precisely */ })
+      .finally(() => clearTimeout(timer));
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer); };
+  }, []);
 
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Sizning brauzeringiz yoki qurilmangiz video kamerani qo'llab-quvvatlamaydi.");
-      }
-
-      // Add a 10-second timeout race to prevent hanging if video source fails to initialize
-      const getUserMediaWithTimeout = () => {
-        return new Promise<MediaStream>((resolve, reject) => {
-          const timeoutId = setTimeout(() => {
-            reject(new Error("Kamera manbasini ishga tushirishda vaqt tugadi (Timeout starting video source)"));
-          }, 10000);
-
-          navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
-          }).then(stream => {
-            clearTimeout(timeoutId);
-            resolve(stream);
-          }).catch(err => {
-            clearTimeout(timeoutId);
-            reject(err);
-          });
-        });
-      };
-
-      const stream = await getUserMediaWithTimeout();
-      setCameraStream(stream);
-      setCameraActive(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().then(() => {
-          setVideoPlayable(true);
-        }).catch(err => console.warn("play in startCamera failed:", err));
-      }
-    } catch (err: any) {
-      console.warn("Webcam access prevented or error:", err?.message || err);
-      const isTimeout = err?.message?.includes("Timeout") || err?.name === "TimeoutError";
-      const isPermissionDenied = err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError" || err?.message?.includes("Permission denied") || err?.message?.includes("permission");
-      
-      if (isPermissionDenied) {
-        setCameraError(
-          "Kameraga ulanish uchun ruxsat berilmadi. Iltimos, brauzer sozlamalarida kameraga ruxsat bering va qayta urinib ko'ring."
-        );
-      } else if (isTimeout) {
-        setCameraError(
-          "Kameradan javob kelishi cho'zilib ketdi. Iltimos, qurilmangiz kamerasini va brauzer ruxsatlarini tekshiring."
-        );
-      } else {
-        setCameraError(
-          "Kameraga ulanishda xatolik yuz berdi. Iltimos, kamera ruxsatini yoqing va qayta urinib ko'ring."
-        );
-      }
+  const stopStream = () => {
+    const s = streamRef.current;
+    if (s) {
+      s.getTracks().forEach(track => { try { track.stop(); } catch { /* ignore */ } });
+      streamRef.current = null;
     }
   };
 
   // Stop webcam
   const stopCamera = () => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-      setCameraStream(null);
-    }
+    stopStream();
+    setCameraStream(null);
     setCameraActive(false);
     setVideoPlayable(false);
     clearInterval(scanIntervalRef.current);
     setScanProgress(0);
   };
 
+  // Start webcam (with constraint fallbacks: some phones/laptops reject the
+  // ideal-resolution request but happily give a default stream).
+  const startCamera = async () => {
+    if (startingCameraRef.current) return;
+    startingCameraRef.current = true;
+    try {
+      setCameraError(null);
+      setCapturedImage(null);
+      setVerificationResult(null);
+      setVideoPlayable(false);
+      setStage('idle');
+      stopStream();
+
+      if (typeof window !== 'undefined' && window.isSecureContext === false) {
+        throw Object.assign(new Error('insecure context'), { name: 'SecurityError' });
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraError("Sizning brauzeringiz yoki qurilmangiz video kamerani qo'llab-quvvatlamaydi. Chrome, Safari yoki Firefox'ning yangi versiyasidan foydalaning.");
+        return;
+      }
+
+      const constraintsList: MediaStreamConstraints[] = [
+        { video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false },
+        { video: { facingMode: 'user' }, audio: false },
+        { video: true, audio: false }
+      ];
+
+      let stream: MediaStream | null = null;
+      let lastErr: any = null;
+      for (const constraints of constraintsList) {
+        try {
+          stream = await withTimeout(
+            navigator.mediaDevices.getUserMedia(constraints),
+            CAMERA_START_TIMEOUT_MS,
+            "Kamera manbasini ishga tushirishda vaqt tugadi (Timeout starting video source)"
+          );
+          break;
+        } catch (err: any) {
+          lastErr = err;
+          const name = String(err?.name || '');
+          // Permission / no-device errors won't change with looser constraints.
+          if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'NotFoundError' || name === 'DevicesNotFoundError' || name === 'SecurityError') {
+            break;
+          }
+        }
+      }
+
+      if (!stream) {
+        console.warn("Webcam access prevented or error:", lastErr?.message || lastErr);
+        setCameraError(describeCameraError(lastErr));
+        return;
+      }
+      if (!mountedRef.current) {
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
+
+      const track = stream.getVideoTracks()[0];
+      if (track) {
+        track.onended = () => {
+          if (!mountedRef.current) return;
+          if (streamRef.current === stream) {
+            stopCamera();
+            if (livenessStageRef.current === 'capturing') {
+              setStage('idle');
+            }
+            setCameraError("Kamera uzildi (boshqa dastur uni band qildi yoki qurilma uzildi). Qayta urinib ko'ring.");
+          }
+        };
+      }
+
+      streamRef.current = stream;
+      setCameraStream(stream);
+      setCameraActive(true);
+    } catch (err: any) {
+      console.warn("Webcam access prevented or error:", err?.message || err);
+      setCameraError(describeCameraError(err));
+    } finally {
+      startingCameraRef.current = false;
+    }
+  };
+
   // Bind camera stream to video element when video element is rendered or stream changes
   useEffect(() => {
-    if (videoRef.current && cameraStream) {
-      if (videoRef.current.srcObject !== cameraStream) {
-        videoRef.current.srcObject = cameraStream;
+    const video = videoRef.current;
+    if (video && cameraStream) {
+      if (video.srcObject !== cameraStream) {
+        video.srcObject = cameraStream;
       }
-      videoRef.current.play().then(() => {
-        setVideoPlayable(true);
+      video.play().then(() => {
+        if (mountedRef.current) setVideoPlayable(true);
       }).catch(err => {
         console.warn("Failed to play video in useEffect:", err);
       });
     }
   }, [cameraStream, cameraActive]);
 
-  // Reset verification and restart camera
+  // Reset verification and restart camera (manual retry resets the auto-retry budget)
   const handleResetVerification = () => {
+    autoRetryCountRef.current = 0;
+    setStatusNote(null);
     setCapturedImage(null);
     setVerificationResult(null);
     setCameraError(null);
@@ -157,38 +308,36 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     startCamera();
   };
 
-  // Re-enroll: Allows student to overwrite old/bad photo with a fresh clear photo
+  // Re-enroll: lets the student overwrite an old/bad photo with a fresh clear one.
   const handleReEnroll = () => {
+    autoRetryCountRef.current = 0;
+    setStatusNote(null);
     setCapturedImage(null);
     setVerificationResult(null);
     setCameraError(null);
     setVideoPlayable(false);
-    setProfile((prev: any) => ({
-      ...prev,
-      faceIdEnrolled: false,
-      faceIdPhoto: null
-    }));
+    setStage('idle');
+    setForceEnroll(true);
     startCamera();
   };
 
   // Clean up camera on unmount
   useEffect(() => {
     return () => {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-      }
+      stopStream();
       clearInterval(scanIntervalRef.current);
     };
-  }, [cameraStream]);
+  }, []);
 
-  // Auto-start camera when profile is loaded
+  // Auto-start camera once
   useEffect(() => {
     if (!loadingProfile) {
       startCamera();
     }
     return () => {
-      stopCamera();
+      stopStream();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingProfile]);
 
   // Animate a simulated scanline when camera is active
@@ -204,23 +353,27 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     return () => clearInterval(scanIntervalRef.current);
   }, [cameraActive, capturedImage]);
 
-  // Auto-start the liveness challenge sequence once camera is ready and user is enrolled.
+  const readyForAutoCheck =
+    isEnrolled && !!enrolledPhoto && cameraActive && videoPlayable &&
+    !capturedImage && !verifying && !verificationResult && livenessStage === 'idle' &&
+    serviceHealth.state !== 'down';
+
+  // Auto-start the passive liveness sequence once camera is ready and user is enrolled.
   useEffect(() => {
     let active = true;
     let retryTimer: any = null;
 
     const attemptStart = () => {
       if (!active) return;
-      if (isEnrolled && enrolledPhoto && cameraActive && videoPlayable && !capturedImage && !verifying && !verificationResult && livenessStage === 'idle') {
-        if (videoRef.current && videoRef.current.videoWidth > 0) {
-          runLivenessSequence();
-        } else {
-          retryTimer = setTimeout(attemptStart, 500);
-        }
+      if (!readyForAutoCheck) return;
+      if (videoRef.current && videoRef.current.videoWidth > 0) {
+        runLivenessSequence();
+      } else {
+        retryTimer = setTimeout(attemptStart, 500);
       }
     };
 
-    if (isEnrolled && enrolledPhoto && cameraActive && videoPlayable && !capturedImage && !verifying && !verificationResult && livenessStage === 'idle') {
+    if (readyForAutoCheck) {
       retryTimer = setTimeout(attemptStart, 1500); // let exposure settle first
     }
 
@@ -229,7 +382,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
       if (retryTimer) clearTimeout(retryTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEnrolled, enrolledPhoto, cameraActive, videoPlayable, capturedImage, verifying, verificationResult, livenessStage]);
+  }, [readyForAutoCheck]);
 
   // Capture one raw frame from the live video WITHOUT stopping the camera
   // (needed because the liveness sequence captures several frames in a row).
@@ -243,19 +396,47 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    const targetWidth = 400;
     const aspectRatio = video.videoWidth / video.videoHeight;
+    const targetWidth = Math.min(CAPTURE_WIDTH, video.videoWidth);
     const targetHeight = Math.round(targetWidth / aspectRatio);
     canvas.width = targetWidth;
     canvas.height = targetHeight;
     ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-    return canvas.toDataURL('image/jpeg', 0.80);
+    return canvas.toDataURL('image/jpeg', CAPTURE_QUALITY);
+  };
+
+  // Cheap lighting check on a 64px thumbnail: stops us from sending a black or
+  // pitch-dark burst to the AI (guaranteed rejection) and tells the student what to fix.
+  const checkFrameQuality = (): { ok: boolean; code?: FaceResultCode; message?: string } => {
+    try {
+      const video = videoRef.current;
+      if (!video || video.videoWidth === 0) return { ok: true };
+      if (!sampleCanvasRef.current) sampleCanvasRef.current = document.createElement('canvas');
+      const c = sampleCanvasRef.current;
+      c.width = 64;
+      c.height = 48;
+      const ctx = c.getContext('2d', { willReadFrequently: true } as any);
+      if (!ctx) return { ok: true };
+      ctx.drawImage(video, 0, 0, 64, 48);
+      const data = ctx.getImageData(0, 0, 64, 48).data;
+      const quality = assessFrameQuality(analyzeLuminance(data, 1));
+      return quality.ok ? { ok: true } : { ok: false, code: quality.code, message: quality.message };
+    } catch (err) {
+      console.warn("Frame quality check skipped:", err);
+      return { ok: true };
+    }
   };
 
   // Legacy single-shot capture used only for the enrollment photo (no liveness needed there).
   const capturePhoto = () => {
+    const quality = checkFrameQuality();
+    if (!quality.ok) {
+      setCameraError(quality.message || "Tasvir sifati yetarli emas.");
+      return null;
+    }
     const base64 = captureFrameOnly();
     if (base64) {
+      setCameraError(null);
       setCapturedImage(base64);
       stopCamera();
       return base64;
@@ -270,79 +451,79 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
   // face never looks pixel-identical between frames) and for spoofing signs (a
   // held-up photo or a phone/monitor screen). Nothing here grants access — only
   // the backend's verdict does.
-  const PASSIVE_FRAME_COUNT = 5;
-  const PASSIVE_FRAME_INTERVAL_MS = 700;
-
   const runLivenessSequence = async () => {
-    if (livenessStage !== 'idle') return;
+    if (livenessStageRef.current !== 'idle') return;
+    if (!enrolledPhoto) {
+      setVerificationResult({ success: false, code: 'BAD_GATEWAY', message: "Ro'yxatdan o'tgan surat topilmadi. Iltimos, yuzingizni qayta ro'yxatdan o'tkazing." });
+      return;
+    }
     setVerificationResult(null);
-    capturedFramesRef.current = [];
-    setLivenessStage('capturing');
+    setStage('capturing');
 
-    const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+    const quality = checkFrameQuality();
+    if (!quality.ok) {
+      setStage('idle');
+      setVerificationResult({ success: false, code: quality.code, retryable: false, message: quality.message });
+      return;
+    }
 
+    const frames: { type: string; image: string }[] = [];
     for (let i = 0; i < PASSIVE_FRAME_COUNT; i++) {
-      if (!videoRef.current || !cameraStream) {
+      if (!mountedRef.current) return;
+      if (!videoRef.current || !streamRef.current) {
         // Camera got interrupted mid-capture — abort safely, do not verify.
-        setLivenessStage('idle');
-        setVerificationResult({
-          success: false,
-          message: "Kamera uzildi. Iltimos, qayta urinib ko'ring."
-        });
+        setStage('idle');
+        setVerificationResult({ success: false, code: 'CAMERA', retryable: true, message: "Kamera uzildi. Iltimos, qayta urinib ko'ring." });
         return;
       }
       const frame = captureFrameOnly();
       if (!frame) {
-        setLivenessStage('idle');
-        setVerificationResult({
-          success: false,
-          message: "Kadr olinmadi. Iltimos, kameraga yaxshi qarab, qayta urinib ko'ring."
-        });
+        setStage('idle');
+        setVerificationResult({ success: false, code: 'CAMERA', retryable: true, message: "Kadr olinmadi. Iltimos, kameraga yaxshi qarab, qayta urinib ko'ring." });
         return;
       }
-      capturedFramesRef.current.push({ type: `frame_${i + 1}`, image: frame });
+      frames.push({ type: `frame_${i + 1}`, image: frame });
       if (i < PASSIVE_FRAME_COUNT - 1) {
         await sleep(PASSIVE_FRAME_INTERVAL_MS);
       }
     }
 
-    setLivenessStage('done');
-    const lastFrame = capturedFramesRef.current[capturedFramesRef.current.length - 1];
+    setStage('done');
+    const lastFrame = frames[frames.length - 1];
     if (lastFrame) setCapturedImage(lastFrame.image);
     stopCamera();
-    await handleVerifyFace(capturedFramesRef.current);
+    await handleVerifyFace(frames);
   };
-
 
   // Register / Enroll Face ID
   const handleEnrollFace = async () => {
     const photo = capturedImage || capturePhoto();
-    if (!photo || !user) return;
+    if (!photo || !user?.uid) return;
 
+    const previousPhotoExisted = !!enrolledPhoto && enrolledFlag;
     try {
       setEnrolling(true);
+      setCameraError(null);
       const userRef = doc(db, 'users', user.uid);
-      await setDoc(userRef, {
-        faceIdPhoto: photo,
-        faceIdEnrolled: true,
-        faceIdEnabled: true,
-        updatedAt: new Date()
-      }, { merge: true });
+      await withTimeout(
+        setDoc(userRef, {
+          faceIdPhoto: photo,
+          faceIdEnrolled: true,
+          faceIdEnabled: true,
+          faceIdEnrolledAt: new Date(),
+          updatedAt: new Date()
+        }, { merge: true }),
+        ENROLL_SAVE_TIMEOUT_MS,
+        "Internet aloqasi sekin: Face ID ma'lumotlarini saqlab bo'lmadi. Aloqani tekshirib, qayta urinib ko'ring."
+      );
 
-      // Write enrollment audit log
-      try {
-        await addDoc(collection(db, 'biometric_audit'), {
-          userId: user.uid,
-          userEmail: user.email || 'noma\'lum',
-          userName: profile?.displayName || user.displayName || 'Foydalanuvchi',
-          action: 'enrollment',
-          status: 'success',
-          details: 'Yangi yuz biometrik ma\'lumotlari muvaffaqiyatli ro\'yxatdan o\'tkazildi',
-          timestamp: serverTimestamp()
-        });
-      } catch (logErr) {
-        console.error("Error writing biometric audit log:", logErr);
-      }
+      writeAudit({
+        action: previousPhotoExisted ? 're-enrollment' : 'enrollment',
+        status: 'success',
+        details: previousPhotoExisted
+          ? "Talaba yuz biometrik suratini yangi surat bilan almashtirdi"
+          : "Yangi yuz biometrik ma'lumotlari muvaffaqiyatli ro'yxatdan o'tkazildi"
+      });
 
       setProfile((prev: any) => ({
         ...prev,
@@ -350,15 +531,33 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
         faceIdEnrolled: true,
         faceIdEnabled: true
       }));
+      setForceEnroll(false);
+      writeFaceIdSession(user.uid);
 
       // Successfully enrolled, let user in
       onVerified();
     } catch (err: any) {
       console.error("Error saving Face ID:", err);
-      setCameraError("Face ID ma'lumotlarini saqlashda xatolik yuz berdi: " + err.message);
+      setCameraError("Face ID ma'lumotlarini saqlashda xatolik yuz berdi: " + (err?.message || err));
     } finally {
       setEnrolling(false);
     }
+  };
+
+  // Schedules one silent re-capture for soft failures (low confidence, timeouts,
+  // transient service errors). Definitive denials (different person, spoof,
+  // quota exhausted) never auto-retry.
+  const maybeAutoRetry = async (code: FaceResultCode | undefined): Promise<boolean> => {
+    if (!shouldAutoRetry(code, autoRetryCountRef.current, MAX_AUTO_RETRIES)) return false;
+    autoRetryCountRef.current += 1;
+    setStatusNote("Aniqroq natija uchun avtomatik qayta tekshirilmoqda...");
+    await sleep(AUTO_RETRY_DELAY_MS);
+    if (!mountedRef.current) return true;
+    setCapturedImage(null);
+    setVerificationResult(null);
+    setVideoPlayable(false);
+    await startCamera(); // the auto-start effect kicks off the next liveness sequence
+    return true;
   };
 
   // Verify captured liveness frames against the enrolled face.
@@ -368,61 +567,65 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
   const handleVerifyFace = async (frames: { type: string; image: string }[]) => {
     if (!frames || frames.length < 2 || !enrolledPhoto) {
       setVerificationResult({ success: false, message: "Tekshiruv uchun yetarli ma'lumot yo'q." });
-      setLivenessStage('idle');
+      setStage('idle');
       return;
     }
 
     let result: any = null;
+    let failure: VerificationOutcome | null = null;
     try {
       setVerifying(true);
       setVerificationResult(null);
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000); // give the server's 60s function budget room to actually respond
+      const timeoutId = setTimeout(() => controller.abort(), FACE_ID_CLIENT_TIMEOUT_MS);
 
-      const response = await fetch('/api/verify-face', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          enrolledImage: enrolledPhoto,
-          frames
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
+      let response: Response;
+      try {
+        response = await fetch('/api/verify-face', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enrolledImage: enrolledPhoto, frames }),
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       // Always read the body — even on non-200 the backend returns a structured
-      // fail-closed JSON payload ({verified:false, reason}) that we want to show.
+      // fail-closed JSON payload ({verified:false, code, reason}) that we want to show.
       result = await response.json().catch(() => null);
 
-      if (!result) {
-        throw new Error("Server javobini o'qib bo'lmadi.");
+      if (!result || typeof result !== 'object' || typeof result.verified !== 'boolean') {
+        failure = {
+          success: false,
+          code: 'BAD_GATEWAY',
+          retryable: true,
+          message: response.status >= 500
+            ? "Server vaqtincha javob bermayapti. Bir necha soniyadan so'ng qayta urinib ko'ring."
+            : "Server javobini o'qib bo'lmadi. Qayta urinib ko'ring."
+        };
       }
     } catch (err: any) {
       console.error("Face verification request failed:", err?.message || err);
       const timedOut = err?.name === 'AbortError';
-      setVerificationResult({
+      failure = {
         success: false,
+        code: timedOut ? 'CLIENT_TIMEOUT' : 'NETWORK',
+        retryable: true,
         message: timedOut
           ? "Ulanish vaqti tugadi. Iltimos, internet aloqangizni tekshirib qayta urinib ko'ring."
           : "Tizim ulanishida muammo yuz berdi. Xavfsizlik nuqtai nazaridan kirish rad etildi. Qayta urinib ko'ring."
-      });
-      setVerifying(false);
-      setLivenessStage('idle');
+      };
+    }
 
-      try {
-        await addDoc(collection(db, 'biometric_audit'), {
-          userId: user.uid,
-          userEmail: user.email || 'noma\'lum',
-          userName: profile?.displayName || user.displayName || 'Foydalanuvchi',
-          action: 'verification',
-          status: 'error',
-          details: err?.message || 'Tarmoq xatoligi',
-          timestamp: serverTimestamp()
-        });
-      } catch (logErr) {
-        console.error("Error writing error audit log:", logErr);
-      }
+    if (failure) {
+      setVerifying(false);
+      setStage('idle');
+      writeAudit({ action: 'verification', status: 'error', code: failure.code || null, details: failure.message || 'Tarmoq xatoligi' });
+      if (await maybeAutoRetry(failure.code)) return;
+      setStatusNote(null);
+      setVerificationResult(failure);
       return;
     }
 
@@ -430,59 +633,51 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     // returns `verified`. We trust ONLY that field — never re-derive a looser pass.
     const isMatch = result.verified === true;
     const confidence = typeof result.confidence === 'number' ? result.confidence : 0;
+    const code: FaceResultCode | undefined = typeof result.code === 'string' ? result.code : undefined;
 
     try {
       if (isMatch) {
+        setStatusNote(null);
         setVerificationResult({
           success: true,
           isMatch: true,
-          confidence: confidence,
+          confidence,
           reason: result.reason || 'Yuz muvaffaqiyatli solishtirildi'
         });
-
-        // Audit Log Success
-        try {
-          await addDoc(collection(db, 'biometric_audit'), {
-            userId: user.uid,
-            userEmail: user.email || 'noma\'lum',
-            userName: profile?.displayName || user.displayName || 'Foydalanuvchi',
-            action: 'verification',
-            status: 'success',
-            confidence: confidence,
-            details: result.reason || 'Yuz muvaffaqiyatli solishtirildi',
-            timestamp: serverTimestamp()
-          });
-        } catch (logErr) {
-          console.error("Error writing success audit log:", logErr);
-        }
-        
+        writeAudit({
+          action: 'verification',
+          status: 'success',
+          confidence,
+          model: result.model || null,
+          details: result.reason || 'Yuz muvaffaqiyatli solishtirildi'
+        });
+        writeFaceIdSession(user?.uid);
         // Let user enter after 0.8 seconds delay to enjoy the premium biometric verification screen
         setTimeout(() => {
-          onVerified();
+          if (mountedRef.current) onVerified();
         }, 800);
       } else {
-        setVerificationResult({
+        const outcome: VerificationOutcome = {
           success: false,
           isMatch: false,
-          confidence: confidence,
+          confidence,
+          code,
+          retryable: result.retryable === true,
           reason: result.reason || "Yuz mos kelmadi. Iltimos, xonani yaxshilab yoriting yoki kameraga to'g'ri qarang."
+        };
+        writeAudit({
+          action: 'verification',
+          status: code && code.startsWith('AI_') ? 'error' : 'failure',
+          code: code || null,
+          confidence,
+          model: result.model || null,
+          details: outcome.reason
         });
-
-        // Audit Log Failure
-        try {
-          await addDoc(collection(db, 'biometric_audit'), {
-            userId: user.uid,
-            userEmail: user.email || 'noma\'lum',
-            userName: profile?.displayName || user.displayName || 'Foydalanuvchi',
-            action: 'verification',
-            status: 'failure',
-            confidence: result.confidence || 0,
-            details: result.reason || 'Solishtirish mos kelmadi',
-            timestamp: serverTimestamp()
-          });
-        } catch (logErr) {
-          console.error("Error writing failure audit log:", logErr);
-        }
+        setVerifying(false);
+        setStage('idle');
+        if (await maybeAutoRetry(code)) return;
+        setStatusNote(null);
+        setVerificationResult(outcome);
       }
     } catch (auditErr: any) {
       // Logging failures must never affect the verified/not-verified decision above —
@@ -490,16 +685,15 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
       console.error("Post-verification bookkeeping error:", auditErr);
     } finally {
       setVerifying(false);
-      setLivenessStage('idle');
+      setStage('idle');
     }
   };
-
-
 
   // Sign out / Logout if user is stuck or on shared machine
   const handleLogout = async () => {
     try {
       stopCamera();
+      clearFaceIdSession(user?.uid);
       await signOut(auth);
       sessionStorage.removeItem('adminToken');
       sessionStorage.removeItem('virtualGuestUser');
@@ -521,6 +715,9 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     );
   }
 
+  const isHardDenial = verificationResult && !verificationResult.success && (verificationResult.code === 'NO_MATCH' || verificationResult.code === 'SPOOF');
+  const serviceDown = serviceHealth.state === 'down';
+
   return (
     <div className="fixed inset-0 bg-slate-950/98 backdrop-blur-xl z-50 flex items-center justify-center p-4 font-sans select-none overflow-y-auto">
       {/* Background glowing decorations */}
@@ -530,7 +727,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
       <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden text-center">
         {/* Animated grid background */}
         <div className="absolute inset-0 opacity-[0.02] bg-[linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
-        
+
         {/* Header decoration */}
         <div className="inline-flex p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 mb-4 animate-pulse">
           <ShieldCheck className="w-8 h-8" />
@@ -538,18 +735,28 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
 
         {/* Title */}
         <h2 className="text-xl md:text-2xl font-black text-white tracking-tight uppercase">
-          {isEnrolled ? "Face ID orqali kirish" : "Face ID ro'yxatga olish"}
+          {isEnrolled ? "Face ID orqali kirish" : (forceEnroll ? "Face ID ni yangilash" : "Face ID ro'yxatga olish")}
         </h2>
         <p className="text-slate-400 text-xs mt-2 max-w-sm mx-auto leading-relaxed">
-          {isEnrolled 
+          {isEnrolled
             ? "Hisobingiz xavfsizligini ta'minlash va boshqalar bilan ulashishni oldini olish uchun yuzingizni tasdiqlang."
-            : "Hisobingiz xavfsizligini ta'minlash, uni boshqalarga berishni oldini olish va tizimdan to'g'ri foydalanish uchun yuzingizni ro'yxatdan o'tkazing."
+            : forceEnroll
+              ? "Yorug' joyda, kameraga to'g'ri qarab yangi surat oling. Eski surat yangisi bilan almashtiriladi."
+              : "Hisobingiz xavfsizligini ta'minlash, uni boshqalarga berishni oldini olish va tizimdan to'g'ri foydalanish uchun yuzingizni ro'yxatdan o'tkazing."
           }
         </p>
 
+        {/* Service unavailable banner (server has no AI key) */}
+        {serviceDown && isEnrolled && (
+          <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2 text-left">
+            <ShieldOff className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{serviceHealth.message}</span>
+          </div>
+        )}
+
         {/* Camera / Visual Feedback Area */}
         <div className="mt-6 mb-6 relative mx-auto w-64 h-64 rounded-full border-4 border-slate-800 overflow-hidden bg-slate-950 flex items-center justify-center group shadow-inner">
-          
+
           {/* Circular Cyan Radar Ring */}
           {cameraActive && !capturedImage && (
             <div className="absolute inset-0 rounded-full border border-cyan-500/30 scale-105 animate-ping duration-1000" />
@@ -590,7 +797,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
 
           {/* Futuristic animated scanline */}
           {cameraActive && !capturedImage && (
-            <div 
+            <div
               className="absolute left-0 right-0 h-1 bg-cyan-500/75 shadow-[0_0_15px_#22d3ee] pointer-events-none transition-all ease-linear"
               style={{ top: `${scanProgress}%` }}
             />
@@ -598,8 +805,8 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
 
           {/* Automatic scanning overlay */}
           {cameraActive && videoPlayable && !capturedImage && livenessStage === 'idle' && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-cyan-500/95 text-slate-950 font-black text-[9px] uppercase tracking-widest px-3 py-1 rounded-full animate-pulse shadow-lg z-10 border border-cyan-300">
-              {isEnrolled ? "Tekshirishga tayyorlanmoqda..." : "Skanerlashga tayyor"}
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-cyan-500/95 text-slate-950 font-black text-[9px] uppercase tracking-widest px-3 py-1 rounded-full animate-pulse shadow-lg z-10 border border-cyan-300 whitespace-nowrap">
+              {statusNote ? "Qayta tekshirilmoqda..." : isEnrolled ? "Tekshirishga tayyorlanmoqda..." : "Skanerlashga tayyor"}
             </div>
           )}
 
@@ -625,17 +832,10 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
           {/* Verifying / Matching AI Loader Overlay */}
           {verifying && (
             <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 overflow-hidden">
-              {/* Spinning futuristic outer ring */}
               <div className="absolute w-48 h-48 rounded-full border border-dashed border-cyan-500/30 animate-[spin_12s_linear_infinite]" />
-              {/* Counter-spinning dotted inner ring */}
               <div className="absolute w-40 h-40 rounded-full border-2 border-dotted border-cyan-400/40 animate-[spin_6s_linear_infinite_reverse]" />
-              {/* Radial sonar pulse wave */}
               <div className="absolute inset-4 rounded-full border border-cyan-500/20 animate-ping opacity-75" />
-              
-              {/* Horizontal laser beam sweeping top to bottom */}
               <div className="absolute left-0 right-0 h-[4px] bg-cyan-400 shadow-[0_0_15px_#22d3ee] animate-[bounce_2s_infinite] pointer-events-none" />
-              
-              {/* Tracking crosshairs / corners */}
               <div className="absolute top-10 left-10 w-5 h-5 border-t-2 border-l-2 border-cyan-400 animate-pulse" />
               <div className="absolute top-10 right-10 w-5 h-5 border-t-2 border-r-2 border-cyan-400 animate-pulse" />
               <div className="absolute bottom-10 left-10 w-5 h-5 border-b-2 border-l-2 border-cyan-400 animate-pulse" />
@@ -654,17 +854,10 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
           {/* Enrolling state overlay */}
           {enrolling && (
             <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 overflow-hidden">
-              {/* Spinning futuristic outer ring */}
               <div className="absolute w-48 h-48 rounded-full border border-dashed border-indigo-500/30 animate-[spin_12s_linear_infinite]" />
-              {/* Counter-spinning dotted inner ring */}
               <div className="absolute w-40 h-40 rounded-full border-2 border-dotted border-indigo-400/40 animate-[spin_6s_linear_infinite_reverse]" />
-              {/* Radial sonar pulse wave */}
               <div className="absolute inset-4 rounded-full border border-indigo-500/20 animate-ping opacity-75" />
-              
-              {/* Horizontal laser beam sweeping top to bottom */}
               <div className="absolute left-0 right-0 h-[4px] bg-indigo-400 shadow-[0_0_15px_#818cf8] animate-[bounce_2s_infinite] pointer-events-none" />
-              
-              {/* Tracking crosshairs / corners */}
               <div className="absolute top-10 left-10 w-5 h-5 border-t-2 border-l-2 border-indigo-400 animate-pulse" />
               <div className="absolute top-10 right-10 w-5 h-5 border-t-2 border-r-2 border-indigo-400 animate-pulse" />
               <div className="absolute bottom-10 left-10 w-5 h-5 border-b-2 border-l-2 border-indigo-400 animate-pulse" />
@@ -689,16 +882,16 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
                 <>
                   <CheckCircle2 className="w-12 h-12 animate-bounce" />
                   <span className="text-[11px] font-bold uppercase tracking-widest mt-2">Yuz Tasdiqlandi!</span>
-                  <span className="text-[9px] opacity-75 mt-1">Moslik: {(verificationResult.confidence! * 100).toFixed(1)}%</span>
+                  <span className="text-[9px] opacity-75 mt-1">Moslik: {((verificationResult.confidence || 0) * 100).toFixed(1)}%</span>
                 </>
               ) : (
                 <>
                   <ShieldAlert className="w-12 h-12 text-rose-400 animate-bounce" />
                   <span className="text-[11px] font-bold uppercase tracking-widest mt-2">Tasdiqlanmadi</span>
-                  <span className="text-[9px] text-center max-w-[220px] opacity-80 mt-1 font-sans">
+                  <span className="text-[9px] text-center max-w-[220px] opacity-80 mt-1 font-sans line-clamp-3">
                     {verificationResult.message || verificationResult.reason || "Yuz mos kelmadi."}
                   </span>
-                  
+
                   {/* Retry & Re-enroll Buttons directly inside the overlay */}
                   <div className="mt-3 flex flex-col gap-1.5 w-full max-w-[220px]">
                     <button
@@ -722,6 +915,14 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
           )}
         </div>
 
+        {/* Transient status note (auto-retry) */}
+        {statusNote && !verificationResult && (
+          <div className="p-2.5 mb-4 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-[11px] flex items-center gap-2 justify-center">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            <span>{statusNote}</span>
+          </div>
+        )}
+
         {/* Error message */}
         {cameraError && (
           <div className="p-3 mb-4 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-400 text-xs flex items-center gap-2 text-left">
@@ -730,7 +931,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
           </div>
         )}
 
-        {/* Reason feedback from Gemini if available */}
+        {/* Reason feedback from the verification service if available */}
         {verificationResult && !verificationResult.success && (
           <div className="p-3 mb-4 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 text-left">
             <p className="font-bold text-slate-300 mb-1 flex items-center gap-1.5 text-rose-400">
@@ -738,6 +939,11 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
               Tafsilotlar:
             </p>
             <p className="text-[11px] leading-relaxed">{verificationResult.reason || verificationResult.message}</p>
+            {isHardDenial && (
+              <p className="text-[10px] leading-relaxed mt-2 text-slate-500">
+                Agar bu sizning hisobingiz bo'lsa va eski surat sifatsiz bo'lsa, "Yuzni qayta suratga olish" tugmasi orqali yorug' joyda yangi surat oling.
+              </p>
+            )}
           </div>
         )}
 
@@ -758,15 +964,17 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
               <button
                 onClick={async () => {
                   if (isEnrolled) {
+                    if (serviceDown) return;
                     await runLivenessSequence();
                   } else {
                     const photo = capturePhoto();
-                    if (!photo) {
+                    if (!photo && !cameraError) {
                       setCameraError("Kameradan tasvir olinmadi. Iltimos, kameraga qarang va biroz kuting.");
                     }
                   }
                 }}
-                className="w-full py-3 px-4 bg-cyan-600 hover:bg-cyan-500 active:scale-98 transition text-white font-bold text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 cursor-pointer"
+                disabled={isEnrolled && serviceDown}
+                className="w-full py-3 px-4 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed active:scale-98 transition text-white font-bold text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 cursor-pointer"
               >
                 <UserCheck className="w-4 h-4" />
                 {isEnrolled ? "Yuzni tekshirish" : "Suratga olish"}
@@ -781,10 +989,24 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
                   Yuzni qayta ro'yxatdan o'tkazish (Yangi surat)
                 </button>
               )}
+
+              {forceEnroll && enrolledFlag && !!enrolledPhoto && (
+                <button
+                  onClick={() => {
+                    setForceEnroll(false);
+                    setCameraError(null);
+                    setVerificationResult(null);
+                  }}
+                  className="w-full py-2 text-slate-500 hover:text-slate-300 text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-slate-800/60 rounded-xl hover:bg-slate-800/40 transition"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Bekor qilish — eski surat bilan tekshirish
+                </button>
+              )}
             </div>
           )}
 
-           {capturedImage && !verifying && !enrolling && (
+          {capturedImage && !verifying && !enrolling && (
             <div className="w-full">
               {verificationResult && !verificationResult.success ? (
                 // NOTE: there is intentionally NO "enter anyway" button here.
@@ -820,7 +1042,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
                     className="py-3 px-3 bg-emerald-600 hover:bg-emerald-500 active:scale-98 transition text-white font-bold text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-1.5"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    Ro'yxatdan o'tish
+                    {forceEnroll ? "Saqlash" : "Ro'yxatdan o'tish"}
                   </button>
                 </div>
               ) : null}
