@@ -95,7 +95,7 @@ export default function DiagnosticsPanel() {
 
   const [faceIdStatus, setFaceIdStatus] = useState<ServiceCheckResult>({
     id: 'face_id_service',
-    name: 'Face ID (AI yuz tekshiruvi)',
+    name: 'Gemini kaliti (Face ID “Gemini” dvigateli uchun)',
     status: 'pending',
     message: 'Tekshirilmoqda...'
   });
@@ -400,7 +400,7 @@ export default function DiagnosticsPanel() {
       if (!data || typeof data.aiConfigured !== 'boolean') {
         setFaceIdStatus({
           id: 'face_id_service',
-          name: 'Face ID (AI yuz tekshiruvi)',
+          name: 'Gemini kaliti (Face ID “Gemini” dvigateli uchun)',
           status: 'error',
           message: `Server /api/verify-face/health uchun noto‘g‘ri javob qaytardi (HTTP ${res.status})`,
           details: 'Vercel funksiyasi ishlamayotgan yoki eski build. Deploy loglarini tekshiring.',
@@ -410,20 +410,20 @@ export default function DiagnosticsPanel() {
         const code = String(data.keyCheck.code || '');
         setFaceIdStatus({
           id: 'face_id_service',
-          name: 'Face ID (AI yuz tekshiruvi)',
+          name: 'Gemini kaliti (Face ID “Gemini” dvigateli uchun)',
           status: 'error',
           message: code === 'AI_QUOTA'
             ? 'Gemini limiti tugagan — bepul daraja (free tier) Face ID uchun yetmayapti'
             : code === 'AI_NOT_CONFIGURED'
               ? 'GEMINI_API_KEY yaroqsiz yoki bekor qilingan'
               : `Gemini API javob bermadi (${code || 'noma’lum'})`,
-          details: `${data.keyCheck.message || ''} ${data.keyCheck.detail ? '— ' + data.keyCheck.detail : ''} (${latency}ms). Google AI Studio → API keys → tegishli loyihada Billing ni yoqing yoki yangi kalit yarating va Vercel’da GEMINI_API_KEY ni yangilab Redeploy qiling.`,
+          details: `${data.keyCheck.message || ''} ${data.keyCheck.detail ? '— ' + data.keyCheck.detail : ''} (${latency}ms). Google AI Studio → API keys → tegishli loyihada Billing ni yoqing yoki yangi kalit yarating va Vercel’da GEMINI_API_KEY ni yangilab Redeploy qiling. Eslatma: Face ID dvigateli “Brauzer” (standart) bo‘lsa, bu Gemini holati talabalar kirishiga ta’sir qilmaydi.`,
           latencyMs: latency
         });
       } else if (data.aiConfigured && data.keyCheck && data.keyCheck.ok && typeof data.keyCheck.working === 'number' && data.keyCheck.working < data.keyCheck.total) {
         setFaceIdStatus({
           id: 'face_id_service',
-          name: 'Face ID (AI yuz tekshiruvi)',
+          name: 'Gemini kaliti (Face ID “Gemini” dvigateli uchun)',
           status: 'warning',
           message: `${data.keyCheck.working}/${data.keyCheck.total} ta Gemini kaliti ishlayapti — Face ID ishlaydi, lekin zaxira kamaydi`,
           details: `${data.keyCheck.message || ''} (${latency}ms). Ishlamayotgan kalitni AI Studio’da tekshiring yoki Vercel’dagi GEMINI_API_KEYS dan olib tashlang.`,
@@ -435,7 +435,7 @@ export default function DiagnosticsPanel() {
           : '';
         setFaceIdStatus({
           id: 'face_id_service',
-          name: 'Face ID (AI yuz tekshiruvi)',
+          name: 'Gemini kaliti (Face ID “Gemini” dvigateli uchun)',
           status: 'healthy',
           message: `Xizmat tayyor. Moslik chegarasi: ${Math.round((data.threshold || 0) * 100)}%${keyNote}`,
           details: `Modellar: ${(data.models || []).join(', ')} (${latency}ms)`,
@@ -444,7 +444,7 @@ export default function DiagnosticsPanel() {
       } else {
         setFaceIdStatus({
           id: 'face_id_service',
-          name: 'Face ID (AI yuz tekshiruvi)',
+          name: 'Gemini kaliti (Face ID “Gemini” dvigateli uchun)',
           status: 'error',
           message: 'GEMINI_API_KEY serverda sozlanmagan — talabalar Face ID dan o‘ta olmaydi',
           details: 'Vercel → Settings → Environment Variables bo‘limida GEMINI_API_KEY ni kiriting va Redeploy qiling.',
@@ -454,7 +454,7 @@ export default function DiagnosticsPanel() {
     } catch (err: any) {
       setFaceIdStatus({
         id: 'face_id_service',
-        name: 'Face ID (AI yuz tekshiruvi)',
+        name: 'Gemini kaliti (Face ID “Gemini” dvigateli uchun)',
         status: 'error',
         message: 'Face ID xizmatiga ulanib bo‘lmadi',
         details: err?.name === 'AbortError' ? 'Server 10 soniyada javob bermadi' : (err?.message || String(err))

@@ -8,6 +8,28 @@
 4. Server (`server.ts`) kadrlarni Gemini modeliga beradi, javobni `src/lib/faceVerificationPolicy.ts` dagi **sinovdan o'tgan** qoida bilan baholaydi va `verified: true/false` qaytaradi.
 5. Faqat `verified === true` bo'lsagina talaba ichkariga kiritiladi. Boshqa har qanday holat (xato, timeout, noaniq javob) — **rad etish**.
 
+## Brauzer dvigateli (2026-09-22 dan standart) — Gemini'siz Face ID
+
+Google hisobi bloklangani (`403 PERMISSION_DENIED`, "contact support") sababli yuz solishtirish endi
+**talabaning brauzerida** ishlaydi: `face-api.js` (TensorFlow.js) CDN dan yuklanadi (~6 MB, brauzer keshlaydi),
+yuzdan 128 o'lchamli tavsif (descriptor) olinadi va ro'yxatdan o'tgan surat tavsifi bilan solishtiriladi.
+
+- Fayllar: `src/lib/faceLocalPolicy.ts` (sof qaror mantiqi, testlar `tests/faceLocalPolicy.test.mjs`),
+  `src/lib/faceLocalEngine.ts` (model yuklash, kameradan tavsif olish).
+- Qaror: 5 tagacha jonli kadrdan tavsif olinadi, kamida 3 tasida yuz bo'lishi shart; ro'yxatdan o'tgan
+  tavsifgacha **median masofa** ≤ `0.55` → tasdiq; `> 0.72` → boshqa odam (`NO_MATCH`); orasi →
+  `LOW_CONFIDENCE` (bir marta avtomatik qayta urinish). Barcha kadrlar aynan bir xil bo'lsa → `SPOOF`.
+- **Qayta ro'yxatdan o'tish shart emas:** eski `faceIdPhoto` dan tavsif birinchi kirishda hisoblanib
+  `users/{uid}.faceIdDescriptor` ga keshlanadi. Yangi ro'yxatdan o'tishda tavsif darhol saqlanadi va
+  suratda yuz yo'q bo'lsa surat qabul qilinmaydi.
+- Dvigatel tanlash: Admin → Tizim Sozlamalari → Modulni Boshqarish → **Face ID dvigateli**
+  (`settings/global.features.faceIdEngine`: `local` standart, `gemini` — server AI).
+- Sozlamalar: `VITE_FACE_LOCAL_THRESHOLD` (0.3–0.8), `VITE_FACE_API_SCRIPT_URL`, `VITE_FACE_API_MODEL_URL`
+  (CDN bloklansa o'z serveringizga joylab ko'rsating). CDN zaxiralari: jsdelivr → unpkg → jsdelivr/gh.
+- Cheklov: brauzer dvigatelining jonlilik tekshiruvi Gemini'nikidan sodda (harakatsiz kadrlarni ushlaydi,
+  lekin sifatli video/suratni ajratmasligi mumkin). Bu deterrent sifatida yetarli; qat'iy anti-spoofing
+  kerak bo'lsa Gemini dvigateliga o'ting (ishlaydigan kalit bilan).
+
 ## Asosiy sabab (2026-09-22 da ko'rilgan "Tizim ulanishida muammo yuz berdi")
 
 Bu xabar faqat bitta holatda chiqadi: brauzer `/api/verify-face` dan **JSON bo'lmagan** javob olganda
@@ -76,6 +98,17 @@ Deploy tuzalgach Face ID "GEMINI_API_KEY yo'q yoki yaroqsiz" (403) bilan rad etd
   "Tafsilotlar" ostida `[KOD] matn` ko'rinishida ko'rsatadi.
 
 Vercel panelidan region qo'lda o'zgartirilgan bo'lsa, `vercel.json` dagi qiymat ustun turadi.
+
+## Google loyihasi bloklangan (2026-09-22, haqiqiy sabab)
+
+Region tuzatilgach health haqiqiy javobni ko'rsatdi:
+`403 PERMISSION_DENIED — "Your access has been denied. Please contact support."`
+Bu kalit noto'g'ri degani emas: Google "Standart Gemini loyihasi" (gen-lang-client-0984131035) ga kirishni
+bloklagan (to'lov profili nofaol). Bunday kalit hech qayerdan ishlamaydi. Yechim: Google AI Studio →
+"API kalitini yarating" → **yangi loyihada** (yoki "Mening birinchi loyiham" da, u billing'ga bog'lanmagan)
+kalit yaratish, Vercel'da `GEMINI_API_KEYS=<yangi>,<eski>` qilib Redeploy. Agar yangi loyihaning kaliti ham
+403 bersa — blok Google hisobi darajasida: boshqa Google hisobidan kalit oling yoki Cloud Console → Billing
+orqali Google support bilan hal qiling.
 
 ## Favqulodda o'chirish (kill switch)
 

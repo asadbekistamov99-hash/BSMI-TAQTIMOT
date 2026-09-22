@@ -332,6 +332,18 @@ export function classifyAiError(err: unknown): ClassifiedAiError {
       skipModel: false
     };
   }
+  if (status === 403 || text.includes('permission_denied') || text.includes('permission denied')) {
+    const blocked = text.includes('denied') && (text.includes('contact support') || text.includes('suspended') || text.includes('disabled') || text.includes('access'));
+    return {
+      code: 'AI_NOT_CONFIGURED',
+      httpStatus: 503,
+      reason: blocked
+        ? "Google bu kalit tegishli loyihaga kirishni bloklagan (403 PERMISSION_DENIED, \"contact support\"). Bu kalit endi ishlamaydi: Google AI Studio'da BOSHQA loyihada (yoki boshqa Google hisobida) yangi kalit yarating va Vercel'da GEMINI_API_KEYS ga qo'ying."
+        : "Gemini kalitiga ruxsat berilmagan (403 PERMISSION_DENIED). Kalit cheklovlarini (API restrictions) tekshiring yoki boshqa loyihadan yangi kalit yarating.",
+      transient: false,
+      skipModel: false
+    };
+  }
   if (message.includes('GEMINI_API_KEY') || text.includes('api key not valid') || text.includes('api_key_invalid') || text.includes('permission_denied') || status === 401 || status === 403) {
     return {
       code: 'AI_NOT_CONFIGURED',

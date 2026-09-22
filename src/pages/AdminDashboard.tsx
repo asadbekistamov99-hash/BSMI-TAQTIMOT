@@ -3707,7 +3707,8 @@ function SettingsManager() {
       enableMidterms: true,
       enableLatin: true,
       enableNotifications: true,
-      enableFaceId: true
+      enableFaceId: true,
+      faceIdEngine: 'local'
     }
   });
   const [loading, setLoading] = useState(true);
@@ -4726,6 +4727,27 @@ function SettingsManager() {
                    </div>
                    );
                  })}
+              </div>
+
+              <div className="mt-8 p-6 bg-slate-50 rounded-[24px] border border-slate-100 flex flex-col md:flex-row md:items-center gap-4">
+                <div className="flex-1">
+                  <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Face ID dvigateli</p>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                    <b>Brauzer</b> — yuz solishtirish talabaning qurilmasida ishlaydi: API kalit, limit, billing va server regioni kerak emas (tavsiya etiladi).
+                    <b> Gemini</b> — server orqali Google AI (ishlaydigan GEMINI_API_KEY talab qiladi).
+                  </p>
+                </div>
+                <select
+                  value={((settings.features as any)?.faceIdEngine) || 'local'}
+                  onChange={e => setSettings({
+                    ...settings,
+                    features: { ...(settings.features as any), faceIdEngine: e.target.value === 'gemini' ? 'gemini' : 'local' }
+                  })}
+                  className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-800"
+                >
+                  <option value="local">Brauzer (lokal model)</option>
+                  <option value="gemini">Gemini (server AI)</option>
+                </select>
               </div>
             </div>
           </div>

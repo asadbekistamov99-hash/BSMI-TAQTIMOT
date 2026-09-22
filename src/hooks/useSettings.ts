@@ -68,7 +68,8 @@ const defaultSettings: SystemSettings = {
     enableMidterms: true,
     enableLatin: true,
     enableNotifications: true,
-    enableFaceId: true
+    enableFaceId: true,
+    faceIdEngine: 'local'
   }
 };
 
