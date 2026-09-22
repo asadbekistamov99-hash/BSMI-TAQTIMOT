@@ -61,6 +61,22 @@ qo'llab-quvvatlanmaydi" deb ko'rsatilgan, kredit balansi $0. Bunday hisobga bog'
    `GEMINI_API_KEYS` ga zaxira sifatida qo'shish. Kod bitta kalit ishlamasa keyingisiga o'tadi, va
    `?check=key` health tekshiruvi har bir kalitning holatini alohida ko'rsatadi.
 
+## Vercel funksiyasi regioni (2026-09-22, ikkinchi sabab)
+
+Deploy tuzalgach Face ID "GEMINI_API_KEY yo'q yoki yaroqsiz" (403) bilan rad etdi, health esa
+`models.list` bilan "kalit yaroqli" degan. Vercel xato identifikatori `hkg1::…` bilan boshlangan — funksiya
+**Gonkong** regionida ishlagan, Gemini API esa Gonkong/Xitoydan generatsiya so'rovlarini qabul qilmaydi
+(`models.list` o'tadi, `generateContent` rad etiladi). Shuning uchun:
+
+- `vercel.json` da `"regions": ["iad1"]` (AQSh, Virjiniya) belgilandi. Bepul daraja AQShda ishlaydi;
+  Yevropa regionlari (`fra1` va h.k.) bepul darajada rad etilishi mumkin, ularni tanlamang.
+- Health tekshiruvi endi haqiqiy kichik `generateContent` chaqirig'i bilan sinaydi (bir necha token),
+  `models.list` bilan emas.
+- Har bir rad javobida `detail` (Google xatosining matni, kalitlar yashirilgan) va `region` bor; UI
+  "Tafsilotlar" ostida `[KOD] matn` ko'rinishida ko'rsatadi.
+
+Vercel panelidan region qo'lda o'zgartirilgan bo'lsa, `vercel.json` dagi qiymat ustun turadi.
+
 ## Favqulodda o'chirish (kill switch)
 
 Admin panel → **Tizim Sozlamalari** → **Modulni Boshqarish** → **Face ID (biometrik kirish)** tugmasini

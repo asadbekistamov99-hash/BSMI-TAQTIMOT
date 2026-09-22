@@ -25,6 +25,8 @@ interface VerificationOutcome {
   retryable?: boolean;
   reason?: string;
   message?: string;
+  /** provider error text from the server (already sanitised) */
+  detail?: string | null;
 }
 
 // === Capture settings ===
@@ -679,7 +681,8 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
           confidence,
           code,
           retryable: result.retryable === true,
-          reason: result.reason || "Yuz mos kelmadi. Iltimos, xonani yaxshilab yoriting yoki kameraga to'g'ri qarang."
+          reason: result.reason || "Yuz mos kelmadi. Iltimos, xonani yaxshilab yoriting yoki kameraga to'g'ri qarang.",
+          detail: typeof result.detail === 'string' && result.detail ? result.detail : null
         };
         writeAudit({
           action: 'verification',
@@ -955,6 +958,11 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
               Tafsilotlar:
             </p>
             <p className="text-[11px] leading-relaxed">{verificationResult.reason || verificationResult.message}</p>
+            {(verificationResult.detail || verificationResult.code) && (
+              <p className="text-[10px] leading-relaxed mt-2 font-mono text-slate-500 break-words">
+                {verificationResult.code ? `[${verificationResult.code}] ` : ''}{verificationResult.detail || ''}
+              </p>
+            )}
             {isHardDenial && (
               <p className="text-[10px] leading-relaxed mt-2 text-slate-500">
                 Agar bu sizning hisobingiz bo'lsa va eski surat sifatsiz bo'lsa, "Yuzni qayta suratga olish" tugmasi orqali yorug' joyda yangi surat oling.

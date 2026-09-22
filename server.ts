@@ -19,6 +19,7 @@ import {
   normalizeVerdict,
   decideVerification,
   classifyAiError,
+  sanitizeErrorDetail,
   MIN_FRAMES_REQUIRED,
   FACE_ID_TOTAL_BUDGET_MS,
   FACE_ID_PER_CALL_TIMEOUT_MS,
@@ -587,13 +588,25 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
       const checks: Record<string, unknown>[] = [];
       for (let i = 0; i < keys.length; i++) {
         const apiKey = keys[i];
+        // A REAL generateContent call (tiny text prompt, a few tokens) — models.list
+        // succeeds even from regions / accounts where generation is refused, which is
+        // exactly the case that used to show up only when a student tried to log in.
+        const testModel = FACE_ID_MODELS[0];
         try {
-          const pager: any = await withTimeout(makeFaceIdAI(apiKey).models.list({ config: { pageSize: 1 } }), 7000, 'Gemini key check');
-          const firstPage = Array.isArray(pager?.page) ? pager.page : [];
-          checks.push({ index: i + 1, key: maskApiKey(apiKey), ok: true, message: 'Kalit yaroqli, API javob berdi.', sampleModel: firstPage[0]?.name || null });
+          const resp: any = await withTimeout(
+            makeFaceIdAI(apiKey).models.generateContent({
+              model: testModel,
+              contents: [{ role: 'user', parts: [{ text: 'Faqat OK deb javob ber.' }] }],
+              config: { maxOutputTokens: 5, temperature: 0 }
+            }),
+            9000,
+            'Gemini key check'
+          );
+          const text = typeof resp?.text === 'string' ? resp.text.trim() : '';
+          checks.push({ index: i + 1, key: maskApiKey(apiKey), ok: true, message: `Kalit yaroqli, ${testModel} javob berdi.`, sampleModel: testModel, sample: text.slice(0, 20) });
         } catch (err: any) {
           const c = classifyAiError(err);
-          checks.push({ index: i + 1, key: maskApiKey(apiKey), ok: false, code: c.code, message: c.reason, detail: String(err?.message || err).slice(0, 200) });
+          checks.push({ index: i + 1, key: maskApiKey(apiKey), ok: false, code: c.code, message: c.reason, model: testModel, detail: sanitizeErrorDetail(err) });
         }
       }
       const working = checks.filter(c => c.ok === true).length;
@@ -625,6 +638,7 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
     const deadline = startedAt + FACE_ID_TOTAL_BUDGET_MS;
     const remaining = () => deadline - Date.now();
 
+    let lastErrorDetail: string | null = null;
     const denyClosed = (status: number, code: FaceDenyCode, reason: string, extra: Record<string, unknown> = {}) => {
       // Single choke point: every failure path returns through here so the
       // "fail closed" behavior can never accidentally be bypassed.
@@ -639,6 +653,10 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
         code,
         retryable: code === 'AI_UNAVAILABLE' || code === 'AI_TIMEOUT' || code === 'AI_BAD_RESPONSE',
         reason,
+        // Sanitised text of the underlying provider error (no keys) so an admin can
+        // diagnose from a student's screenshot instead of digging through logs.
+        detail: code.startsWith('AI_') ? lastErrorDetail : null,
+        region: process.env.VERCEL_REGION || null,
         durationMs: Date.now() - startedAt,
         ...extra
       });
@@ -776,6 +794,7 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
           } catch (err: any) {
             const classified = classifyAiError(err);
             lastClassified = classified;
+            lastErrorDetail = sanitizeErrorDetail(err);
             console.warn(`[FACE VERIFICATION] Model ${modelName} attempt ${attempt} failed (${classified.code}): ${err?.message || err}`);
             // Invalid key / billing problem: no model on this key will work — next key.
             if (classified.code === 'AI_NOT_CONFIGURED') continue keyLoop;

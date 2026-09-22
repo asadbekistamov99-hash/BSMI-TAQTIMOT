@@ -314,6 +314,15 @@ export function classifyAiError(err: unknown): ClassifiedAiError {
   const status = Number(e.status ?? e.code ?? e.statusCode ?? NaN);
   const text = `${Number.isFinite(status) ? status : ''} ${message} ${safeJson(err)}`.toLowerCase();
 
+  if (text.includes('location is not supported') || text.includes('user location') || text.includes('unsupported location') || text.includes('not available in your region')) {
+    return {
+      code: 'AI_NOT_CONFIGURED',
+      httpStatus: 503,
+      reason: "Gemini API server joylashuvini qo'llab-quvvatlamaydi (Vercel funksiyasi regioni, masalan Gonkong). vercel.json dagi \"regions\" ni iad1 (AQSh) qilib qayta deploy qiling.",
+      transient: false,
+      skipModel: false
+    };
+  }
   if (text.includes('billing')) {
     return {
       code: 'AI_NOT_CONFIGURED',
@@ -371,6 +380,18 @@ export function classifyAiError(err: unknown): ClassifiedAiError {
     transient: status === 500 || status === 502 || status === 503 || text.includes('unavailable') || text.includes('overloaded') || text.includes('econn') || text.includes('fetch failed') || text.includes('network'),
     skipModel: false
   };
+}
+
+/** Error text safe to show in the UI / logs: API keys and URLs with keys are masked. */
+export function sanitizeErrorDetail(err: unknown, maxLen = 220): string {
+  const e = (err && typeof err === 'object') ? (err as Record<string, any>) : {};
+  const raw = String(e.message ?? (typeof err === 'string' ? err : '') ?? '');
+  return raw
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, 'AIza…')
+    .replace(/key=[^&\s]+/gi, 'key=…')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen);
 }
 
 function safeJson(v: unknown): string {
