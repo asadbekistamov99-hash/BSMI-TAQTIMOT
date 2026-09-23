@@ -11,7 +11,17 @@ import {
   distanceToSimilarity,
   looksFrozen,
   decideLocalVerification,
-  serializeDescriptor
+  serializeDescriptor,
+  normalizeTemplates,
+  bestTemplateDistance,
+  canEarlyAccept,
+  shouldLearnTemplate,
+  estimateYaw,
+  isFrontal,
+  hasMicroMotion,
+  evaluateHeadTurn,
+  guidanceFor,
+  MAX_TEMPLATES
 } from '../src/lib/faceLocalPolicy.ts';
 
 // deterministic pseudo-random unit-ish vectors
@@ -120,4 +130,78 @@ test('custom threshold is honoured and never verifies without samples', () => {
   assert.equal(decideLocalVerification(enrolled, s, 0.45).verified, false);
   assert.equal(decideLocalVerification(enrolled, s, 0.6).verified, true);
   assert.equal(decideLocalVerification(enrolled, []).verified, false);
+});
+
+
+test('multi-template: nearest template wins; single descriptor still accepted', () => {
+  const a = vec(1), b = vec(2);
+  assert.equal(normalizeTemplates(a).length, 1);
+  assert.equal(normalizeTemplates([a, b, null, [1, 2]]).length, 2);
+  assert.equal(normalizeTemplates('x').length, 0);
+  const probe = near(b, 0.3);
+  assert.ok(bestTemplateDistance([a, b], probe) < 0.31);
+  assert.equal(bestTemplateDistance([], probe), Infinity);
+  // enrolled with template a only → probe near b is someone else; with both → verified
+  const s = [sample(near(b, 0.3, 1)), sample(near(b, 0.32, 2)), sample(near(b, 0.35, 3))];
+  assert.equal(decideLocalVerification(a, s).verified, false);
+  const d = decideLocalVerification([a, b], s);
+  assert.equal(d.verified, true);
+  assert.ok(d.bestSample && d.bestDistance < 0.36);
+});
+
+test('early accept after 3 consecutive matches, never for frozen frames', () => {
+  const e = vec(5);
+  const good = [sample(near(e, 0.3, 1)), sample(near(e, 0.35, 2)), sample(near(e, 0.4, 3))];
+  assert.equal(canEarlyAccept([e], good), true);
+  assert.equal(canEarlyAccept([e], good.slice(0, 2)), false);
+  assert.equal(canEarlyAccept([e], [sample(vec(9)), ...good.slice(1)]), false);
+  const same = near(e, 0.3);
+  assert.equal(canEarlyAccept([e], [sample(same), sample(same), sample(same)]), false);
+});
+
+test('adaptive learning: only strong, diverse matches are added, capped', () => {
+  const e = vec(5);
+  assert.equal(shouldLearnTemplate([e], near(e, 0.3)), true);
+  assert.equal(shouldLearnTemplate([e], near(e, 0.1)), false, 'too similar, no new information');
+  assert.equal(shouldLearnTemplate([e], near(e, 0.5)), false, 'too weak to trust');
+  assert.equal(shouldLearnTemplate([], near(e, 0.3)), false);
+  const full = Array.from({ length: MAX_TEMPLATES }, (_, i) => near(e, 0.3, i + 1));
+  assert.equal(shouldLearnTemplate(full, near(e, 0.3, 99)), false);
+});
+
+test('yaw from landmarks, frontal check and guidance', () => {
+  const lm = Array.from({ length: 68 }, () => ({ x: 0, y: 0 }));
+  for (let i = 36; i < 42; i++) lm[i] = { x: 40, y: 50 };
+  for (let i = 42; i < 48; i++) lm[i] = { x: 60, y: 50 };
+  lm[30] = { x: 50, y: 65 };
+  assert.equal(estimateYaw(lm), 0);
+  lm[30] = { x: 58, y: 65 };
+  assert.ok(Math.abs(estimateYaw(lm) - 0.4) < 1e-9);
+  assert.equal(isFrontal(0.1), true);
+  assert.equal(isFrontal(0.4), false);
+  assert.equal(isFrontal(NaN), false);
+  assert.ok(Number.isNaN(estimateYaw(null)));
+  assert.ok(Number.isNaN(estimateYaw(lm.slice(0, 10))));
+  assert.equal(guidanceFor(null), "Yuz ko'rinmayapti — kameraga qarang");
+  assert.equal(guidanceFor({ score: 0.9, faceRatio: 0.05, yaw: 0 }), 'Yaqinroq keling');
+  assert.equal(guidanceFor({ score: 0.9, faceRatio: 0.3, yaw: 0.5 }), "To'g'ri qarang");
+  assert.equal(guidanceFor({ score: 0.9, faceRatio: 0.3, yaw: 0 }, 20), "Yorug'lik kam — chiroqni yoqing");
+  assert.equal(guidanceFor({ score: 0.9, faceRatio: 0.3, yaw: 0 }, 120), null);
+  // turned faces are excluded from the decision
+  const e = vec(5);
+  const turned = [sample(near(e, 0.3, 1)), sample(near(e, 0.3, 2)), sample(near(e, 0.3, 3))].map(s => ({ ...s, yaw: 0.6 }));
+  assert.equal(decideLocalVerification(e, turned).code, 'NO_FACE');
+});
+
+test('micro-motion and head-turn challenge', () => {
+  const still = Array.from({ length: 5 }, () => ({ x: 100, y: 100, faceWidth: 200 }));
+  assert.equal(hasMicroMotion(still), false);
+  const moving = [100, 102, 99, 103, 101].map(x => ({ x, y: 100, faceWidth: 200 }));
+  assert.equal(hasMicroMotion(moving), true);
+  assert.equal(hasMicroMotion(moving.slice(0, 2)), false);
+  assert.equal(evaluateHeadTurn([0, 0.05, 0.1], 0), 'waiting');
+  assert.equal(evaluateHeadTurn([0, 0.1, 0.25], 0), 'turned');
+  assert.equal(evaluateHeadTurn([0, -0.3, -0.1, 0.02], 0), 'passed', 'either direction counts');
+  assert.equal(evaluateHeadTurn([NaN, 0.3, NaN, 0.05], 0), 'passed', 'missed frames are ignored');
+  assert.equal(evaluateHeadTurn([0.4, 0.4, 0.4], 0.4), 'waiting', 'baseline is relative');
 });
