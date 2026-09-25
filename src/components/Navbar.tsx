@@ -695,7 +695,7 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
                 className="w-10 h-10 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-all font-black text-sm shadow-sm hover:scale-105 active:scale-95"
                 title="Select Language / Tilni tanlash"
               >
-                <span>{language === 'uz' ? '🇺🇿' : language === 'ru' ? '🇷🇺' : '🇺🇸'}</span>
+                <span className="text-[11px] font-black tracking-widest text-slate-700">{language === 'uz' ? 'UZ' : language === 'ru' ? 'RU' : 'EN'}</span>
               </button>
               
               {isLangOpen && (
@@ -712,7 +712,7 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
                       }}
                       className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left text-xs font-black uppercase tracking-wider transition-colors hover:bg-slate-50 ${language === 'uz' ? 'text-brand-accent bg-brand-bg/50' : 'text-slate-600'}`}
                     >
-                      <span className="text-sm">🇺🇿</span> O'ZBEK
+                      <span className="w-7 text-[10px] font-black tracking-widest text-slate-500">UZ</span> O'ZBEK
                     </button>
                     <button
                       onClick={() => {
@@ -721,7 +721,7 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
                       }}
                       className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left text-xs font-black uppercase tracking-wider transition-colors hover:bg-slate-50 ${language === 'ru' ? 'text-brand-accent bg-brand-bg/50' : 'text-slate-600'}`}
                     >
-                      <span className="text-sm">🇷🇺</span> РУССКИЙ
+                      <span className="w-7 text-[10px] font-black tracking-widest text-slate-500">RU</span> РУССКИЙ
                     </button>
                     <button
                       onClick={() => {
@@ -730,7 +730,7 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
                       }}
                       className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left text-xs font-black uppercase tracking-wider transition-colors hover:bg-slate-50 ${language === 'en' ? 'text-brand-accent bg-brand-bg/50' : 'text-slate-600'}`}
                     >
-                      <span className="text-sm">🇺🇸</span> ENGLISH
+                      <span className="w-7 text-[10px] font-black tracking-widest text-slate-500">EN</span> ENGLISH
                     </button>
                   </div>
                 </>
@@ -891,7 +891,7 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
                 className="w-9 h-9 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shadow-sm"
                 title="Select Language"
               >
-                <span className="text-sm">{language === 'uz' ? '🇺🇿' : language === 'ru' ? '🇷🇺' : '🇺🇸'}</span>
+                <span className="text-[10px] font-black tracking-widest text-slate-700">{language === 'uz' ? 'UZ' : language === 'ru' ? 'RU' : 'EN'}</span>
               </button>
               
               {isLangOpen && (
@@ -908,7 +908,7 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
                       }}
                       className={`w-full flex items-center gap-2 px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider transition-colors hover:bg-slate-50 ${language === 'uz' ? 'text-brand-accent bg-brand-bg/50' : 'text-slate-600'}`}
                     >
-                      <span>🇺🇿</span> UZB
+                      <span className="w-6 font-black text-slate-500">UZ</span> UZB
                     </button>
                     <button
                       onClick={() => {
@@ -917,7 +917,7 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
                       }}
                       className={`w-full flex items-center gap-2 px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider transition-colors hover:bg-slate-50 ${language === 'ru' ? 'text-brand-accent bg-brand-bg/50' : 'text-slate-600'}`}
                     >
-                      <span>🇷🇺</span> RUS
+                      <span className="w-6 font-black text-slate-500">RU</span> RUS
                     </button>
                     <button
                       onClick={() => {
@@ -926,7 +926,7 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
                       }}
                       className={`w-full flex items-center gap-2 px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider transition-colors hover:bg-slate-50 ${language === 'en' ? 'text-brand-accent bg-brand-bg/50' : 'text-slate-600'}`}
                     >
-                      <span>🇺🇸</span> ENG
+                      <span className="w-6 font-black text-slate-500">EN</span> ENG
                     </button>
                   </div>
                 </>
