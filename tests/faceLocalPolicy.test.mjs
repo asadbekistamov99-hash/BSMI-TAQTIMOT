@@ -178,7 +178,7 @@ test('yaw from landmarks, frontal check and guidance', () => {
   lm[30] = { x: 58, y: 65 };
   assert.ok(Math.abs(estimateYaw(lm) - 0.4) < 1e-9);
   assert.equal(isFrontal(0.1), true);
-  assert.equal(isFrontal(0.4), false);
+  assert.equal(isFrontal(0.5), false);
   assert.equal(isFrontal(NaN), false);
   assert.ok(Number.isNaN(estimateYaw(null)));
   assert.ok(Number.isNaN(estimateYaw(lm.slice(0, 10))));
@@ -189,8 +189,13 @@ test('yaw from landmarks, frontal check and guidance', () => {
   assert.equal(guidanceFor({ score: 0.9, faceRatio: 0.3, yaw: 0 }, 120), null);
   // turned faces are excluded from the decision
   const e = vec(5);
+  // when too few frontal frames exist, all detected frames are used (noisy yaw must not block a real person)
   const turned = [sample(near(e, 0.3, 1)), sample(near(e, 0.3, 2)), sample(near(e, 0.3, 3))].map(s => ({ ...s, yaw: 0.6 }));
-  assert.equal(decideLocalVerification(e, turned).code, 'NO_FACE');
+  assert.equal(decideLocalVerification(e, turned).verified, true);
+  // with enough frontal frames, turned ones are ignored
+  const mixed = [...turned, sample(near(e, 0.3, 4)), sample(near(e, 0.3, 5)), sample(near(e, 0.3, 6))].map((s, i) => i >= 3 ? { ...s, yaw: 0.05 } : s);
+  assert.equal(decideLocalVerification(e, mixed).samples, 3);
+  assert.deepEqual(decideLocalVerification(e, mixed).distances.length, 3);
 });
 
 test('micro-motion and head-turn challenge', () => {

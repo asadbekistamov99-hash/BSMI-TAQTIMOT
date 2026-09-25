@@ -591,7 +591,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     const { decision } = result;
     const templates = enrolledTemplatesRef.current || [];
     const detail = Number.isFinite(decision.distance)
-      ? `masofa ${decision.distance.toFixed(2)} (chegara ${LOCAL_THRESHOLD}), kadrlar ${decision.samples}/${result.frames}, ${result.durationMs} ms, andozalar ${templates.length}${result.microMotion ? ', harakat ✓' : ''}`
+      ? `masofa ${decision.distance.toFixed(2)} (chegara ${LOCAL_THRESHOLD})${decision.distances ? ' [' + decision.distances.map(x => x.toFixed(2)).join(', ') + ']' : ''}, yaw [${result.samples.map(s => (typeof s.yaw === 'number' && Number.isFinite(s.yaw)) ? s.yaw.toFixed(2) : '?').join(', ')}], kadrlar ${decision.samples}/${result.frames}, ${result.durationMs} ms (${result.avgFrameMs} ms/kadr), andozalar ${templates.length}${result.microMotion ? ', harakat ✓' : ''}`
       : `kadrlar ${decision.samples}/${result.frames}, ${result.durationMs} ms`;
 
     // Optional active liveness (admin setting): identity matched → ask for a head turn.

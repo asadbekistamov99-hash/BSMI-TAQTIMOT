@@ -24,6 +24,7 @@ import {
   isDescriptor,
   serializeDescriptor,
   LOCAL_TARGET_SAMPLES,
+  LOCAL_MIN_SAMPLES,
   LOCAL_MIN_DETECTION_SCORE,
   LOCAL_MIN_FACE_RATIO,
   type LocalSample,
@@ -266,6 +267,8 @@ export interface LocalVerifyResult {
   microMotion: boolean;
   durationMs: number;
   frames: number;
+  /** average cost of one detect+describe pass on this device */
+  avgFrameMs: number;
 }
 
 /**
@@ -279,22 +282,27 @@ export async function verifyAgainstVideo(
   opts: LocalVerifyOptions = {}
 ): Promise<LocalVerifyResult> {
   const target = opts.targetSamples ?? LOCAL_TARGET_SAMPLES;
-  const maxDuration = opts.maxDurationMs ?? 6000;
+  const maxDuration = opts.maxDurationMs ?? 9000;
   const templates = normalizeTemplates(enrolled);
   const samples: LocalSample[] = [];
   const noseTrack: Array<{ x: number; y: number; faceWidth: number }> = [];
   const startedAt = Date.now();
   let frames = 0;
 
-  while (samples.length < target && Date.now() - startedAt < maxDuration) {
+  let effectiveTarget = target;
+  while (samples.length < effectiveTarget && Date.now() - startedAt < maxDuration) {
     if (opts.shouldAbort?.()) break;
     frames++;
     let face: DetectedFace | null = null;
+    const frameStart = Date.now();
     try {
       face = await detectFace(video);
     } catch (e) {
       console.warn('[FACE LOCAL] detect failed:', e);
     }
+    // Slow device (CPU backend, old phone): every frame costs ~1 s, so settle for
+    // the minimum sample count instead of timing out at 3-4/5 with no decision.
+    if (Date.now() - frameStart > 700) effectiveTarget = Math.max(LOCAL_MIN_SAMPLES, Math.min(effectiveTarget, LOCAL_MIN_SAMPLES));
     if (face && face.descriptor) {
       samples.push({ descriptor: face.descriptor, score: face.score, faceRatio: face.faceRatio, yaw: face.yaw });
       if (face.nose) noseTrack.push(face.nose);
@@ -310,7 +318,7 @@ export async function verifyAgainstVideo(
   }
 
   const decision = decideLocalVerification(templates, samples, opts.threshold);
-  return { decision, samples, microMotion: hasMicroMotion(noseTrack), durationMs: Date.now() - startedAt, frames };
+  return { decision, samples, microMotion: hasMicroMotion(noseTrack), durationMs: Date.now() - startedAt, frames, avgFrameMs: frames > 0 ? Math.round((Date.now() - startedAt) / frames) : 0 };
 }
 
 export interface EnrollmentCapture {

@@ -91,6 +91,8 @@ export interface LocalDecision {
   /** the sample closest to a template (only on success) — used for adaptive learning */
   bestSample?: LocalSample;
   bestDistance?: number;
+  /** per-sample best-template distances, for diagnostics */
+  distances?: number[];
 }
 
 /** All descriptors pairwise (near-)identical → a static image replayed frame after frame. */
@@ -121,10 +123,14 @@ export function decideLocalVerification(
     };
   }
 
-  const usable = samples.filter(s =>
-    isDescriptor(s.descriptor) && s.score >= LOCAL_MIN_DETECTION_SCORE && s.faceRatio >= LOCAL_MIN_FACE_RATIO &&
-    (typeof s.yaw !== 'number' || !Number.isFinite(s.yaw) || isFrontal(s.yaw))
+  const detected = samples.filter(s =>
+    isDescriptor(s.descriptor) && s.score >= LOCAL_MIN_DETECTION_SCORE && s.faceRatio >= LOCAL_MIN_FACE_RATIO
   );
+  // Prefer frontal frames, but never throw away a whole pass because the yaw
+  // estimate was noisy: when fewer than LOCAL_MIN_SAMPLES frontal frames exist,
+  // fall back to every detected frame (the median still resists one bad frame).
+  const frontal = detected.filter(s => typeof s.yaw !== 'number' || !Number.isFinite(s.yaw) || isFrontal(s.yaw));
+  const usable = frontal.length >= LOCAL_MIN_SAMPLES ? frontal : detected;
   const tooFar = samples.length > 0 && usable.length < LOCAL_MIN_SAMPLES && samples.some(s => s.faceRatio > 0 && s.faceRatio < LOCAL_MIN_FACE_RATIO);
 
   if (usable.length < LOCAL_MIN_SAMPLES) {
@@ -158,7 +164,7 @@ export function decideLocalVerification(
   for (let i = 1; i < distances.length; i++) if (distances[i] < distances[bestIdx]) bestIdx = i;
 
   if (d <= t) {
-    return { verified: true, retryable: false, reason: 'Yuz muvaffaqiyatli solishtirildi', distance: d, confidence, samples: usable.length, bestSample: usable[bestIdx], bestDistance: distances[bestIdx] };
+    return { verified: true, retryable: false, reason: 'Yuz muvaffaqiyatli solishtirildi', distance: d, confidence, samples: usable.length, bestSample: usable[bestIdx], bestDistance: distances[bestIdx], distances };
   }
   if (d > LOCAL_NO_MATCH_DISTANCE) {
     return {
@@ -168,7 +174,8 @@ export function decideLocalVerification(
       reason: "Yuz ro'yxatdan o'tgan surat bilan mos kelmadi.",
       distance: d,
       confidence,
-      samples: usable.length
+      samples: usable.length,
+      distances
     };
   }
   return {
@@ -178,7 +185,8 @@ export function decideLocalVerification(
     reason: `Moslik darajasi yetarli emas (${Math.round(confidence * 100)}%). Xonani yoritib, ko'zoynak/bosh kiyimni olib, kameraga yaqinroq va to'g'ri qarang.`,
     distance: d,
     confidence,
-    samples: usable.length
+    samples: usable.length,
+    distances
   };
 }
 
@@ -195,7 +203,7 @@ export const TEMPLATE_MIN_DIVERSITY = 0.22;
 /** Stop collecting as soon as this many consecutive samples all match. */
 export const EARLY_ACCEPT_SAMPLES = 3;
 /** |yaw| above this = head turned too far for a reliable descriptor. */
-export const MAX_FRONTAL_YAW = 0.32;
+export const MAX_FRONTAL_YAW = 0.42;
 /** Head-turn challenge: how far the yaw must move from the baseline. */
 export const CHALLENGE_TURN_YAW = 0.2;
 /** Head-turn challenge: yaw must come back within this of the baseline afterwards. */
