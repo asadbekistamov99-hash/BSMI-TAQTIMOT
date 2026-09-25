@@ -3708,7 +3708,8 @@ function SettingsManager() {
       enableLatin: true,
       enableNotifications: true,
       enableFaceId: true,
-      faceIdEngine: 'local'
+      faceIdEngine: 'local',
+      faceIdActiveLiveness: false
     }
   });
   const [loading, setLoading] = useState(true);
@@ -4702,10 +4703,13 @@ function SettingsManager() {
                    { id: 'enableQuizzes', label: 'Testlar Tizimi', icon: <ClipboardList size={20} /> },
                    { id: 'enableMidterms', label: 'Oraliq Nazorat', icon: <ShieldAlert size={20} /> },
                    { id: 'enableLatin', label: 'Terminlar Lug\'ati', icon: <Globe size={20} /> },
-                   { id: 'enableFaceId', label: 'Face ID (biometrik kirish)', icon: <Fingerprint size={20} />, hint: "O'chirilsa talabalar Face ID siz kiradi (AI/billing muammosida vaqtinchalik)" }
-                 ].map((feature: { id: string; label: string; icon: React.ReactNode; hint?: string }) => {
-                   // A feature that was never saved (undefined) counts as enabled — same rule as useSettings defaults.
-                   const isOn = (settings.features as any)[feature.id] !== false;
+                   { id: 'enableFaceId', label: 'Face ID (biometrik kirish)', icon: <Fingerprint size={20} />, hint: "O'chirilsa talabalar Face ID siz kiradi (AI/billing muammosida vaqtinchalik)" },
+                   { id: 'faceIdActiveLiveness', label: 'Face ID: boshni burish sinovi', icon: <ShieldAlert size={20} />, hint: "Yoqilsa, yuz mos kelgach talabadan boshini burish so'raladi — surat yoki video bilan aldashga qarshi (tekshiruv ~3 s uzayadi)", defaultOff: true }
+                 ].map((feature: { id: string; label: string; icon: React.ReactNode; hint?: string; defaultOff?: boolean }) => {
+                   // A feature that was never saved (undefined) counts as enabled — same rule as useSettings defaults —
+                   // unless the feature is opt-in (defaultOff).
+                   const raw = (settings.features as any)[feature.id];
+                   const isOn = feature.defaultOff ? raw === true : raw !== false;
                    return (
                    <div key={feature.id} className="p-8 bg-slate-50 rounded-[32px] border border-slate-100 flex flex-col items-center gap-6 group hover:bg-white hover:shadow-xl hover:shadow-slate-200/50 transition-all">
                       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${isOn ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-400'}`}>
