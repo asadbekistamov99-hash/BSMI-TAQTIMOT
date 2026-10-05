@@ -394,40 +394,6 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     startCamera();
   };
 
-  // Release the camera whenever the page is hidden (home button, app switch, tab
-  // change, screen lock, bfcache). A live stream in the background keeps the
-  // phone's camera indicator on after the student has left the site. When the
-  // page comes back and the gate is still waiting for a face, resume.
-  const latestRef = useRef<{ start: () => void; stop: () => void; resumable: () => boolean }>({ start: () => {}, stop: () => {}, resumable: () => false });
-  latestRef.current = {
-    start: startCamera,
-    stop: stopCamera,
-    resumable: () => !capturedImage && !verifying && !verificationResult
-  };
-  const resumeAfterHideRef = useRef(false);
-  useEffect(() => {
-    const onVisibility = () => {
-      if (document.hidden) {
-        resumeAfterHideRef.current = !!streamRef.current && latestRef.current.resumable();
-        if (streamRef.current) {
-          latestRef.current.stop();
-          if (livenessStageRef.current === 'capturing') setStage('idle');
-        }
-      } else if (resumeAfterHideRef.current && mountedRef.current) {
-        resumeAfterHideRef.current = false;
-        latestRef.current.start();
-      }
-    };
-    const onPageHide = () => { stopStream(); };
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('pagehide', onPageHide);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('pagehide', onPageHide);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Clean up camera on unmount
   useEffect(() => {
     return () => {
