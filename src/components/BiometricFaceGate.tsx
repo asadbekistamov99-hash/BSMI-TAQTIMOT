@@ -18,12 +18,20 @@ import {
   getLocalEngineError,
   onLocalEngineStage,
   verifyAgainstVideo,
-  resolveEnrolledDescriptor,
+  collectEnrollmentSamples,
+  runHeadTurnChallenge,
+  resolveEnrolledTemplates,
   descriptorFromDataUrl,
   serializeDescriptor,
   type LocalEngineStage
 } from '../lib/faceLocalEngine';
-import { LOCAL_MATCH_DISTANCE, resolveLocalThreshold, isDescriptor } from '../lib/faceLocalPolicy';
+import {
+  LOCAL_MATCH_DISTANCE,
+  resolveLocalThreshold,
+  normalizeTemplates,
+  shouldLearnTemplate,
+  type ChallengeState
+} from '../lib/faceLocalPolicy';
 
 const LOCAL_THRESHOLD = resolveLocalThreshold((import.meta as any).env?.VITE_FACE_LOCAL_THRESHOLD, LOCAL_MATCH_DISTANCE);
 
@@ -127,7 +135,16 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
   const isLocal = engine === 'local';
   const [localStage, setLocalStage] = useState<LocalEngineStage>(getLocalEngineStage());
   const [localProgress, setLocalProgress] = useState<{ collected: number; target: number } | null>(null);
-  const enrolledDescriptorRef = useRef<Float32Array | null>(null);
+  // Every stored template of this user (several descriptors: different lighting,
+  // glasses, ...). Grows automatically after strong matches (adaptive learning).
+  const enrolledTemplatesRef = useRef<ArrayLike<number>[] | null>(null);
+  // Descriptors captured during a local enrollment, saved together with the photo.
+  const enrollCaptureRef = useRef<{ descriptors: number[][] } | null>(null);
+  // Live guidance shown under the camera ("Yaqinroq keling", "To'g'ri qarang", ...).
+  const [guidance, setGuidance] = useState<string | null>(null);
+  // Optional active liveness: after the identity matched, ask for a head turn.
+  const activeLiveness = settings?.features?.faceIdActiveLiveness === true;
+  const [challenge, setChallenge] = useState<{ state: ChallengeState; secondsLeft: number } | null>(null);
 
   // === Passive liveness state ===
   // No visible instructions are ever shown to the user (no "blink", "turn head", etc).
@@ -232,10 +249,10 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     return off;
   }, [isLocal]);
 
-  // The enrolled descriptor must be recomputed if the enrolled photo changes.
+  // Templates must be recomputed if the enrolled data changes.
   useEffect(() => {
-    enrolledDescriptorRef.current = null;
-  }, [enrolledPhoto, profile?.faceIdDescriptor]);
+    enrolledTemplatesRef.current = null;
+  }, [enrolledPhoto, profile?.faceIdDescriptor, profile?.faceIdDescriptors]);
 
   const stopStream = () => {
     const s = streamRef.current;
@@ -365,6 +382,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
 
   // Re-enroll: lets the student overwrite an old/bad photo with a fresh clear one.
   const handleReEnroll = () => {
+    enrollCaptureRef.current = null;
     autoRetryCountRef.current = 0;
     setStatusNote(null);
     setCapturedImage(null);
@@ -429,7 +447,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     };
 
     if (readyForAutoCheck) {
-      retryTimer = setTimeout(attemptStart, 1500); // let exposure settle first
+      retryTimer = setTimeout(attemptStart, isLocal ? 500 : 1500); // let exposure settle first
     }
 
     return () => {
@@ -506,9 +524,10 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
   // face never looks pixel-identical between frames) and for spoofing signs (a
   // held-up photo or a phone/monitor screen). Nothing here grants access — only
   // the backend's verdict does.
-  // Browser-side verification: several descriptors are taken from the live video
-  // and compared with the enrolled descriptor (see faceLocalPolicy.ts). No network
-  // call is involved; the only thing written is the audit log.
+  // Browser-side verification: descriptors are taken from the live video back-to-back
+  // and compared with every stored template (see faceLocalPolicy.ts). Stops as soon
+  // as three consecutive frames match. No network call is involved; the only things
+  // written are the audit log and, after a strong match, a learned template.
   const runLocalVerification = async () => {
     const video = videoRef.current;
     if (!video || !streamRef.current) {
@@ -517,28 +536,40 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
       return;
     }
     setLocalProgress({ collected: 0, target: 5 });
-    let decision: Awaited<ReturnType<typeof verifyAgainstVideo>>;
+    setGuidance(null);
+    let result: Awaited<ReturnType<typeof verifyAgainstVideo>>;
     try {
       await ensureLocalEngine();
-      if (!enrolledDescriptorRef.current) {
-        const storedDescriptor = profile?.faceIdDescriptor ?? user?.faceIdDescriptor;
-        enrolledDescriptorRef.current = await resolveEnrolledDescriptor({ faceIdDescriptor: storedDescriptor, faceIdPhoto: enrolledPhoto });
-        // Cache the descriptor computed from an old photo so the next login skips this step.
-        if (enrolledDescriptorRef.current && !isDescriptor(storedDescriptor) && user?.uid) {
+      if (!enrolledTemplatesRef.current) {
+        const stored = {
+          faceIdDescriptors: profile?.faceIdDescriptors ?? user?.faceIdDescriptors,
+          faceIdDescriptor: profile?.faceIdDescriptor ?? user?.faceIdDescriptor,
+          faceIdPhoto: enrolledPhoto
+        };
+        const templates = await resolveEnrolledTemplates(stored);
+        enrolledTemplatesRef.current = templates;
+        // Cache templates computed from an old photo so the next login skips this step.
+        if (templates.length > 0 && normalizeTemplates(stored.faceIdDescriptors).length === 0 && normalizeTemplates(stored.faceIdDescriptor).length === 0 && user?.uid) {
           setDoc(doc(db, 'users', user.uid), {
-            faceIdDescriptor: serializeDescriptor(enrolledDescriptorRef.current),
+            faceIdDescriptors: templates.map(serializeDescriptor),
+            faceIdDescriptor: serializeDescriptor(templates[0]),
             faceIdEngine: 'local'
-          }, { merge: true }).catch(err => console.warn('[FACE LOCAL] descriptor cache write failed:', err));
+          }, { merge: true }).catch(err => console.warn('[FACE LOCAL] template cache write failed:', err));
         }
       }
-      decision = await verifyAgainstVideo(video, enrolledDescriptorRef.current, {
+      result = await verifyAgainstVideo(video, enrolledTemplatesRef.current, {
         threshold: LOCAL_THRESHOLD,
-        onProgress: (collected, target) => { if (mountedRef.current) setLocalProgress({ collected, target }); },
+        onFrame: ({ collected, target, guidance: g }) => {
+          if (!mountedRef.current) return;
+          setLocalProgress({ collected, target });
+          setGuidance(g);
+        },
         shouldAbort: () => !mountedRef.current || !streamRef.current
       });
     } catch (err: any) {
       console.error('[FACE LOCAL] verification failed:', err);
       setLocalProgress(null);
+      setGuidance(null);
       setStage('idle');
       const failure: VerificationOutcome = {
         success: false,
@@ -555,22 +586,72 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     }
 
     setLocalProgress(null);
+    setGuidance(null);
     if (!mountedRef.current) return;
+    const { decision } = result;
+    const templates = enrolledTemplatesRef.current || [];
+    const detail = Number.isFinite(decision.distance)
+      ? `masofa ${decision.distance.toFixed(2)} (chegara ${LOCAL_THRESHOLD})${decision.distances ? ' [' + decision.distances.map(x => x.toFixed(2)).join(', ') + ']' : ''}, yaw [${result.samples.map(s => (typeof s.yaw === 'number' && Number.isFinite(s.yaw)) ? s.yaw.toFixed(2) : '?').join(', ')}], kadrlar ${decision.samples}/${result.frames}, ${result.durationMs} ms (${result.avgFrameMs} ms/kadr), andozalar ${templates.length}${result.microMotion ? ', harakat ✓' : ''}`
+      : `kadrlar ${decision.samples}/${result.frames}, ${result.durationMs} ms`;
+
+    // Optional active liveness (admin setting): identity matched → ask for a head turn.
+    if (decision.verified && activeLiveness) {
+      setChallenge({ state: 'waiting', secondsLeft: 7 });
+      let outcome: ChallengeState = 'waiting';
+      try {
+        outcome = await runHeadTurnChallenge(video, {
+          timeoutMs: 7000,
+          onFrame: info => { if (mountedRef.current) setChallenge(info); },
+          shouldAbort: () => !mountedRef.current || !streamRef.current
+        });
+      } catch (err) {
+        console.warn('[FACE LOCAL] challenge failed:', err);
+      }
+      setChallenge(null);
+      if (outcome !== 'passed') {
+        const lastFrame = captureFrameOnly();
+        if (lastFrame) setCapturedImage(lastFrame);
+        stopCamera();
+        setStage('idle');
+        const failure: VerificationOutcome = {
+          success: false,
+          isMatch: true,
+          confidence: decision.confidence,
+          code: 'SPOOF',
+          retryable: false,
+          reason: "Jonlilik tasdiqlanmadi: boshni burish sinovi bajarilmadi. Qayta urinib, boshingizni sekin chapga yoki o'ngga burib, keyin to'g'ri qarang.",
+          detail: `${detail}, sinov: ${outcome}`
+        };
+        writeAudit({ action: 'verification', status: 'failure', engine: 'local', code: 'LIVENESS', confidence: decision.confidence, details: failure.detail });
+        setStatusNote(null);
+        setVerificationResult(failure);
+        return;
+      }
+    }
+
     const lastFrame = captureFrameOnly();
     if (lastFrame) setCapturedImage(lastFrame);
     stopCamera();
     setStage('idle');
-
-    const detail = Number.isFinite(decision.distance)
-      ? `masofa ${decision.distance.toFixed(2)} (chegara ${LOCAL_THRESHOLD}), kadrlar ${decision.samples}`
-      : `kadrlar ${decision.samples}`;
 
     if (decision.verified) {
       setStatusNote(null);
       setVerificationResult({ success: true, isMatch: true, confidence: decision.confidence, reason: decision.reason });
       writeAudit({ action: 'verification', status: 'success', engine: 'local', confidence: decision.confidence, details: `${decision.reason} — ${detail}` });
       writeFaceIdSession(user?.uid);
-      setTimeout(() => { if (mountedRef.current) onVerified(); }, 800);
+
+      // Adaptive learning: a strong, sufficiently different descriptor becomes a new template.
+      if (decision.bestSample && user?.uid && shouldLearnTemplate(templates, decision.bestSample.descriptor)) {
+        const next = [...templates, decision.bestSample.descriptor];
+        enrolledTemplatesRef.current = next;
+        setDoc(doc(db, 'users', user.uid), {
+          faceIdDescriptors: next.map(serializeDescriptor),
+          faceIdEngine: 'local',
+          faceIdLearnedAt: new Date()
+        }, { merge: true }).catch(err => console.warn('[FACE LOCAL] template learn write failed:', err));
+      }
+
+      setTimeout(() => { if (mountedRef.current) onVerified(); }, 600);
       return;
     }
 
@@ -587,6 +668,59 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     if (await maybeAutoRetry(decision.code)) return;
     setStatusNote(null);
     setVerificationResult(outcome);
+  };
+
+  // Local enrollment: a few frontal, well-lit frames are captured (with live
+  // guidance) so the template set already covers small variations; the last
+  // frame is kept as the photo the admin can see.
+  const captureLocalEnrollment = async () => {
+    const video = videoRef.current;
+    if (!video || !streamRef.current) {
+      setCameraError("Kamera tayyor emas. Iltimos, biroz kuting va qayta urinib ko'ring.");
+      return;
+    }
+    const quality = checkFrameQuality();
+    if (!quality.ok) {
+      setCameraError(quality.message || "Tasvir sifati yetarli emas.");
+      return;
+    }
+    setCameraError(null);
+    setStage('capturing');
+    setLocalProgress({ collected: 0, target: 3 });
+    setGuidance(null);
+    try {
+      await ensureLocalEngine();
+      const capture = await collectEnrollmentSamples(video, {
+        target: 3,
+        onFrame: ({ collected, target, guidance: g }) => {
+          if (!mountedRef.current) return;
+          setLocalProgress({ collected, target });
+          setGuidance(g);
+        },
+        shouldAbort: () => !mountedRef.current || !streamRef.current
+      });
+      setLocalProgress(null);
+      setGuidance(null);
+      setStage('idle');
+      if (!capture) {
+        setCameraError("Suratda aniq yuz topilmadi. Yorug' joyda, kameraga to'g'ri va yaqinroq qarab qayta urinib ko'ring.");
+        return;
+      }
+      const photo = captureFrameOnly();
+      if (!photo) {
+        setCameraError("Kameradan tasvir olinmadi. Iltimos, kameraga qarang va biroz kuting.");
+        return;
+      }
+      enrollCaptureRef.current = { descriptors: capture.descriptors };
+      setCapturedImage(photo);
+      stopCamera();
+    } catch (err: any) {
+      console.error('[FACE LOCAL] enrollment capture failed:', err);
+      setLocalProgress(null);
+      setGuidance(null);
+      setStage('idle');
+      setCameraError("Yuz tanish modeli ishlamadi: " + String(err?.message || err).slice(0, 120));
+    }
   };
 
   const runLivenessSequence = async () => {
@@ -652,8 +786,8 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
       // and store its descriptor next to the photo. (If the model is not available
       // right now, the photo alone is stored and the descriptor is computed on the
       // first verification instead.)
-      let descriptor: number[] | null = null;
-      if (isLocal) {
+      let descriptors: number[][] | null = enrollCaptureRef.current?.descriptors ?? null;
+      if (isLocal && !descriptors) {
         try {
           const d = await withTimeout(descriptorFromDataUrl(photo), 25000, 'Yuz tanish modeli yuklanmadi');
           if (!d) {
@@ -662,12 +796,13 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
             startCamera();
             return;
           }
-          descriptor = serializeDescriptor(d);
-          enrolledDescriptorRef.current = d;
+          descriptors = [serializeDescriptor(d)];
         } catch (modelErr) {
           console.warn('[FACE LOCAL] descriptor at enrollment skipped:', modelErr);
         }
       }
+      const descriptor = descriptors && descriptors.length > 0 ? descriptors[0] : null;
+      if (descriptors) enrolledTemplatesRef.current = descriptors;
 
       const userRef = doc(db, 'users', user.uid);
       await withTimeout(
@@ -676,7 +811,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
           faceIdEnrolled: true,
           faceIdEnabled: true,
           faceIdEnrolledAt: new Date(),
-          ...(descriptor ? { faceIdDescriptor: descriptor, faceIdEngine: 'local' } : {}),
+          ...(descriptor ? { faceIdDescriptor: descriptor, faceIdDescriptors: descriptors, faceIdEngine: 'local' } : {}),
           updatedAt: new Date()
         }, { merge: true }),
         ENROLL_SAVE_TIMEOUT_MS,
@@ -696,7 +831,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
         faceIdPhoto: photo,
         faceIdEnrolled: true,
         faceIdEnabled: true,
-        ...(descriptor ? { faceIdDescriptor: descriptor } : {})
+        ...(descriptor ? { faceIdDescriptor: descriptor, faceIdDescriptors: descriptors } : {})
       }));
       setForceEnroll(false);
       writeFaceIdSession(user.uid);
@@ -1014,8 +1149,25 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
             <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[1px] flex flex-col items-center justify-center p-4 z-20">
               <div className="w-10 h-10 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin mb-3" />
               <span className="text-[10px] font-black uppercase tracking-widest text-cyan-300 bg-slate-950/80 px-3 py-1 rounded-full border border-cyan-500/40">
-                {localProgress ? `Tekshirilmoqda... ${localProgress.collected}/${localProgress.target}` : 'Tekshirilmoqda...'}
+                {localProgress
+                  ? (isEnrolled ? `Tekshirilmoqda... ${localProgress.collected}/${localProgress.target}` : `Suratga olinmoqda... ${localProgress.collected}/${localProgress.target}`)
+                  : 'Tekshirilmoqda...'}
               </span>
+              {guidance && (
+                <span className="mt-2 text-[10px] font-bold text-amber-200 bg-amber-950/80 px-3 py-1 rounded-full border border-amber-500/40">
+                  {guidance}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Active liveness challenge (admin option): identity already matched, now prove it is a live head. */}
+          {challenge && (
+            <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-[1px] flex flex-col items-center justify-center p-4 z-30 text-center">
+              <span className="text-[11px] font-black uppercase tracking-widest text-white bg-indigo-600/90 px-3 py-1.5 rounded-full border border-indigo-300/50 shadow-lg">
+                {challenge.state === 'turned' ? "Endi to'g'ri qarang" : "Boshingizni sekin chapga yoki o'ngga buring"}
+              </span>
+              <span className="mt-2 text-[10px] font-mono text-indigo-200">{challenge.secondsLeft} s</span>
             </div>
           )}
 
@@ -1169,6 +1321,10 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
                     if (!isLocal && serviceDown) return;
                     if (isLocal && localStage !== 'ready') return;
                     await runLivenessSequence();
+                  } else if (isLocal) {
+                    if (localStage !== 'ready') return;
+                    enrollCaptureRef.current = null;
+                    await captureLocalEnrollment();
                   } else {
                     const photo = capturePhoto();
                     if (!photo && !cameraError) {
@@ -1176,11 +1332,11 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
                     }
                   }
                 }}
-                disabled={isEnrolled && ((!isLocal && serviceDown) || (isLocal && localStage !== 'ready'))}
+                disabled={(isEnrolled && !isLocal && serviceDown) || (isLocal && localStage !== 'ready')}
                 className="w-full py-3 px-4 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed active:scale-98 transition text-white font-bold text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 cursor-pointer"
               >
                 <UserCheck className="w-4 h-4" />
-                {isEnrolled ? "Yuzni tekshirish" : "Suratga olish"}
+                {isEnrolled ? "Yuzni tekshirish" : (isLocal && localStage !== 'ready' ? "Model yuklanmoqda..." : "Suratga olish")}
               </button>
 
               {isEnrolled && (

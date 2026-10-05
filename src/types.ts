@@ -220,5 +220,7 @@ export interface SystemSettings {
     enableFaceId?: boolean;
     /** 'local' = face-api.js in the browser (default, no API key); 'gemini' = server AI. */
     faceIdEngine?: 'local' | 'gemini';
+    /** Local engine: after the face matched, also require a head-turn (anti photo/video). Default off. */
+    faceIdActiveLiveness?: boolean;
   };
 }
