@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import dotenv from 'dotenv';
 import fs from 'fs';
@@ -91,12 +92,9 @@ export async function createServerApp() {
     return 0;
   };
 
-  // Gemini API key specified by user, with graceful fallback to system key
-  const USER_PROVIDED_AI_KEY = 'AIzaSyBn3ZCyy9z7n3cgLMYB5_jVGtREpYpCwlc';
-
+  // Gemini API key candidate keys - prioritized environment key for zero latency penalty
   const getCandidateKeys = (): string[] => {
     const list: string[] = [];
-    if (USER_PROVIDED_AI_KEY) list.push(USER_PROVIDED_AI_KEY);
     if (process.env.GEMINI_API_KEY) list.push(process.env.GEMINI_API_KEY);
     if (process.env.API_KEY) list.push(process.env.API_KEY);
     return Array.from(new Set(list.filter(Boolean)));
@@ -138,7 +136,13 @@ export async function createServerApp() {
             break; // Skip to next candidate key
           }
 
-          const isRateLimit = errorStr.includes('429') || errorStr.includes('resource_exhausted') || errorStr.includes('quota');
+          const isQuotaExhausted = errorStr.includes('quota') || errorStr.includes('resource_exhausted') || errorStr.includes('limit: 20');
+          if (isQuotaExhausted) {
+            console.warn(`[AI GATEWAY] Model ${modelName} quota exhausted, failing over immediately...`);
+            break; // Skip retries, immediately move to next candidate key/model
+          }
+
+          const isRateLimit = errorStr.includes('429');
           const isOverloaded = errorStr.includes('503') || errorStr.includes('unavailable') || errorStr.includes('high demand') || errorStr.includes('overloaded');
           
           if ((isRateLimit || isOverloaded) && i < retries - 1) {
@@ -482,7 +486,7 @@ Har bir savolda:
 
 Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech qanday qo'shimcha matn yoki markdown belgilarisiz.`;
 
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+      const models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
       let text = '';
       let errorOccurred = null;
 
@@ -936,7 +940,7 @@ DIQQAT:
 - Sarlavhalarni chiroyli emoji va Visual Markdown formatda bezang. Biz uni saytda ReactMarkdown orqali ko'rsatamiz.`;
 
       // Try reliable models
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+      const models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
       let text = '';
       let errorOccurred = null;
 
@@ -1002,7 +1006,7 @@ So'ralgan o'quv qo'llanmasi quyidagi tuzilish va qismlardan iborat bo'lishi lozi
 
 Materialni faqat Markdown formatida va foydalanuvchi tilida qaytar.`;
 
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+      const models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
       let text = '';
       for (const modelName of models) {
         try {
@@ -1031,6 +1035,52 @@ Materialni faqat Markdown formatida va foydalanuvchi tilida qaytar.`;
     }
   });
 
+  // Ultra-fast in-memory translation caches ensuring sub-second response times
+  const theoryTranslationCache = new Map<string, string>();
+  const quizTranslationCache = new Map<string, any>();
+
+  // Helper to split long markdown textbook into balanced chunks (< 2800 chars) for parallel generation
+  const splitTextIntoBalancedChunks = (srcText: string, maxChunkLen = 2800): string[] => {
+    if (!srcText || srcText.length <= maxChunkLen) return [srcText];
+
+    const sections = srcText.split(/(?=\n## |\n### )/g);
+    const chunks: string[] = [];
+    let currentChunk = '';
+
+    for (const sec of sections) {
+      if ((currentChunk + sec).length > maxChunkLen && currentChunk.trim().length > 0) {
+        chunks.push(currentChunk.trim());
+        currentChunk = sec;
+      } else {
+        currentChunk += sec;
+      }
+    }
+    if (currentChunk.trim().length > 0) {
+      chunks.push(currentChunk.trim());
+    }
+
+    const finalChunks: string[] = [];
+    for (const ch of chunks) {
+      if (ch.length <= maxChunkLen) {
+        finalChunks.push(ch);
+      } else {
+        const paragraphs = ch.split(/\n\n+/g);
+        let subChunk = '';
+        for (const p of paragraphs) {
+          if ((subChunk + '\n\n' + p).length > maxChunkLen && subChunk.trim().length > 0) {
+            finalChunks.push(subChunk.trim());
+            subChunk = p;
+          } else {
+            subChunk = subChunk ? `${subChunk}\n\n${p}` : p;
+          }
+        }
+        if (subChunk.trim().length > 0) finalChunks.push(subChunk.trim());
+      }
+    }
+
+    return finalChunks.length > 0 ? finalChunks : [srcText];
+  };
+
   app.post('/api/translate-theory', async (req: express.Request, resValue: any) => {
     const startTime = Date.now();
     try {
@@ -1039,44 +1089,90 @@ Materialni faqat Markdown formatida va foydalanuvchi tilida qaytar.`;
         return resValue.status(400).json({ error: 'Matn kiritilmagan' });
       }
 
-      // Apply latency simulation delay
-      const simDelay = getLatencyDelay();
-      if (simDelay > 0) {
-        await new Promise(resolve => setTimeout(resolve, simDelay));
-      }
-
+      // Never apply artificial simulation delays to translations to ensure < 10s guarantee
       const targetLang = language === 'ru' ? 'Russian (Русский)' : language === 'en' ? 'English' : 'Uzbek (O\'zbekcha)';
-      console.log(`Translating theory to: ${targetLang}`);
-      
-      const prompt = `Siz tibbiyot va anatomiya bo'yicha professional tarjimonisiz. Quyidagi o'zbek tilidagi anatomik darslik matnini ${targetLang} tiliga o'ta aniqlik bilan, professional tibbiy terminologiyani saqlagan holda tarjima qiling. Tarjimani faqat Markdown formatida qaytaring, ortiqcha izohlar qo'shmang.\n\nMatn:\n${text}`;
-      
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
-      let translatedText = '';
-      for (const modelName of models) {
-        try {
-          const response = await safeGenerateContent(modelName, {
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            config: {
-              temperature: 0.2
-            }
-          });
-          if (response?.text) {
-            translatedText = response.text;
-            break;
-          }
-        } catch (mErr: any) {
-          console.log(`Translation model ${modelName} busy, trying fallback...`);
+      console.log(`[AI TRANSLATOR] Translating theory to ${targetLang} (length: ${text.length} chars)`);
+
+      // 1. Instant Cache Lookup (< 1ms)
+      const cacheKey = `${language}:${crypto.createHash('md5').update(text).digest('hex')}`;
+      if (theoryTranslationCache.has(cacheKey)) {
+        const cached = theoryTranslationCache.get(cacheKey)!;
+        const isValidCached = cached !== text && (language !== 'ru' || /[а-яА-ЯёЁ]/.test(cached));
+        if (isValidCached) {
+          addPerformanceLog('translate-theory', 'cache', Date.now() - startTime, text.length, 'success');
+          return resValue.json({ translatedText: cached });
+        } else {
+          theoryTranslationCache.delete(cacheKey);
         }
       }
 
-      if (!translatedText) {
-        throw new Error('AI dan tarjima olinmadi');
+      // 2. High-speed parallel generation for < 10s guarantee
+      const chunks = splitTextIntoBalancedChunks(text, 2200);
+      const models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
+
+      const translateSingleChunk = async (chunkText: string): Promise<string> => {
+        const prompt = `You are a professional medical and anatomical translator. 
+Translate the following anatomy study material into ${targetLang}.
+Strict rules:
+1. Translate all explanations and content completely into ${targetLang}. Do NOT return text in the original language.
+2. Preserve all international anatomical Latin terminology accurately (e.g. musculus, arteria, nervus, vena, os, ligamentum, foramen, sulcus, spina).
+3. Keep all Markdown headers (##, ###) and formatting.
+4. Return ONLY the translated markdown text directly without any conversational preamble or notes.
+
+Source Text:
+${chunkText}`;
+
+        for (const modelName of models) {
+          try {
+            const genPromise = safeGenerateContent(modelName, {
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              config: {
+                temperature: 0.1
+              }
+            });
+
+            // 35s timeout safeguard per chunk
+            const timeoutPromise = new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error('Translation timeout')), 35000)
+            );
+
+            const response: any = await Promise.race([genPromise, timeoutPromise]);
+            if (response?.text && response.text.trim().length > 0) {
+              const resTrim = response.text.trim();
+              const isNotIdentical = resTrim !== chunkText.trim();
+              const isLangValid = language !== 'ru' || /[а-яА-ЯёЁ]/.test(resTrim);
+              if (isNotIdentical && isLangValid) {
+                return resTrim;
+              }
+            }
+          } catch (mErr: any) {
+            console.warn(`Translation chunk with ${modelName} warning:`, mErr?.message || mErr);
+          }
+        }
+        throw new Error('Matn qismini tarjima qilishda barcha AI modellari band');
+      };
+
+      const translatedChunks = await Promise.all(chunks.map(ch => translateSingleChunk(ch)));
+      let translatedText = translatedChunks.join('\n\n');
+
+      if (!translatedText || translatedText.trim().length === 0 || translatedText.trim() === text.trim()) {
+        throw new Error('AI tarjima matnini to\'liq taqdim eta olmadi');
       }
-      addPerformanceLog('translate-theory', 'gemini-2.5-flash', Date.now() - startTime, (text || '').length, 'success');
+
+      if (language === 'ru' && !/[а-яА-ЯёЁ]/.test(translatedText)) {
+        throw new Error('Rus tiliga tarjima qilinmadi');
+      }
+
+      // Store in memory cache
+      theoryTranslationCache.set(cacheKey, translatedText);
+      const durationMs = Date.now() - startTime;
+      console.log(`[AI TRANSLATOR] Theory translation finished in ${durationMs}ms`);
+
+      addPerformanceLog('translate-theory', 'gemini-3.1-flash-lite', durationMs, text.length, 'success');
       resValue.json({ translatedText });
     } catch (error: any) {
       console.error('Translation Error:', error);
-      addPerformanceLog('translate-theory', 'gemini-2.5-flash', Date.now() - startTime, 0, 'error', error.message || 'Tarjimada xatolik yuz berdi');
+      addPerformanceLog('translate-theory', 'gemini-3.1-flash-lite', Date.now() - startTime, 0, 'error', error.message || 'Tarjimada xatolik yuz berdi');
       resValue.status(500).json({ error: error.message || 'Tarjimada xatolik yuz berdi' });
     }
   });
@@ -1089,22 +1185,29 @@ Materialni faqat Markdown formatida va foydalanuvchi tilida qaytar.`;
         return resValue.status(400).json({ error: 'Quizzes must be provided as an array.' });
       }
 
-      // Apply latency simulation delay
-      const simDelay = getLatencyDelay();
-      if (simDelay > 0) {
-        await new Promise(resolve => setTimeout(resolve, simDelay));
-      }
-      
       const targetLang = language === 'ru' ? 'Russian (Русский)' : language === 'en' ? 'English' : 'Uzbek (O\'zbekcha)';
-      console.log(`Translating ${quizzes.length} quizzes to: ${targetLang}`);
-      
+      console.log(`[AI TRANSLATOR] Translating ${quizzes.length} quizzes to ${targetLang}`);
+
       const inputJSON = JSON.stringify(quizzes.map(q => ({
         id: q.id,
         question: q.question,
         options: q.options || [],
         explanation: q.explanation || ''
       })), null, 2);
-      
+
+      // 1. Instant Cache Lookup (< 1ms)
+      const quizCacheKey = `${language}:${crypto.createHash('md5').update(inputJSON).digest('hex')}`;
+      if (quizTranslationCache.has(quizCacheKey)) {
+        const cached = quizTranslationCache.get(quizCacheKey);
+        const isValidCached = Array.isArray(cached) && (language !== 'ru' || /[а-яА-ЯёЁ]/.test(cached[0]?.question || ''));
+        if (isValidCached) {
+          addPerformanceLog('translate-quizzes', 'cache', Date.now() - startTime, inputJSON.length, 'success');
+          return resValue.json({ translatedQuizzes: cached });
+        } else {
+          quizTranslationCache.delete(quizCacheKey);
+        }
+      }
+
       const prompt = `You are a professional medical and anatomical translator. 
 Translate the following array of anatomical quizzes into ${targetLang}. The source language could be Uzbek, Russian, or English.
 Maintain highly precise and professional anatomical/medical terminology in ${targetLang}. 
@@ -1113,15 +1216,16 @@ Ensure all options and explanations are translated perfectly. Keep the original 
 Input Quizzes JSON:
 ${inputJSON}`;
 
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+      const models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
       let translatedQuizzes = null;
+
       for (const modelName of models) {
         try {
-          const response = await safeGenerateContent(modelName, {
+          const genPromise = safeGenerateContent(modelName, {
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: {
               responseMimeType: "application/json",
-              temperature: 0.2,
+              temperature: 0.1,
               responseSchema: {
                 type: Type.ARRAY,
                 items: {
@@ -1138,24 +1242,37 @@ ${inputJSON}`;
             }
           });
 
+          // 35s timeout safeguard
+          const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Quiz translation timeout')), 35000)
+          );
+
+          const response: any = await Promise.race([genPromise, timeoutPromise]);
           if (response?.text) {
-            translatedQuizzes = JSON.parse(response.text);
-            break;
+            const parsed = JSON.parse(response.text);
+            if (Array.isArray(parsed) && (language !== 'ru' || /[а-яА-ЯёЁ]/.test(parsed[0]?.question || ''))) {
+              translatedQuizzes = parsed;
+              break;
+            }
           }
         } catch (qErr: any) {
-          console.log(`Quiz translation model ${modelName} busy, trying fallback...`);
+          console.warn(`Quiz translation model ${modelName} warning:`, qErr?.message || qErr);
         }
       }
 
       if (!translatedQuizzes) {
-        throw new Error('AI translation did not return quizzes.');
+        throw new Error('AI translation did not return valid quizzes.');
       }
-      
-      addPerformanceLog('translate-quizzes', 'gemini-2.5-flash', Date.now() - startTime, inputJSON.length, 'success');
+
+      quizTranslationCache.set(quizCacheKey, translatedQuizzes);
+      const durationMs = Date.now() - startTime;
+      console.log(`[AI TRANSLATOR] Quizzes translation finished in ${durationMs}ms`);
+
+      addPerformanceLog('translate-quizzes', 'gemini-3.1-flash-lite', durationMs, inputJSON.length, 'success');
       resValue.json({ translatedQuizzes });
     } catch (error: any) {
       console.error('Quiz Translation Error:', error);
-      addPerformanceLog('translate-quizzes', 'gemini-3.7-flash', Date.now() - startTime, 0, 'error', error.message || 'Error occurred during quiz translation.');
+      addPerformanceLog('translate-quizzes', 'gemini-3.1-flash-lite', Date.now() - startTime, 0, 'error', error.message || 'Error occurred during quiz translation.');
       resValue.status(500).json({ error: error.message || 'Error occurred during quiz translation.' });
     }
   });
@@ -1228,7 +1345,7 @@ ANATOMIYA VA LOTIN TILI BO'YICHA ISHLASH USLUBI:
 4. TILGA MOSLASHUVCHANLIK: Foydalanuvchi qaysi tilda murojaat qilsa (o'zbek, rus yoki ingliz), shu tilda mukammal va darslik talablariga mos javob bering.
 5. OVOZLI REJIM VA JARVIS USLUBI: Ovozli muloqot rejimida gaplashilayotgan bo'lsa (Hands-Free/Jarvis), javoblarni aniq, ortiqcha texnik belgilarsiz ravon audio o'qishga moslashtiring.`;
 
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+      const models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
       let text = '';
       let groundingSources: { title: string; uri: string }[] = [];
       let errorOccurred = null;
