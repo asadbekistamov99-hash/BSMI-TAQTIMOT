@@ -119,12 +119,11 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
   const [serviceHealth, setServiceHealth] = useState<{ state: 'unknown' | 'ok' | 'down'; message?: string }>({ state: 'unknown' });
 
   // === Engine selection ===
-  // 'local' (default): face-api.js runs in the student's browser — no API key,
-  // no quota, no billing, no server region. 'gemini': the server-side AI check.
-  // Admin → Tizim Sozlamalari → Modulni Boshqarish → "Face ID dvigateli".
+  // Local engine: face-api.js runs in the student's browser — no API key,
+  // no quota, no billing, no server region. Face ID strictly operates without any API key.
   const { settings } = useSettings();
-  const engine: 'local' | 'gemini' = settings?.features?.faceIdEngine === 'gemini' ? 'gemini' : 'local';
-  const isLocal = engine === 'local';
+  const engine: string = 'local';
+  const isLocal = true;
   const [localStage, setLocalStage] = useState<LocalEngineStage>(getLocalEngineStage());
   const [localProgress, setLocalProgress] = useState<{ collected: number; target: number } | null>(null);
   const enrolledDescriptorRef = useRef<Float32Array | null>(null);
@@ -470,7 +469,7 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
       const c = sampleCanvasRef.current;
       c.width = 64;
       c.height = 48;
-      const ctx = c.getContext('2d', { willReadFrequently: true } as any);
+      const ctx = c.getContext('2d', { willReadFrequently: true } as any) as CanvasRenderingContext2D | null;
       if (!ctx) return { ok: true };
       ctx.drawImage(video, 0, 0, 64, 48);
       const data = ctx.getImageData(0, 0, 64, 48).data;

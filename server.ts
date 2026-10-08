@@ -91,9 +91,18 @@ export async function createServerApp() {
     return 0;
   };
 
-  const getAI = () => {
-    const key = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (!key) return null;
+  // Gemini API key specified by user, with graceful fallback to system key
+  const USER_PROVIDED_AI_KEY = 'AIzaSyBn3ZCyy9z7n3cgLMYB5_jVGtREpYpCwlc';
+
+  const getCandidateKeys = (): string[] => {
+    const list: string[] = [];
+    if (USER_PROVIDED_AI_KEY) list.push(USER_PROVIDED_AI_KEY);
+    if (process.env.GEMINI_API_KEY) list.push(process.env.GEMINI_API_KEY);
+    if (process.env.API_KEY) list.push(process.env.API_KEY);
+    return Array.from(new Set(list.filter(Boolean)));
+  };
+
+  const makeAIClient = (key: string) => {
     return new GoogleGenAI({
       apiKey: key,
       httpOptions: {
@@ -105,30 +114,45 @@ export async function createServerApp() {
   };
 
   const safeGenerateContent = async (modelName: string, config: any, retries = 2, delay = 400) => {
-    const aiInstance = getAI();
-    if (!aiInstance) {
+    const candidateKeys = getCandidateKeys();
+    if (candidateKeys.length === 0) {
       throw new Error('GEMINI_API_KEY sozlanmagan');
     }
-    for (let i = 0; i < retries; i++) {
-      try {
-        return await aiInstance.models.generateContent({
-          model: modelName,
-          ...config
-        });
-      } catch (error: any) {
-        const errorStr = `${error?.status || ''} ${error?.message || ''} ${JSON.stringify(error || {})}`.toLowerCase();
-        const isRateLimit = errorStr.includes('429') || errorStr.includes('resource_exhausted') || errorStr.includes('quota');
-        const isOverloaded = errorStr.includes('503') || errorStr.includes('unavailable') || errorStr.includes('high demand') || errorStr.includes('overloaded');
-        
-        if ((isRateLimit || isOverloaded) && i < retries - 1) {
-          console.log(`[AI GATEWAY] Model ${modelName} is temporarily busy. Retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          delay *= 1.5;
-          continue;
+
+    let lastError: any = null;
+
+    for (const key of candidateKeys) {
+      const aiInstance = makeAIClient(key);
+      for (let i = 0; i < retries; i++) {
+        try {
+          return await aiInstance.models.generateContent({
+            model: modelName,
+            ...config
+          });
+        } catch (error: any) {
+          lastError = error;
+          const errorStr = `${error?.status || ''} ${error?.message || ''} ${JSON.stringify(error || {})}`.toLowerCase();
+          const isInvalidKey = errorStr.includes('api_key_invalid') || errorStr.includes('api key not valid') || errorStr.includes('400');
+          if (isInvalidKey) {
+            console.warn(`[AI GATEWAY] API key ${key.slice(0, 8)}... is invalid. Trying backup key...`);
+            break; // Skip to next candidate key
+          }
+
+          const isRateLimit = errorStr.includes('429') || errorStr.includes('resource_exhausted') || errorStr.includes('quota');
+          const isOverloaded = errorStr.includes('503') || errorStr.includes('unavailable') || errorStr.includes('high demand') || errorStr.includes('overloaded');
+          
+          if ((isRateLimit || isOverloaded) && i < retries - 1) {
+            console.log(`[AI GATEWAY] Model ${modelName} is temporarily busy. Retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            delay *= 1.5;
+            continue;
+          }
+          break; // Try next key
         }
-        throw error;
       }
     }
+
+    throw lastError || new Error('Barcha AI kalitlari band yoki javob bermadi');
   };
 
   // Helper to validate proxy URLs against SSRF
@@ -664,8 +688,8 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
 
     try {
       const validation = validateVerifyRequest(req.body);
-      if (!validation.ok) {
-        return denyClosed(400, validation.code, validation.reason);
+      if (validation.ok === false) {
+        return denyClosed(400, (validation as { code: FaceDenyCode; reason: string }).code, (validation as { code: FaceDenyCode; reason: string }).reason);
       }
       const { enrolledImage, frames } = validation.value;
 
@@ -1181,18 +1205,28 @@ ${inputJSON}`;
 
       contents.push({ role: 'user', parts: currentParts });
 
-      const systemInstruction = `Siz O'zbekistondagi nufuzli Buxoro Davlat Tibbiyot Instituti (BSMI) ANATOMY platformasining yetakchi Professori asistentisiz va talabalar uchun oliy toifali akademik Anatomiya Ustozi (Ustoz o'rnida ishlovchi) hisoblanasiz.
-Ismingiz - "Anatomiya Professor AI".
+      const systemInstruction = `Siz O'zbekistondagi nufuzli Buxoro Davlat Tibbiyot Instituti (BSMI) ANATOMY platformasining yetakchi Professori asistentisiz va talabalar uchun oliy toifali akademik Anatomiya va Lotin tili Ustozi hisoblanasiz.
+Ismingiz - "Anatomiya va Lotin Tili Professor AI".
 
-Sizning vazifangiz:
-1. TALABALARNING HAQIQIY AKADEMIK USTOZI BO'LISH: Talaba so'ragan har qanday savolga darsliklardagi kabi chuqur tahlil, tizimli tushuntirish va o'ta ilmiy yondashuv bilan javob bering. Hech qachon sayoz yoki qisqa javob bilan cheklanmang — xuddi kafedra professori ma'ruza tushuntirayotgandek va talabaga individual ustozlik qilayotgandek yondashing!
-2. LOTIN VA O'ZBEK TERMINOLOGIYASINING QAT'IY ISHLATILISHI: Odam anatomiyasidagi har bitta a'zo, suyak, mushak, arterial-birlashma, boylam yoki fassiyani tushuntirayotganda ularning rasmiy Lotincha nomlarini (masalan, *musculus biceps brachii*, *arteria subclavia*, *os temporale*) qavs ichida va kursivda (*italics*) albatta ta'kidlang. Bu talabalarni darsga tayyorlashga yordam beradi.
-3. FAOL VA KUCHLI YORDAM BERISH: Talabalarga dars jarayonlarida, mustaqil ta'limda, ma'ruza konspektlarida, amaliy mashg'ulotlarda va imtihon biletlarining (colloquium, og'zaki, test imtihonlari) barchasida to'liq yo'nalish bera olasiz. Savollarni javoblashda bosqichma-bosqich, anatomik klassifikatsiya bilan tushuntiring.
-4. KLINIK KORRELYATSIYA (Clinical Connection): Har bir anatomiya darsining oxirida o'sha a'zoning yoki sistemaning travmalari, klinik jarrohlik yoki diagnostik patologiyalar bilan aloqasini (klinik ahamiyatini, masalan, churralar, infarkt, nevralgiya, stenozlar va h.k.) batafsil tibbiy o'quvchi tilida yoritib bering.
-5. TILGA MOSLASHUVCHANLIK: Foydalanuvchi qaysi tilda murojaat qilsa (o'zbek, rus yoki ingliz), tezkor va mukammal tarzda o'sha tilda javob bering. Agar o'zbek tilida gapirilsa, o'zbek tibbiyot darsliklari uslubida yozing.
-6. NO-ANATOMIK TAQIQLASH: Agar foydalanuvchi anatomiyaga va tibbiyotga mutlaqo aloqasi bo'lmagan so'rovlar bersa, ularga ustozlik ohangi bilan: "Men faqat odam anatomiyasi va tibbiy fanlar bo'yicha sizga dars bera olaman. Kelasi darsda anatomiyaga oid yangi savollaringizni kutaman." kabi chiroyli, ammo qat'iy javob yo'llang.
-7. OVOZLI REJIM VA JARVIS USLUBI: Agar ovozli muloqot rejimida gaplashilayotgan bo'lsa (Hands-Free/Jarvis), javoblarni nisbatan aniq, tushunarli, o'quvchiga yoqadigan professional tahlilda bayon qiling va ko'p keraksiz texnik markdown belgilaridan qochishga harakat qiling (chunki uni brauzer TTS o'qiydi).
-8. GOOGLE SEARCH GROUNDING (TADQIQOTLAR VA TIBBIY YANGILIKLAR): Sizga Google Search Grounding xizmati ulangan. Agar talaba eng so'nggi anatomik tadqiqotlar, yangi ilmiy kashfiyotlar, tibbiy yangiliklar, anatomiya yoki klinika sohasidagi zamonaviy yangilanishlar haqida so'rasa, yangi va ishonchli ma'lumotlarni tahlil qiling va taqdim eting.`;
+QAT'IY CHEKLOV VA RUXSAT ETILGAN MAVZULAR:
+SIZ FAQAT VA FAQAT QUYIDAGI 3 TA YO'NALISHDAGI SAVOLLARGA JAVOB BERISHINGIZ SHART:
+1. ODAM ANATOMIYASI (Human Anatomy): Suyaklar, bo'g'imlar, mushaklar, ichki a'zolar (splanxnologiya), qon-tomir va yurak, asab tizimi, sezgi a'zolari, topografik va klinik anatomiya.
+2. TIBBIY VA ANATOMIK LOTIN TILI (Medical Latin Terminology): Anatomik terminlar, lotincha grammatika, tushunchalar, nomlanishlar (masalan: musculus, sulcus, foramen, nervus, arteria va h.k.), ularning tarjimasi va to'g'ri qo'llanilishi.
+3. USHBU SAYT / PLATFORMA HAQIDA MA'LUMOT (BSMI Anatomy Platform): Ushbu portal bo'limlari (1- va 2-semestr darsliklari, 3D interaktiv atlas, anatomik 3D modellar, testlar va kollokviumlar, lotincha lug'at, natijalar va peshqadamlar jadvali, obuna va premium imkoniyatlari).
+
+MUTLAQ TAQIQLANGAN MAVZULAR (STRICT REFUSAL RULE):
+Agar foydalanuvchining savoli odam anatomiyasiga, tibbiy lotin tiliga yoki ushbu BSMI Anatomy saytiga mutlaqo daxldor BO'LMASA (masalan: dasturlash, siyosat, boshqa fanlar, fizika, kimyo/tarix, shaxsiy suhbatlar, umumiy falsafa, o'yinlar, ob-havo, qiziqarli faktlar va boshqa har qanday begona mavzular):
+- HECH QANDAY HOLATDA ushbu begona savolga javob bermang!
+- Quyidagicha muloyim, ammo qat'iy ustozlik rad javobini bering:
+  "Hurmatli talaba! Men faqat **Odam Anatomiyasi**, **Tibbiy Lotin Tili** hamda ushbu **BSMI Anatomy platformasi** bo'yicha maxsus dasturlangan akademik AI maslahatchiman. Iltimos, faqat anatomiya, lotin terminologiyasi yoki saytimiz imkoniyatlariga oid savollarni yo'llang. Sizga anatomiyadan dars berishdan mamnun bo'laman! 🧠🫀🦴"
+  (Agar foydalanuvchi rus yoki ingliz tilida so'ragan bo'lsa, xuddi shu mazmundagi qat'iy rad javobini o'sha tilda taqdim eting).
+
+ANATOMIYA VA LOTIN TILI BO'YICHA ISHLASH USLUBI:
+1. TALABALARNING HAQIQIY AKADEMIK USTOZI BO'LISH: Anatomiya yoki lotin tili savollariga darsliklardagi kabi chuqur tahlil, tizimli tushuntirish va oliy akademik yondashuv bilan javob bering.
+2. LOTIN TERMINOLOGIYASINING QAT'IY ISHLATILISHI: Odam anatomiyasidagi har bitta a'zo, suyak, mushak, qon-tomir, boylamni tushuntirayotganda ularning rasmiy Lotincha nomlarini (masalan, *musculus biceps brachii*, *arteria subclavia*, *os temporale*) qavs ichida va kursivda (*italics*) albatta keltiring.
+3. KLINIK KORRELYATSIYA (Clinical Connection): Har bir anatomiya mavzusi yakunida o'sha a'zoning klinik ahamiyatini (travmalar, churralar, infarkt, nevralgiya, jarrohlik amaliyotidagi ahamiyati) qisqacha ta'kidlang.
+4. TILGA MOSLASHUVCHANLIK: Foydalanuvchi qaysi tilda murojaat qilsa (o'zbek, rus yoki ingliz), shu tilda mukammal va darslik talablariga mos javob bering.
+5. OVOZLI REJIM VA JARVIS USLUBI: Ovozli muloqot rejimida gaplashilayotgan bo'lsa (Hands-Free/Jarvis), javoblarni aniq, ortiqcha texnik belgilarsiz ravon audio o'qishga moslashtiring.`;
 
       const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
       let text = '';

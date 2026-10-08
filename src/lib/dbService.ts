@@ -1772,5 +1772,46 @@ export const dbService = {
     } catch (err) {
       console.warn("Error saving completed topics to Firestore:", err);
     }
+  },
+
+  // 16. AI ASSISTANT CHAT MEMORY (Persist across sessions and devices)
+  async getSavedAiChat(userId: string): Promise<any[] | null> {
+    if (!userId) return null;
+    try {
+      const chatDoc = await getDoc(doc(db, 'users', userId, 'ai_chats', 'default_session'));
+      if (chatDoc.exists() && Array.isArray(chatDoc.data().messages)) {
+        return chatDoc.data().messages;
+      }
+    } catch (err) {
+      console.warn("Notice: Fetching remote AI chat history from Firestore:", err);
+    }
+    return null;
+  },
+
+  async saveAiChat(userId: string, messages: any[]): Promise<void> {
+    if (!userId || !Array.isArray(messages)) return;
+    try {
+      // Save max 100 recent messages to keep payload optimal
+      const sanitized = messages.slice(-100);
+      const chatRef = doc(db, 'users', userId, 'ai_chats', 'default_session');
+      await setDoc(chatRef, {
+        userId,
+        messages: sanitized,
+        messageCount: sanitized.length,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (err) {
+      console.warn("Notice: Saving AI chat history to Firestore:", err);
+    }
+  },
+
+  async clearSavedAiChat(userId: string): Promise<void> {
+    if (!userId) return;
+    try {
+      const chatRef = doc(db, 'users', userId, 'ai_chats', 'default_session');
+      await deleteDoc(chatRef);
+    } catch (err) {
+      console.warn("Notice: Clearing AI chat history from Firestore:", err);
+    }
   }
 };

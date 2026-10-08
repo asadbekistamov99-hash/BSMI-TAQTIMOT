@@ -1,6 +1,8 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { useEffect, useState } from 'react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { Topic, MidtermFile, Semester as SemesterType } from '../types';
 import { dbService, isSupabaseEnabled } from '../lib/dbService';
 import { SEMESTER_1_TOPICS, SEMESTER_2_TOPICS, SEMESTER_3_TOPICS } from '../constants';
@@ -14,6 +16,47 @@ import PaymentModal from '../components/PaymentModal';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
 import SEO from '../components/SEO';
+
+const DEFAULT_SEMESTER_INFO: Record<number, SemesterType> = {
+  1: {
+    id: 'sem_1',
+    number: 1,
+    title: { uz: '1-Semestr: Tayanch-harakat tizimi', en: '1st Semester: Musculoskeletal System', ru: '1-Семестр: Опорно-двигательная система' },
+    description: { uz: 'Osteologiya, sindesmologiya va miologiya bo‘limlarini qamrab olgan fundamental kurs.', en: 'Fundamental course covering osteology, syndesmology and myology.', ru: 'Фундаментальный курс, охватывающий остеологию, синдесмологию и миологию.' },
+    isActive: true,
+    order: 1
+  },
+  2: {
+    id: 'sem_2',
+    number: 2,
+    title: { uz: '2-Semestr: Ichki a’zolar va tizimlar', en: '2nd Semester: Internal Organs and Systems', ru: '2-Семестр: Внутренние органы и системы' },
+    description: { uz: 'Splanxnologiya, angiologya, nevrologiya va endokrin tizim bo‘limlarini o‘z ichiga oladi.', en: 'Includes splanchnology, angiology, neurology and endocrine system.', ru: 'Включает спланхнологию, ангиологию, неврологию и эндокринную систему.' },
+    isActive: true,
+    order: 2
+  },
+  3: {
+    id: 'sem_3',
+    number: 3,
+    title: { uz: '3-Semestr: Markaziy asab tizimi va sezgi a’zolari', en: '3rd Semester: Central Nervous System and Sensory Organs', ru: '3-Семестр: Центральная нервная система и органы чувств' },
+    description: { uz: 'Nevrologiya, estiziologiya va klinik topografik anatomiya bo‘limlarini o‘z ichiga olgan chuqurlashtirilgan kurs.', en: 'Advanced course covering neurology, esthesiology and clinical topographical anatomy.', ru: 'Углубленный курс, охватывающий неврологию, эстезиологию и клиническую топографическую анатомию.' },
+    isActive: true,
+    order: 3
+  }
+};
+
+const getFallbackTopics = (sem: number): Topic[] => {
+  if (sem === 1) return SEMESTER_1_DETAILED_TOPICS;
+  if (sem === 2) return SEMESTER_2_DETAILED_TOPICS;
+  if (sem === 3) return SEMESTER_3_DETAILED_TOPICS;
+  return [];
+};
+
+// Cross-navigation memory cache to eliminate lag and loading flickers
+const semesterMemoryCache = new Map<number, {
+  topics: Topic[];
+  semesterInfo: SemesterType;
+  midtermFile: MidtermFile | null;
+}>();
 
 function MidtermDownloader({ fileUrl, fileName }: { fileUrl: string, fileName: string }) {
   const [downloading, setDownloading] = useState(false);
@@ -143,163 +186,169 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
   const semesterId = Number(id);
   const { settings } = useSettings();
   const { t, getLocalized, language } = useLanguage();
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [semesterInfo, setSemesterInfo] = useState<SemesterType | null>(null);
-  const [midtermFile, setMidtermFile] = useState<MidtermFile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isPaid, setIsPaid] = useState(false);
-  const [isPending, setIsPending] = useState(false);
+
+  const isAdmin = isAdminProp ?? !!localStorage.getItem('adminToken');
+  const isDirectlyPaid = Boolean(
+    isAdmin ||
+    user?.isAdmin ||
+    (user?.purchasedSemesters && (user.purchasedSemesters || []).map(Number).includes(semesterId))
+  );
+
+  // Synchronous state initialization from memory cache or rich fallback:
+  // Guarantees zero lag and NEVER renders stale content from another semester!
+  const initialCache = semesterMemoryCache.get(semesterId);
+  const [topics, setTopics] = useState<Topic[]>(() => initialCache?.topics || getFallbackTopics(semesterId));
+  const [semesterInfo, setSemesterInfo] = useState<SemesterType | null>(() => initialCache?.semesterInfo || DEFAULT_SEMESTER_INFO[semesterId] || null);
+  const [midtermFile, setMidtermFile] = useState<MidtermFile | null>(() => initialCache?.midtermFile || null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [isPaid, setIsPaid] = useState<boolean>(isDirectlyPaid);
+  const [isPending, setIsPending] = useState<boolean>(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selected3DModel, setSelected3DModel] = useState<AnatomyModel | null>(null);
-  const isAdmin = isAdminProp ?? !!localStorage.getItem('adminToken');
 
   useEffect(() => {
-    const fetchSemesterInfo = async () => {
-      try {
-        const sems = await dbService.getSemesters();
-        const sem = sems.find((s: any) => s.number === semesterId);
-        if (sem) {
-          setSemesterInfo(sem);
-        }
-      } catch (err) {
-        console.error("Error fetching semester info:", err);
-      }
-    };
+    // Scroll to top immediately to avoid stale scroll position
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
 
-    const checkPayment = async () => {
-      setIsPaid(false);
-      setIsPending(false);
+    // Instantly reset views to the active semesterId
+    const cached = semesterMemoryCache.get(semesterId);
+    const initialTopics = cached?.topics || getFallbackTopics(semesterId);
+    const initialInfo = cached?.semesterInfo || DEFAULT_SEMESTER_INFO[semesterId] || null;
 
-      if (!user) {
-        return;
-      }
-      
-      try {
-        // 1. Check Profile for access list
-        const profile = await dbService.getProfile(user.uid);
-        if (profile) {
-          const purchased = (profile.purchasedSemesters || []).map(Number);
-          if (purchased.includes(Number(semesterId))) {
-            setIsPaid(true);
-            setIsPending(false);
-            return;
+    setTopics(initialTopics);
+    setSemesterInfo(initialInfo);
+    setMidtermFile(cached?.midtermFile || null);
+    setIsPaid(Boolean(
+      isAdmin ||
+      user?.isAdmin ||
+      (user?.purchasedSemesters && (user.purchasedSemesters || []).map(Number).includes(semesterId))
+    ));
+    setIsPending(false);
+
+    let isCurrent = true;
+
+    // Concurrently fetch all updates in parallel
+    const runParallelSync = async () => {
+      // 1. Semester Info
+      const pSemInfo = dbService.getSemesters()
+        .then((sems: any[]) => {
+          if (!isCurrent) return null;
+          const sem = sems.find((s: any) => s.number === semesterId);
+          if (sem) {
+            setSemesterInfo(sem);
+            return sem;
           }
-        }
+          return null;
+        })
+        .catch(err => {
+          console.warn("Semester info sync:", err);
+          return null;
+        });
 
-        // 2. Check individual payment record for THIS semesterId
-        const payment = await dbService.getPayment(user.uid, semesterId);
-        if (payment) {
-          if (payment.status === 'completed' || payment.status === 'approved') {
-            setIsPaid(true);
-            setIsPending(false);
-            return;
-          } else if (payment.status === 'pending') {
-            setIsPending(true);
-            setIsPaid(false);
-            return;
+      // 2. Access / Payment
+      const pPayment = (async () => {
+        if (!user || isDirectlyPaid) return null;
+        try {
+          const profile = await dbService.getProfile(user.uid);
+          if (!isCurrent) return null;
+          if (profile) {
+            const purchased = (profile.purchasedSemesters || []).map(Number);
+            if (purchased.includes(semesterId)) {
+              setIsPaid(true);
+              setIsPending(false);
+              return true;
+            }
           }
+          const payment = await dbService.getPayment(user.uid, semesterId);
+          if (!isCurrent) return null;
+          if (payment) {
+            if (payment.status === 'completed' || payment.status === 'approved') {
+              setIsPaid(true);
+              setIsPending(false);
+            } else if (payment.status === 'pending') {
+              setIsPending(true);
+              setIsPaid(false);
+            }
+          }
+        } catch (e) {
+          console.warn("Payment check warning:", e);
         }
-      } catch (e) {
-        console.error("Error checking user access:", e);
-      }
-    };
+        return null;
+      })();
 
-    const getFallbackTopics = (sem: number): Topic[] => {
-      if (sem === 1) return SEMESTER_1_DETAILED_TOPICS;
-      if (sem === 2) return SEMESTER_2_DETAILED_TOPICS;
-      if (sem === 3) return SEMESTER_3_DETAILED_TOPICS;
-      return [];
-    };
-
-    const fetchTopics = async () => {
-      setLoading(true);
-      try {
-        const realTopics = await dbService.getTopics(semesterId);
-        const detailedList = getFallbackTopics(semesterId);
-        
-        if (realTopics.length === 0) {
-          if (isAdmin && (semesterId === 1 || semesterId === 2 || semesterId === 3)) {
-            await seedTopics(semesterId);
-            const freshTopics = await dbService.getTopics(semesterId);
-            setTopics(freshTopics.length > 0 ? freshTopics : detailedList);
+      // 3. Topics
+      const pTopics = (async () => {
+        try {
+          const realTopics = await dbService.getTopics(semesterId);
+          if (!isCurrent) return null;
+          const detailedList = getFallbackTopics(semesterId);
+          if (realTopics && realTopics.length > 0) {
+            const enriched = realTopics.map(t => {
+              const match = detailedList.find(d => d.order === t.order);
+              if (match && (!t.theory?.uz || t.theory.uz.length < 150)) {
+                return {
+                  ...t,
+                  theory: match.theory,
+                  title: t.title?.uz ? t.title : match.title
+                };
+              }
+              return t;
+            });
+            setTopics(enriched);
+            return enriched;
           } else {
             setTopics(detailedList);
+            return detailedList;
           }
-        } else {
-          // Merge with detailed medical curriculum if real topic has sparse/placeholder theory
-          const enrichedRealTopics = realTopics.map(t => {
-            const match = detailedList.find(d => d.order === t.order);
-            if (match && (!t.theory?.uz || t.theory.uz.length < 150)) {
-              return {
-                ...t,
-                theory: match.theory,
-                title: t.title?.uz ? t.title : match.title
-              };
-            }
-            return t;
-          });
-          setTopics(enrichedRealTopics);
+        } catch (err) {
+          console.warn("Topics sync warning:", err);
+          return null;
         }
-      } catch (error) {
-        console.error("Error loading topics:", error);
-        setTopics(getFallbackTopics(semesterId));
-      } finally {
-        setLoading(false);
-      }
-    };
+      })();
 
-    const fetchMidtermFile = async () => {
-      try {
-        if (!isSupabaseEnabled()) {
-          const { doc, getDoc } = await import('firebase/firestore');
-          const { db } = await import('../lib/firebase');
+      // 4. Midterm File
+      const pMidterm = (async () => {
+        try {
           const docRef = doc(db, 'midterms', `midterm_${semesterId}`);
           const snapshot = await getDoc(docRef);
+          if (!isCurrent) return null;
           if (snapshot.exists()) {
-            setMidtermFile({ id: snapshot.id, ...snapshot.data() } as MidtermFile);
+            const mf = { id: snapshot.id, ...snapshot.data() } as MidtermFile;
+            setMidtermFile(mf);
+            return mf;
           } else {
             setMidtermFile(null);
+            return null;
           }
-        } else {
-          setMidtermFile(null);
+        } catch (err) {
+          return null;
         }
-      } catch (error) {
-        console.error("Error fetching midterm file:", error);
+      })();
+
+      const results = await Promise.allSettled([pSemInfo, pPayment, pTopics, pMidterm]);
+      if (isCurrent) {
+        const finalTopics = results[2].status === 'fulfilled' && results[2].value ? results[2].value : initialTopics;
+        const finalInfo = results[0].status === 'fulfilled' && results[0].value ? results[0].value : initialInfo;
+        const finalMidterm = results[3].status === 'fulfilled' ? results[3].value : null;
+
+        if (finalTopics && finalInfo) {
+          semesterMemoryCache.set(semesterId, {
+            topics: finalTopics as Topic[],
+            semesterInfo: finalInfo as SemesterType,
+            midtermFile: finalMidterm as MidtermFile | null
+          });
+        }
       }
     };
 
-    const init = async () => {
-      await fetchSemesterInfo();
-      await checkPayment();
-      await fetchTopics();
-      await fetchMidtermFile();
+    runParallelSync();
+
+    return () => {
+      isCurrent = false;
     };
+  }, [semesterId, user?.uid, isAdmin, isDirectlyPaid]);
 
-    init();
-  }, [semesterId, user, isAdmin]);
-
-  const seedTopics = async (sem: number) => {
-    const list = sem === 1 ? SEMESTER_1_DETAILED_TOPICS : sem === 2 ? SEMESTER_2_DETAILED_TOPICS : sem === 3 ? SEMESTER_3_DETAILED_TOPICS : [];
-    if (!list || list.length === 0) return;
-
-    for (const t of list) {
-      try {
-        await dbService.saveTopic(null, {
-          semester: sem,
-          order: t.order,
-          title: t.title,
-          theory: t.theory,
-          latinTerms: t.latinTerms || [],
-          image: t.image || "https://images.unsplash.com/photo-1559757175-5700dde675bc?q=80&w=2670&auto=format&fit=crop",
-          videos: t.videos || []
-        });
-      } catch (err) {
-        console.warn(`Topic seeding failed for sem ${sem} index`, t.order, err);
-      }
-    }
-  };
-
-  if (loading) {
+  if (loading && topics.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-accent"></div>

@@ -93,6 +93,14 @@ service cloud.firestore {
       match /osce_results/{resultId} {
         allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       }
+
+      match /progress/{progressId} {
+        allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      }
+
+      match /ai_chats/{chatId} {
+        allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      }
     }
 
     match /leaderboard/{entryId} {

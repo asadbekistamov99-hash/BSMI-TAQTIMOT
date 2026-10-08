@@ -145,6 +145,55 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
   const [isAnswered, setIsAnswered] = useState(false);
   const [score, setScore] = useState(0);
   const [showResult, setShowResult] = useState(false);
+  const [isGeneratingAiQuizzes, setIsGeneratingAiQuizzes] = useState(false);
+  const [aiGenError, setAiGenError] = useState<string | null>(null);
+
+  const handleGenerateAIQuizzes = async () => {
+    setIsGeneratingAiQuizzes(true);
+    setAiGenError(null);
+    try {
+      const topicName = typeof topic?.title === 'object' ? ((topic.title as any)[language] || (topic.title as any)['uz'] || 'Anatomiya') : (topic?.title || 'Anatomiya');
+      const theoryObj = topic?.theory as any;
+      const rawTheory: string = typeof theoryObj === 'string' 
+        ? theoryObj 
+        : (typeof theoryObj === 'object' && theoryObj !== null ? (theoryObj[language] || theoryObj['uz'] || '') : '');
+      const theoryText: string = rawTheory ? rawTheory.slice(0, 2500) : '';
+      
+      const res = await fetch('/api/generate-quizzes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topicTitle: topicName,
+          topicDescription: theoryText || topicName,
+          count: 5,
+          language
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "AI test yaratishda xatolik yuz berdi");
+      }
+
+      const generated = await res.json();
+      if (Array.isArray(generated) && generated.length > 0) {
+        setQuizzes(generated);
+        setTranslatedQuizzes([]);
+        setCurrentIndex(0);
+        setSelectedOption(null);
+        setIsAnswered(false);
+        setScore(0);
+        setShowResult(false);
+      } else {
+        throw new Error("AI tomonidan test savollari shakllanmadi");
+      }
+    } catch (err: any) {
+      console.error("AI quiz generation error:", err);
+      setAiGenError(err.message || "Test yaratishda xatolik yuz berdi");
+    } finally {
+      setIsGeneratingAiQuizzes(false);
+    }
+  };
 
   useEffect(() => {
     const fetchDataAndCheckPayment = async () => {
@@ -379,9 +428,24 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
         <p className="text-brand-muted mt-4 text-lg">
           { { uz: "Hozircha savollar bazasi shakllantirilmoqda.", ru: "В настоящее время база вопросов формируется.", en: "Questions are currently being prepared for this topic." }[language] }
         </p>
-        <Link to={`/topic/${topicId}`} className="mt-12 inline-block px-12 py-4 bg-brand-primary text-white font-black rounded-xl uppercase tracking-widest text-sm hover:bg-slate-800 transition-all">
-          { { uz: "MAVZUGA QAYTISH", ru: "НАЗАД К ТЕМЕ", en: "BACK TO TOPIC" }[language] }
-        </Link>
+        {aiGenError && (
+          <p className="text-xs text-rose-500 font-bold mt-3">{aiGenError}</p>
+        )}
+        <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+          <button
+            onClick={handleGenerateAIQuizzes}
+            disabled={isGeneratingAiQuizzes}
+            className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-black rounded-xl uppercase tracking-widest text-xs flex items-center gap-2 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer disabled:opacity-50"
+          >
+            <Sparkles className={`w-4 h-4 ${isGeneratingAiQuizzes ? 'animate-spin' : ''}`} />
+            {isGeneratingAiQuizzes 
+              ? (language === 'uz' ? 'AI Test tuzmoqda...' : language === 'ru' ? 'ИИ создает тесты...' : 'Generating...')
+              : (language === 'uz' ? 'AI orqali test tuzish' : language === 'ru' ? 'Создать тесты через ИИ' : 'Generate with AI')}
+          </button>
+          <Link to={`/topic/${topicId}`} className="px-8 py-4 bg-brand-bg text-brand-primary font-black rounded-xl uppercase tracking-widest text-xs hover:bg-slate-200 transition-all">
+            { { uz: "MAVZUGA QAYTISH", ru: "НАЗАД К ТЕМЕ", en: "BACK TO TOPIC" }[language] }
+          </Link>
+        </div>
       </div>
     );
   }
@@ -421,16 +485,30 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
             </p>
           )}
           
-          <div className="flex flex-col sm:flex-row gap-5 justify-center">
+          {aiGenError && (
+            <p className="text-xs text-rose-500 font-bold mb-6">{aiGenError}</p>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <button 
               onClick={handleRestart}
-              className="px-10 py-5 bg-brand-bg text-brand-primary font-black rounded-2xl flex items-center justify-center gap-3 hover:bg-slate-200 transition-all text-xs uppercase tracking-widest"
+              className="w-full sm:w-auto px-8 py-5 bg-brand-bg text-brand-primary font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-slate-200 transition-all text-xs uppercase tracking-widest"
             >
-              <RotateCcw className="w-5 h-5" /> {isOral ? (language === 'uz' ? 'BOSHIDAN KO\'RISH' : language === 'ru' ? 'ПОВТОРИТЬ' : 'RESET') : { uz: 'QAYTA BOSHLASH', ru: 'НАЧАТЬ ЗАНОВО', en: 'RESTART' }[language]}
+              <RotateCcw className="w-4 h-4" /> {isOral ? (language === 'uz' ? 'BOSHIDAN KO\'RISH' : language === 'ru' ? 'ПОВТОРИТЬ' : 'RESET') : { uz: 'QAYTA BOSHLASH', ru: 'НАЧАТЬ ЗАНОВО', en: 'RESTART' }[language]}
+            </button>
+            <button
+              onClick={handleGenerateAIQuizzes}
+              disabled={isGeneratingAiQuizzes}
+              className="w-full sm:w-auto px-8 py-5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-black rounded-2xl flex items-center justify-center gap-2 transition-all text-xs uppercase tracking-widest shadow-xl shadow-indigo-600/25 cursor-pointer disabled:opacity-50"
+            >
+              <Sparkles className={`w-4 h-4 ${isGeneratingAiQuizzes ? 'animate-spin' : ''}`} />
+              {isGeneratingAiQuizzes 
+                ? (language === 'uz' ? 'Yangi testlar yaratilmoqda...' : language === 'ru' ? 'Генерация тестов...' : 'Generating AI Quizzes...') 
+                : (language === 'uz' ? 'AI orqali yangi test tuzish' : language === 'ru' ? 'Создать новые тесты с ИИ' : 'Generate New AI Quizzes')}
             </button>
             <Link 
               to={`/topic/${topicId}`}
-              className="px-10 py-5 bg-brand-primary text-white font-black rounded-2xl flex items-center justify-center gap-3 hover:bg-slate-800 transition-all text-xs uppercase tracking-widest shadow-xl shadow-brand-primary/20"
+              className="w-full sm:w-auto px-8 py-5 bg-brand-primary text-white font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-slate-800 transition-all text-xs uppercase tracking-widest shadow-xl shadow-brand-primary/20"
             >
               { { uz: "MAVZUGA QAYTISH", ru: "НАЗАД К ТЕМЕ", en: "BACK TO TOPIC" }[language] }
             </Link>
