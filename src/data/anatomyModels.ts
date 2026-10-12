@@ -1179,4 +1179,21 @@ export const SEED_MODELS: AnatomyModel[] = [
     tags: ["eshituv suyakchalari", "o'rta quloq", 'ossicula auditus', 'malleus', 'incus', 'stapes', 'слуховые косточки'],
     topicIds: ['sem_3_top_13'],
   },
+
+  // ---------------- sem_2_top_13: limfa tizimi (butun tana) ----------------
+  {
+    id: 'lymphatic-system-overview-sieben',
+    title: { uz: "Limfa tizimi: butun tana bo'ylab", ru: 'Лимфатическая система: обзор всего тела', en: 'Overview of the Lymphatic System' },
+    description: {
+      uz: "Limfa tugunlari, limfa tomirlari va ko'krak limfa yo'lining butun tana bo'ylab joylashuvi; skelet, traxeya va aorta fonida.",
+      ru: 'Расположение лимфатических узлов, сосудов и грудного протока по всему телу на фоне скелета, трахеи и аорты.',
+      en: 'Whole-body layout of lymph nodes, lymphatic vessels and the thoracic duct, shown with the skeleton, trachea and aorta.',
+    },
+    system: 'other', region: 'wholeBody',
+    embedUrl: sk('28be358c57c54e8e9c3292f9a3040f3b'),
+    source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/overview-of-the-lymphatic-system-model-3-28be358c57c54e8e9c3292f9a3040f3b',
+    license: 'CC BY-NC-ND (Sketchfab)', author: 'Sieben Medical Art',
+    tags: ['limfa tizimi', 'limfa tugunlari', "ko'krak limfa yo'li", 'ductus thoracicus', 'lymph nodes', 'лимфатические узлы'],
+    topicIds: ['sem_2_top_13'],
+  },
 ];
