@@ -217,30 +217,63 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
   const [translatedTheory, setTranslatedTheory] = useState<string>('');
   const [isTranslating, setIsTranslating] = useState(false);
   const [transError, setTransError] = useState<string | null>(null);
+  const [translationCountdown, setTranslationCountdown] = useState(15);
+  const [translationElapsedSeconds, setTranslationElapsedSeconds] = useState(0);
+  const [translationDuration, setTranslationDuration] = useState<number | null>(null);
 
+  // Countdown timer effect during translation
   useEffect(() => {
-    if (topic && language !== 'uz') {
-      const cacheKey = `translated_theory_${topic.id}_${language}`;
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        setTranslatedTheory(cached);
-      } else {
-        setTranslatedTheory('');
-      }
-    } else {
-      setTranslatedTheory('');
+    let interval: any = null;
+    if (isTranslating) {
+      setTranslationCountdown(15);
+      setTranslationElapsedSeconds(0);
+      interval = setInterval(() => {
+        setTranslationCountdown((prev) => (prev > 1 ? prev - 1 : 1));
+        setTranslationElapsedSeconds((prev) => prev + 1);
+      }, 1000);
     }
-    setTransError(null);
-  }, [topic?.id, language]);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isTranslating]);
 
-  const checkNeedsTranslation = (): boolean => {
-    if (!topic || language === 'uz') return false;
-    if (translatedTheory) return false;
+  const isValidTheoryTranslation = (translated: string, targetLang: string, originalUzText: string): boolean => {
+    if (!translated || translated.trim().length === 0) return false;
+    if (translated.trim() === originalUzText.trim()) return false;
+    if (targetLang === 'ru') {
+      const cyrillicMatch = translated.match(/[а-яА-ЯёЁ]/g);
+      if (!cyrillicMatch || cyrillicMatch.length < 15) return false;
+    }
+    return true;
+  };
+
+  const getEffectiveTheoryText = () => {
+    if (translatedTheory) return translatedTheory;
+    const localized = getLocalized(topic?.theory);
+    const isPlaceholder = typeof localized === 'string' && (
+      localized.includes('успешно обновлены на узбекском') ||
+      localized.includes('переключите язык на узбекский') ||
+      localized.includes('batafsil o\'rganish') ||
+      localized.includes('batafsil o‘rganish') ||
+      localized.includes('на узбекском языке') ||
+      (localized.length < 250 && (topic?.theory?.uz || '').length > 400)
+    );
+    if (isPlaceholder && topic?.theory?.uz) {
+      return topic.theory.uz;
+    }
+    return localized || (typeof topic?.theory === 'string' ? topic.theory : '');
+  };
+
+  const checkNeedsTranslationForLang = (targetLang = language): boolean => {
+    if (!topic || targetLang === 'uz') return false;
     
+    const uzText = topic.theory?.uz || (typeof topic.theory === 'string' ? topic.theory : '');
+    const uzLen = uzText.trim().length;
+
     // Check if there is already a manual/pre-existing translation in the selected language.
     if (typeof topic.theory === 'object' && topic.theory !== null) {
-      const specificLangText = (topic.theory as any)[language];
-      if (specificLangText && specificLangText.trim().length > 50) {
+      const specificLangText = (topic.theory as any)[targetLang];
+      if (specificLangText && specificLangText.trim().length > 0) {
         // If it doesn't contain common placeholders
         const isPlaceholder = specificLangText.includes('batafsil o\'rganish') || 
                               specificLangText.includes('batafsil o‘rganish') ||
@@ -249,18 +282,23 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                               specificLangText.includes('успешно обновлены на узбекском') ||
                               specificLangText.includes('переключите язык на узбекский') ||
                               specificLangText.includes('на узбекском языке');
-        if (!isPlaceholder) {
-          return false; // Already has a translation, no need for AI translation
+        
+        // If the Uzbek textbook is a full comprehensive text (>400 chars) but specificLangText is only a brief 1-line summary (<300 chars)
+        const isBriefSummaryOnly = uzLen > 400 && specificLangText.trim().length < 350;
+
+        if (!isPlaceholder && !isBriefSummaryOnly) {
+          return false; // Already has a full translation, no need for AI translation
         }
       }
     }
     return true;
   };
 
-  const handleTranslateTheory = async () => {
+  const handleTranslateTheory = async (targetLang = language) => {
     if (!topic) return;
     setIsTranslating(true);
     setTransError(null);
+    const startT = Date.now();
     try {
       const uzText = topic.theory?.uz || (typeof topic.theory === 'string' ? topic.theory : '');
       const response = await fetch('/api/translate-theory', {
@@ -270,26 +308,60 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
         },
         body: JSON.stringify({
           text: uzText,
-          language
+          language: targetLang
         }),
       });
       if (!response.ok) {
-        throw new Error('Translation API failed');
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Translation API failed');
       }
       const data = await response.json();
-      if (data.translatedText) {
+      if (data.translatedText && isValidTheoryTranslation(data.translatedText, targetLang, uzText)) {
         setTranslatedTheory(data.translatedText);
-        const cacheKey = `translated_theory_${topic.id}_${language}`;
+        setTranslationDuration(Math.round((Date.now() - startT) / 100) / 10);
+        const cacheKey = `translated_theory_${topic.id}_${targetLang}`;
         localStorage.setItem(cacheKey, data.translatedText);
       } else {
-        throw new Error('No translated text returned');
+        throw new Error('Matn tarjima qilinmadi yoki original tilda qaytdi');
       }
     } catch (err: any) {
       console.error("AI Translation error:", err);
-      setTransError(language === 'ru' ? 'Ошибка перевода ИИ. Пожалуйста, попробуйте еще раз.' : 'AI translation failed. Please try again.');
+      setTransError(targetLang === 'ru' ? 'Ошибка перевода ИИ. Пожалуйста, попробуйте еще раз.' : 'AI translation failed. Please try again.');
     } finally {
       setIsTranslating(false);
     }
+  };
+
+  // Automatic translation within 10 seconds whenever language is switched
+  useEffect(() => {
+    if (topic && language !== 'uz') {
+      const uzText = topic.theory?.uz || (typeof topic.theory === 'string' ? topic.theory : '');
+      const cacheKey = `translated_theory_${topic.id}_${language}`;
+      const cached = localStorage.getItem(cacheKey);
+      
+      if (cached && isValidTheoryTranslation(cached, language, uzText)) {
+        setTranslatedTheory(cached);
+        setIsTranslating(false);
+      } else {
+        if (cached) {
+          localStorage.removeItem(cacheKey);
+        }
+        setTranslatedTheory('');
+        if (checkNeedsTranslationForLang(language)) {
+          handleTranslateTheory(language);
+        }
+      }
+    } else {
+      setTranslatedTheory('');
+      setIsTranslating(false);
+    }
+    setTransError(null);
+  }, [topic?.id, language]);
+
+  const checkNeedsTranslation = (): boolean => {
+    if (!topic || language === 'uz') return false;
+    if (translatedTheory) return false;
+    return checkNeedsTranslationForLang(language);
   };
 
   const isUserAdmin = Boolean(isAdmin || (user as any)?.isAdmin || user?.email === 'asadbekistamov99@gmail.com');
@@ -573,11 +645,46 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
   useEffect(() => {
     const fetchTopicAndCheckPayment = async () => {
       if (!id) return;
-      setLoading(true);
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
 
-      // Reset state
-      setIsPaid(false);
-      setIsPending(false);
+      // Immediate fallback resolution for 0ms latency and to prevent old topic from flickering
+      let initialFallback: Topic | null = null;
+      if (id.startsWith('sem_3_top_') || id.startsWith('sem3_topic_')) {
+        const index = parseInt(id.replace('sem_3_top_', '').replace('sem3_topic_', ''), 10) - 1;
+        if (index >= 0 && index < SEMESTER_3_DETAILED_TOPICS.length) {
+          initialFallback = SEMESTER_3_DETAILED_TOPICS[index];
+        }
+      } else if (id.startsWith('sem_1_top_') || id.startsWith('sem1_topic_')) {
+        const index = parseInt(id.replace('sem_1_top_', '').replace('sem1_topic_', ''), 10) - 1;
+        if (index >= 0 && index < SEMESTER_1_DETAILED_TOPICS.length) {
+          initialFallback = SEMESTER_1_DETAILED_TOPICS[index];
+        }
+      } else if (id.startsWith('sem_2_top_') || id.startsWith('sem2_topic_')) {
+        const index = parseInt(id.replace('sem_2_top_', '').replace('sem2_topic_', ''), 10) - 1;
+        if (index >= 0 && index < SEMESTER_2_DETAILED_TOPICS.length) {
+          initialFallback = SEMESTER_2_DETAILED_TOPICS[index];
+        }
+      }
+
+      if (initialFallback) {
+        setTopic(initialFallback);
+        setLoading(false);
+      } else {
+        setTopic(null);
+        setLoading(true);
+      }
+
+      // Immediate direct payment check to eliminate lock-screen flickering
+      const semNum = initialFallback ? Number(initialFallback.semester) : (
+        id.startsWith('sem_1') ? 1 : id.startsWith('sem_2') ? 2 : id.startsWith('sem_3') ? 3 : null
+      );
+      if (isAdmin || user?.isAdmin || (semNum && (user?.purchasedSemesters || []).map(Number).includes(semNum))) {
+        setIsPaid(true);
+        setIsPending(false);
+      } else {
+        setIsPaid(false);
+        setIsPending(false);
+      }
 
       try {
         let topicData: Topic | null = null;
@@ -593,22 +700,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
 
         // Fallback local resolution for sem 1, 2, 3
         if (!topicData) {
-          if (id.startsWith('sem_3_top_') || id.startsWith('sem3_topic_')) {
-            const index = parseInt(id.replace('sem_3_top_', '').replace('sem3_topic_', ''), 10) - 1;
-            if (index >= 0 && index < SEMESTER_3_DETAILED_TOPICS.length) {
-              topicData = SEMESTER_3_DETAILED_TOPICS[index];
-            }
-          } else if (id.startsWith('sem_1_top_') || id.startsWith('sem1_topic_')) {
-            const index = parseInt(id.replace('sem_1_top_', '').replace('sem1_topic_', ''), 10) - 1;
-            if (index >= 0 && index < SEMESTER_1_DETAILED_TOPICS.length) {
-              topicData = SEMESTER_1_DETAILED_TOPICS[index];
-            }
-          } else if (id.startsWith('sem_2_top_') || id.startsWith('sem2_topic_')) {
-            const index = parseInt(id.replace('sem_2_top_', '').replace('sem2_topic_', ''), 10) - 1;
-            if (index >= 0 && index < SEMESTER_2_DETAILED_TOPICS.length) {
-              topicData = SEMESTER_2_DETAILED_TOPICS[index];
-            }
-          }
+          topicData = initialFallback;
         }
 
         // Detailed medical theory enrichment if retrieved record was brief or placeholder
@@ -1385,7 +1477,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                             </div>
                           </div>
                           <button
-                            onClick={handleTranslateTheory}
+                            onClick={() => handleTranslateTheory(language)}
                             disabled={isTranslating}
                             className="w-full md:w-auto px-5 py-3 rounded-2xl bg-brand-accent hover:bg-brand-accent/90 disabled:bg-brand-accent/50 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shrink-0 font-sans"
                           >
@@ -1405,40 +1497,95 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                       )}
 
                       {translatedTheory && (
-                        <div className="mb-6 px-4 py-2 bg-emerald-50 border border-emerald-100 rounded-xl inline-flex items-center gap-2 text-emerald-700 text-xs font-semibold mr-auto">
-                          <CheckCircle className="w-4 h-4 text-emerald-600" />
-                          <span>
-                            {language === 'ru' 
-                              ? 'Текст переведен искусственным интеллектом Gemini.' 
-                              : 'Text translated by Gemini AI.'}
-                          </span>
+                        <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-emerald-900 text-xs font-semibold shadow-xs">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                              <CheckCircle className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="font-black">
+                                {language === 'ru' 
+                                  ? 'Текст переведен искусственным интеллектом Gemini.' 
+                                  : language === 'uz'
+                                  ? 'Matn Gemini AI orqali tarjima qilindi.'
+                                  : 'Text translated by Gemini AI.'}
+                              </span>
+                              {translationDuration && (
+                                <span className="ml-2 px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-black">
+                                  {translationDuration}s
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const cacheKey = `translated_theory_${topic?.id}_${language}`;
+                                localStorage.removeItem(cacheKey);
+                                setTranslatedTheory('');
+                                handleTranslateTheory(language);
+                              }}
+                              className="px-3.5 py-1.5 bg-white hover:bg-emerald-100/60 border border-emerald-300 text-emerald-800 rounded-xl font-black text-[10px] uppercase tracking-wider transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              {language === 'uz' ? "Qayta tarjima" : language === 'ru' ? "Обновить перевод" : "Re-translate"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setTranslatedTheory('')}
+                              className="px-3.5 py-1.5 bg-white hover:bg-emerald-100/60 border border-emerald-300 text-emerald-800 rounded-xl font-black text-[10px] uppercase tracking-wider transition-colors cursor-pointer shadow-xs"
+                            >
+                              {language === 'uz' ? "Asl matnga qaytish" : language === 'ru' ? "Оригинал (O'zbek)" : "Original (Uzbek)"}
+                            </button>
+                          </div>
                         </div>
                       )}
 
                       {isTranslating ? (
-                        <div className="py-24 flex flex-col items-center justify-center text-center animate-fadeIn border border-brand-accent/25 bg-brand-bg/50 rounded-3xl p-8 mb-8 relative overflow-hidden">
+                        <div className="py-20 flex flex-col items-center justify-center text-center animate-fadeIn border border-brand-accent/25 bg-gradient-to-b from-brand-bg/60 to-white rounded-3xl p-8 mb-8 relative overflow-hidden shadow-lg shadow-amber-500/5">
                           <div className="absolute -inset-4 bg-brand-accent/5 rounded-full blur-xl animate-pulse"></div>
-                          <div className="relative mb-6 animate-bounce" style={{ animationDuration: '3s' }}>
-                            <div className="absolute -inset-4 bg-brand-accent/25 rounded-full blur-xl animate-pulse"></div>
-                            <div className="w-20 h-20 rounded-[24px] bg-white border border-brand-border flex items-center justify-center shadow-lg relative overflow-hidden">
-                              <Languages className="w-10 h-10 text-brand-accent animate-spin" style={{ animationDuration: '4.5s' }} />
+
+                          {/* Badge indicator */}
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-700 text-[11px] font-black uppercase tracking-wider mb-5">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-spin" />
+                            <span>AI Tarjimon: Uzog'i 10-15 soniyada</span>
+                          </div>
+
+                          <div className="relative mb-5">
+                            <div className="w-20 h-20 rounded-[26px] bg-white border border-brand-border flex items-center justify-center shadow-xl relative overflow-hidden">
+                              <Languages className="w-10 h-10 text-brand-accent animate-pulse" />
+                            </div>
+                            <div className="absolute -bottom-2 -right-2 px-2.5 py-1 bg-amber-500 text-slate-950 font-black text-xs rounded-full shadow-md">
+                              {translationCountdown}s
                             </div>
                           </div>
+
                           <h3 className="text-xl font-black text-brand-primary mb-2 tracking-tight">
-                            { language === 'ru' ? "Перевод учебного материала..." : language === 'uz' ? "Mavzu matni tarjima qilinmoqda..." : "Translating textbook..." }
+                            { language === 'ru' ? "Перевод учебного материала (до 10-15 секунд)..." : language === 'uz' ? "Mavzu matni tarjima qilinmoqda (uzog'i 10-15s)..." : "Translating textbook material (up to 10-15s)..." }
                           </h3>
-                          <p className="text-xs text-brand-muted font-bold tracking-wider uppercase text-center max-w-sm leading-relaxed animate-pulse">
-                            { language === 'ru' ? "Gemini AI готовит точные медицинские и анатомические термины на русском языке" : language === 'uz' ? "Gemini AI eng aniq tibbiy va anatomik terminlarni tayyorlamoqda" : "Gemini AI is preparing precise medical and anatomical terms in English" }
+                          <p className="text-xs text-brand-muted font-bold tracking-wider uppercase text-center max-w-md leading-relaxed">
+                            { language === 'ru' ? "Gemini AI сохраняет все анатомические термины и структуру" : language === 'uz' ? "Gemini AI barcha tibbiy-anatomik lotin terminlarini aniq saqlamoqda" : "Gemini AI is preserving all anatomical Latin terms and formatting" }
                           </p>
-                          <div className="flex gap-2 mt-6">
-                            <span className="w-3 h-3 bg-brand-accent rounded-full animate-bounce" style={{ animationDelay: '-0.3s' }}></span>
-                            <span className="w-3 h-3 bg-brand-accent rounded-full animate-bounce" style={{ animationDelay: '-0.15s' }}></span>
-                            <span className="w-3 h-3 bg-brand-accent rounded-full animate-bounce"></span>
+
+                          {/* Visual Progress Bar */}
+                          <div className="w-full max-w-md mt-6 space-y-2">
+                            <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80 p-0.5">
+                              <div 
+                                className="h-full bg-gradient-to-r from-amber-400 via-brand-accent to-emerald-500 rounded-full transition-all duration-500 ease-out"
+                                style={{ width: `${Math.min(95, Math.max(12, translationElapsedSeconds * 8 + 12))}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase tracking-wider px-1">
+                              <span>Boshlandi</span>
+                              <span className="text-amber-600 font-black">{translationCountdown} soniya qoldi</span>
+                              <span>To'liq tarjima</span>
+                            </div>
                           </div>
                         </div>
                       ) : (
                         <TopicTheoryReader
-                          rawTheoryText={translatedTheory || getLocalized(topic.theory) || (typeof topic.theory === 'string' ? topic.theory : '')}
+                          rawTheoryText={getEffectiveTheoryText()}
                           topicId={topic?.id}
                           isUserAdmin={isUserAdmin}
                           diagramReplacements={topic?.diagramReplacements}
@@ -2145,53 +2292,6 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
               </div>
             </Link>
 
-            {/* Video Lessons */}
-            {localizedVideos && localizedVideos.length > 0 && (
-              <div className="p-8 bg-brand-primary rounded-[32px] border border-slate-700 shadow-xl">
-                <div className="flex items-center gap-3 mb-8 text-white">
-                  <Play className="w-6 h-6 text-brand-accent" />
-                  <h3 className="text-xl font-black tracking-tight uppercase">{t('topic.video')}</h3>
-                </div>
-                <div className="space-y-6">
-                  {localizedVideos.map((url, i) => {
-                    const isDirectVideo = url.includes('.mp4') || url.includes('firebasestorage');
-                    return (
-                      <div key={i} className="space-y-3">
-                        <div className="text-[10px] font-black text-brand-accent uppercase tracking-widest pl-2">#{i + 1}</div>
-                        {isDirectVideo ? (
-                          <div className="rounded-2xl overflow-hidden border border-slate-700 bg-black aspect-video">
-                            <video 
-                              src={url} 
-                              controls 
-                              className="w-full h-full"
-                              preload="metadata"
-                            />
-                          </div>
-                        ) : (
-                          <a 
-                            href={url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="block group"
-                          >
-                            <div className="flex items-center gap-4 p-4 bg-slate-800 rounded-2xl border border-slate-700 group-hover:border-brand-accent transition-all text-left">
-                              <div className="w-12 h-12 bg-brand-accent rounded-xl flex items-center justify-center flex-shrink-0 text-brand-primary">
-                                <Play className="w-6 h-6 fill-current" />
-                              </div>
-                              <div>
-                                <div className="text-[10px] font-black text-brand-accent uppercase tracking-widest mb-0.5">{t('topic.video').toUpperCase()}</div>
-                                <div className="text-sm font-bold text-white group-hover:text-brand-accent transition-colors">{t('study.unlocked')}</div>
-                              </div>
-                            </div>
-                          </a>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             {/* Help/Support Section */}
             <div className="p-8 bg-white rounded-[32px] border border-brand-border text-center">
               <div className="w-16 h-16 bg-brand-bg rounded-2xl flex items-center justify-center mx-auto mb-6 text-brand-accent border border-brand-border">
@@ -2202,36 +2302,6 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
               <Link to="/atlas" className="inline-block px-8 py-3 bg-brand-bg text-brand-primary border border-brand-border font-bold rounded-xl text-xs hover:bg-brand-accent hover:border-brand-accent transition-all">
                 {t('home.view_atlas').toUpperCase()}
               </Link>
-            </div>
-
-            {/* Watch Video Lesson Shortcut Card */}
-            <div className="p-8 bg-indigo-600 rounded-[32px] text-white text-center shadow-lg shadow-indigo-600/10">
-              <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-white/15">
-                <Play className="w-8 h-8 fill-white ml-1 text-white" />
-              </div>
-              <h4 className="text-lg font-black mb-3 uppercase tracking-tight">
-                {language === 'uz' ? 'Video darslik' : language === 'ru' ? 'Видео-урок' : 'Video Lesson'}
-              </h4>
-              <p className="text-white/80 text-xs font-semibold leading-relaxed mb-6">
-                {language === 'uz' 
-                  ? "Nazariyani o'rganib bo'lgach, videodarslikni ko'rib mavzuni yanada chuqurroq o'rganing va bilimingizni mustahkamlang!" 
-                  : language === 'ru' 
-                    ? 'Изучив теорию, посмотрите видео-урок, чтобы глубже понять тему и закрепить знания!' 
-                    : 'After studying the theory, watch the video lesson to deepen your understanding and solidify your knowledge!'}
-              </p>
-              <button 
-                onClick={() => {
-                  setActiveTab('video_lessons');
-                  setSelectedVidIndex(0);
-                  const el = document.getElementById('theory-card-top');
-                  if (el) {
-                    el.scrollIntoView({ behavior: 'smooth' });
-                  }
-                }}
-                className="w-full py-4.5 bg-brand-accent text-brand-primary font-black rounded-xl text-xs uppercase tracking-widest hover:scale-[1.03] active:scale-95 transition-all shadow-md cursor-pointer block"
-              >
-                {language === 'uz' ? "Videodan o'rganish" : language === 'ru' ? 'Изучать по видео' : 'Watch Video'}
-              </button>
             </div>
           </aside>
         </div>
@@ -2689,7 +2759,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                                   }
                                 }}
                               >
-                                {translatedTheory || getLocalized(topic.theory) || (typeof topic.theory === 'string' ? topic.theory : '')}
+                                {getEffectiveTheoryText()}
                               </ReactMarkdown>
                             </>
                           )}

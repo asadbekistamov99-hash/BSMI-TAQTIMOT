@@ -1,12 +1,33 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import dotenv from 'dotenv';
 import fs from 'fs';
 import https from 'https';
 import { execSync } from 'child_process';
 import { getAnatomyFallbackResponse } from './src/data/anatomyFallbackEngine.js';
+import {
+  resolveThreshold,
+  resolveModelList,
+  resolveApiKeys,
+  maskApiKey,
+  validateVerifyRequest,
+  cleanBase64,
+  detectMimeType,
+  parseModelJson,
+  normalizeVerdict,
+  decideVerification,
+  classifyAiError,
+  sanitizeErrorDetail,
+  MIN_FRAMES_REQUIRED,
+  FACE_ID_TOTAL_BUDGET_MS,
+  FACE_ID_PER_CALL_TIMEOUT_MS,
+  FACE_ID_MIN_REMAINING_MS,
+  type FaceDenyCode,
+  type ClassifiedAiError
+} from './src/lib/faceVerificationPolicy.js';
 
 dotenv.config();
 
@@ -71,9 +92,15 @@ export async function createServerApp() {
     return 0;
   };
 
-  const getAI = () => {
-    const key = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (!key) return null;
+  // Gemini API key candidate keys - prioritized environment key for zero latency penalty
+  const getCandidateKeys = (): string[] => {
+    const list: string[] = [];
+    if (process.env.GEMINI_API_KEY) list.push(process.env.GEMINI_API_KEY);
+    if (process.env.API_KEY) list.push(process.env.API_KEY);
+    return Array.from(new Set(list.filter(Boolean)));
+  };
+
+  const makeAIClient = (key: string) => {
     return new GoogleGenAI({
       apiKey: key,
       httpOptions: {
@@ -85,30 +112,51 @@ export async function createServerApp() {
   };
 
   const safeGenerateContent = async (modelName: string, config: any, retries = 2, delay = 400) => {
-    const aiInstance = getAI();
-    if (!aiInstance) {
+    const candidateKeys = getCandidateKeys();
+    if (candidateKeys.length === 0) {
       throw new Error('GEMINI_API_KEY sozlanmagan');
     }
-    for (let i = 0; i < retries; i++) {
-      try {
-        return await aiInstance.models.generateContent({
-          model: modelName,
-          ...config
-        });
-      } catch (error: any) {
-        const errorStr = `${error?.status || ''} ${error?.message || ''} ${JSON.stringify(error || {})}`.toLowerCase();
-        const isRateLimit = errorStr.includes('429') || errorStr.includes('resource_exhausted') || errorStr.includes('quota');
-        const isOverloaded = errorStr.includes('503') || errorStr.includes('unavailable') || errorStr.includes('high demand') || errorStr.includes('overloaded');
-        
-        if ((isRateLimit || isOverloaded) && i < retries - 1) {
-          console.log(`[AI GATEWAY] Model ${modelName} is temporarily busy. Retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          delay *= 1.5;
-          continue;
+
+    let lastError: any = null;
+
+    for (const key of candidateKeys) {
+      const aiInstance = makeAIClient(key);
+      for (let i = 0; i < retries; i++) {
+        try {
+          return await aiInstance.models.generateContent({
+            model: modelName,
+            ...config
+          });
+        } catch (error: any) {
+          lastError = error;
+          const errorStr = `${error?.status || ''} ${error?.message || ''} ${JSON.stringify(error || {})}`.toLowerCase();
+          const isInvalidKey = errorStr.includes('api_key_invalid') || errorStr.includes('api key not valid') || errorStr.includes('400');
+          if (isInvalidKey) {
+            console.warn(`[AI GATEWAY] API key ${key.slice(0, 8)}... is invalid. Trying backup key...`);
+            break; // Skip to next candidate key
+          }
+
+          const isQuotaExhausted = errorStr.includes('quota') || errorStr.includes('resource_exhausted') || errorStr.includes('limit: 20');
+          if (isQuotaExhausted) {
+            console.warn(`[AI GATEWAY] Model ${modelName} quota exhausted, failing over immediately...`);
+            break; // Skip retries, immediately move to next candidate key/model
+          }
+
+          const isRateLimit = errorStr.includes('429');
+          const isOverloaded = errorStr.includes('503') || errorStr.includes('unavailable') || errorStr.includes('high demand') || errorStr.includes('overloaded');
+          
+          if ((isRateLimit || isOverloaded) && i < retries - 1) {
+            console.log(`[AI GATEWAY] Model ${modelName} is temporarily busy. Retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            delay *= 1.5;
+            continue;
+          }
+          break; // Try next key
         }
-        throw error;
       }
     }
+
+    throw lastError || new Error('Barcha AI kalitlari band yoki javob bermadi');
   };
 
   // Helper to validate proxy URLs against SSRF
@@ -438,7 +486,7 @@ Har bir savolda:
 
 Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech qanday qo'shimcha matn yoki markdown belgilarisiz.`;
 
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+      const models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
       let text = '';
       let errorOccurred = null;
 
@@ -505,71 +553,183 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
   // liveness from natural micro-movement between frames and from spoofing artifacts
   // (identical frames, screen glare/moire, printed-photo edges, unnaturally flat
   // lighting), the same way a passive liveness check (e.g. OneID-style) works.
-  const FACE_MATCH_THRESHOLD = 0.85;
-  const MIN_FRAMES_REQUIRED = 3;
+  //
+  // Reliability design (why students no longer get locked out by infrastructure):
+  //   * the decision itself lives in src/lib/faceVerificationPolicy.ts and is unit-tested;
+  //   * several models are tried in order — each has its own API quota, so one 429
+  //     never blocks everyone;
+  //   * transient errors (429/503/timeouts) are retried with backoff, non-transient
+  //     ones (404 model missing, 400) skip straight to the next model;
+  //   * every model call has its own timeout and the whole handler respects a total
+  //     budget below Vercel's 60 s limit, so the browser always gets a JSON answer
+  //     instead of a platform 504 page;
+  //   * every denial carries a machine-readable `code` so the UI can auto-retry the
+  //     soft ones (LOW_CONFIDENCE, timeouts) and give precise guidance for the rest;
+  //   * GET /api/verify-face/health tells the UI and the admin diagnostics panel
+  //     whether the service is configured at all.
+  const FACE_MATCH_THRESHOLD = resolveThreshold(process.env.FACE_MATCH_THRESHOLD);
+  const FACE_ID_MODELS = resolveModelList(process.env.FACE_ID_MODELS);
+
+  // Several keys (GEMINI_API_KEYS="key1,key2" — ideally from different Google
+  // Cloud projects / billing accounts) are tried in order. A suspended billing
+  // account or an exhausted free-tier quota on one key then costs a few hundred
+  // milliseconds instead of locking every student out.
+  const getFaceIdKeys = () => resolveApiKeys(process.env as Record<string, string | undefined>);
+  const isFaceIdConfigured = () => getFaceIdKeys().length > 0;
+  const makeFaceIdAI = (apiKey: string) => new GoogleGenAI({
+    apiKey,
+    httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+  });
+
+  const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      promise.then(
+        value => { clearTimeout(timer); resolve(value); },
+        err => { clearTimeout(timer); reject(err); }
+      );
+    });
+  };
+
+  // GET /api/verify-face/health            → is the key configured at all (cheap, used by the gate)
+  // GET /api/verify-face/health?check=key  → additionally calls the Gemini API once (models.list,
+  //                                          no generation quota) so the admin panel can tell
+  //                                          "key invalid" / "quota exhausted" from "all good".
+  app.get('/api/verify-face/health', async (req: express.Request, resValue: any) => {
+    const configured = isFaceIdConfigured();
+    resValue.setHeader('Cache-Control', 'no-store');
+    const payload: Record<string, unknown> = {
+      ok: configured,
+      aiConfigured: configured,
+      threshold: FACE_MATCH_THRESHOLD,
+      models: FACE_ID_MODELS,
+      minFrames: MIN_FRAMES_REQUIRED,
+      totalBudgetMs: FACE_ID_TOTAL_BUDGET_MS,
+      keyCount: getFaceIdKeys().length,
+      message: configured
+        ? 'Face ID xizmati tayyor.'
+        : "Face ID xizmati sozlanmagan: serverda GEMINI_API_KEY (yoki GEMINI_API_KEYS) muhit o'zgaruvchisi yo'q."
+    };
+
+    if (configured && String(req.query?.check || '') === 'key') {
+      const keys = getFaceIdKeys().slice(0, 5);
+      const checks: Record<string, unknown>[] = [];
+      for (let i = 0; i < keys.length; i++) {
+        const apiKey = keys[i];
+        // A REAL generateContent call (tiny text prompt, a few tokens) — models.list
+        // succeeds even from regions / accounts where generation is refused, which is
+        // exactly the case that used to show up only when a student tried to log in.
+        const testModel = FACE_ID_MODELS[0];
+        try {
+          const resp: any = await withTimeout(
+            makeFaceIdAI(apiKey).models.generateContent({
+              model: testModel,
+              contents: [{ role: 'user', parts: [{ text: 'Faqat OK deb javob ber.' }] }],
+              config: { maxOutputTokens: 5, temperature: 0 }
+            }),
+            9000,
+            'Gemini key check'
+          );
+          const text = typeof resp?.text === 'string' ? resp.text.trim() : '';
+          checks.push({ index: i + 1, key: maskApiKey(apiKey), ok: true, message: `Kalit yaroqli, ${testModel} javob berdi.`, sampleModel: testModel, sample: text.slice(0, 20) });
+        } catch (err: any) {
+          const c = classifyAiError(err);
+          checks.push({ index: i + 1, key: maskApiKey(apiKey), ok: false, code: c.code, message: c.reason, model: testModel, detail: sanitizeErrorDetail(err) });
+        }
+      }
+      const working = checks.filter(c => c.ok === true).length;
+      const firstFailure = checks.find(c => c.ok !== true);
+      payload.keyChecks = checks;
+      payload.keyCheck = {
+        ok: working > 0,
+        working,
+        total: checks.length,
+        code: working > 0 ? null : (firstFailure?.code ?? 'AI_UNAVAILABLE'),
+        message: working > 0
+          ? (working === checks.length
+            ? `Barcha ${checks.length} ta Gemini kaliti ishlayapti.`
+            : `${working}/${checks.length} ta Gemini kaliti ishlayapti; qolganlari: ${String(firstFailure?.message || '')}`)
+          : String(firstFailure?.message || 'Hech bir kalit ishlamayapti.'),
+        detail: firstFailure?.detail ?? null
+      };
+      if (working === 0) {
+        payload.ok = false;
+        payload.message = String(firstFailure?.message || 'Hech bir Gemini kaliti ishlamayapti.');
+      }
+    }
+
+    return resValue.status(payload.ok ? 200 : 503).json(payload);
+  });
 
   app.post('/api/verify-face', async (req: express.Request, resValue: any) => {
-    const denyClosed = (status: number, reason: string) => {
+    const startedAt = Date.now();
+    const deadline = startedAt + FACE_ID_TOTAL_BUDGET_MS;
+    const remaining = () => deadline - Date.now();
+
+    let lastErrorDetail: string | null = null;
+    const denyClosed = (status: number, code: FaceDenyCode, reason: string, extra: Record<string, unknown> = {}) => {
       // Single choke point: every failure path returns through here so the
       // "fail closed" behavior can never accidentally be bypassed.
-      console.warn(`[FACE VERIFICATION] DENIED (fail-closed): ${reason}`);
+      console.warn(`[FACE VERIFICATION] DENIED (fail-closed) code=${code}: ${reason}`);
       return resValue.status(status).json({
         verified: false,
         isMatch: false,
+        faceDetected: false,
         livenessPassed: false,
+        spoofSuspected: false,
         confidence: 0,
-        reason
+        code,
+        retryable: code === 'AI_UNAVAILABLE' || code === 'AI_TIMEOUT' || code === 'AI_BAD_RESPONSE',
+        reason,
+        // Sanitised text of the underlying provider error (no keys) so an admin can
+        // diagnose from a student's screenshot instead of digging through logs.
+        detail: code.startsWith('AI_') ? lastErrorDetail : null,
+        region: process.env.VERCEL_REGION || null,
+        durationMs: Date.now() - startedAt,
+        ...extra
       });
     };
 
     try {
-      const { enrolledImage, frames } = req.body || {};
+      const validation = validateVerifyRequest(req.body);
+      if (validation.ok === false) {
+        return denyClosed(400, (validation as { code: FaceDenyCode; reason: string }).code, (validation as { code: FaceDenyCode; reason: string }).reason);
+      }
+      const { enrolledImage, frames } = validation.value;
 
-      if (!enrolledImage || typeof enrolledImage !== 'string') {
-        return denyClosed(400, "Ro'yxatdan o'tgan surat topilmadi.");
-      }
-      if (!Array.isArray(frames) || frames.length < MIN_FRAMES_REQUIRED) {
-        return denyClosed(400, "Jonlilik tekshiruvi uchun yetarli kadr yuborilmadi.");
-      }
-      for (const f of frames) {
-        if (!f || typeof f.image !== 'string') {
-          return denyClosed(400, "Kadrlar formati noto'g'ri.");
-        }
+      if (!isFaceIdConfigured()) {
+        return denyClosed(503, 'AI_NOT_CONFIGURED', "Face ID xizmati serverda sozlanmagan (GEMINI_API_KEY yo'q). Iltimos, administratorga xabar bering.");
       }
 
-      console.log(`[FACE VERIFICATION] Initiating passive biometric liveness + face-matching with ${frames.length} frames...`);
-
-      const cleanBase64 = (img: string) => (img.includes(',') ? img.split(',')[1] : img);
-      const detectMimeType = (img: string) => {
-        if (img.includes('image/png')) return 'image/png';
-        if (img.includes('image/webp')) return 'image/webp';
-        return 'image/jpeg';
-      };
+      console.log(`[FACE VERIFICATION] Initiating passive biometric liveness + face-matching with ${frames.length} frames (threshold ${FACE_MATCH_THRESHOLD})...`);
 
       const toPart = (img: string) => ({
         inlineData: { mimeType: detectMimeType(img), data: cleanBase64(img) }
       });
 
-      const frameParts: any[] = [];
-      const frameManifest = frames.map((f: any, idx: number) => {
-        frameParts.push(toPart(f.image));
-        return `Rasm ${idx + 2} = kameradan taxminan ${idx === 0 ? '0' : (idx * 700)}ms momentida olingan ketma-ket kadr.`;
-      }).join('\n');
+      // Interleave a label before every image so the model can never confuse
+      // which picture is the enrolled reference and which are the live frames.
+      const imageParts: any[] = [
+        { text: "Rasm 1 — RO'YXATDAN O'TGAN (enrolled) profil surati:" },
+        toPart(enrolledImage)
+      ];
+      frames.forEach((f, idx) => {
+        imageParts.push({ text: `Rasm ${idx + 2} — jonli kadr ${idx + 1}/${frames.length} (taxminan ${idx * 700}ms):` });
+        imageParts.push(toPart(f.image));
+      });
 
       const prompt = `Siz tibbiyot ta'lim platformasi uchun ishlaydigan QAT'IY (zero-trust) biometrik yuz autentifikatsiya va passiv jonlilik (anti-spoofing) tizimisiz. Xato qilish narxi juda yuqori — begona odamni, bo'sh kadrni yoki foto/video orqali firibgarlikni ichkariga kiritib yubormang. Ammo shu bilan birga, haqiqiy, jonli talabalarni bekorga rad etib, ularning kirishiga to'sqinlik qilmang — bu ham jiddiy muammo.
 
-Rasm 1 = Foydalanuvchining ro'yxatdan o'tgan (enrolled) profil surati.
-${frameManifest}
-
-Yuqoridagi ${frames.length} ta kadr veb-kameradan ~2.5-3 soniyalik oraliqda (har biri ~700ms farq bilan), foydalanuvchiga HECH QANDAY ko'rsatma berilmasdan, u kameraga oddiy qarab turgan holatda avtomatik olingan.
+Rasm 1 = Foydalanuvchining ro'yxatdan o'tgan (enrolled) profil surati. U oddiy veb-kamerada olingan bo'lishi mumkin: sifati past, yorug'ligi boshqacha, burchagi boshqacha bo'lishi tabiiy.
+Rasm 2..${frames.length + 1} = veb-kameradan ~2.5-3 soniyalik oraliqda (har biri ~700ms farq bilan), foydalanuvchiga HECH QANDAY ko'rsatma berilmasdan, u kameraga oddiy qarab turgan holatda avtomatik olingan ketma-ket jonli kadrlar.
 
 Sizning to'rtta vazifangiz bor, BIRINCHISINI ALBATTA ENG AVVAL TEKSHIRING:
 
-0) YUZ MAVJUDLIGI (face presence) — ENG MUHIM SHART: Har bir kadrni alohida diqqat bilan ko'rib chiqing. Kadrlarning HAMMASIDA aniq, tanib bo'ladigan inson yuzi ko'rinishi SHART. Agar kadrlarning BIRORTASIDA HAM aniq inson yuzi ko'rinmasa — bo'sh xona, bo'sh stul, devor, qorong'i/xira tasvir, yuzning faqat qisman ko'rinishi, yuz kameradan juda uzoq yoki noaniq bo'lsa — bunda faceDetected=false, isMatch=false, livenessPassed=false, confidence=0 qiling va boshqa hech narsani tahlil qilmang. Bu shart bajarilmasa, qolgan vazifalarni BAJARMANG.
+0) YUZ MAVJUDLIGI (face presence) — ENG MUHIM SHART: Jonli kadrlarning har birini alohida diqqat bilan ko'rib chiqing. Kadrlarning HAMMASIDA aniq, tanib bo'ladigan inson yuzi ko'rinishi SHART. Agar kadrlarning BIRORTASIDA HAM aniq inson yuzi ko'rinmasa — bo'sh xona, bo'sh stul, devor, qorong'i/xira tasvir, yuzning faqat kichik bir qismi, yuz kameradan juda uzoq yoki noaniq bo'lsa — bunda faceDetected=false, isMatch=false, livenessPassed=false, confidence=0 qiling va boshqa hech narsani tahlil qilmang. Bu shart bajarilmasa, qolgan vazifalarni BAJARMANG.
 
 Faqat faceDetected=true bo'lgandagina quyidagi vazifalarni bajaring:
 
-1) YUZ MOSLIGI (identity match): Rasm 1 dagi shaxs bilan yuqoridagi kadrlardagi shaxs bir xil odammi? Yorug'lik, burchak, veb-kamera sifatidagi tabiiy farqlarga tolerant bo'ling, lekin shaxs boshqa odam bo'lsa hech qachon moslikni tasdiqlamang.
+1) YUZ MOSLIGI (identity match): Rasm 1 dagi shaxs bilan jonli kadrlardagi shaxs bir xil odammi? Yuzning barqaror belgilariga tayaning: ko'zlar orasidagi masofa, burun shakli, jag' va peshona chiziqlari, lablar shakli, quloq holati. Yorug'lik, burchak, veb-kamera sifati, soch turmagi, soqol, ko'zoynak, bosh kiyim, makiyaj yoki vaqt o'tishi bilan bo'ladigan tabiiy farqlar shaxsni o'zgartirmaydi — bularga tolerant bo'ling. Lekin shaxs boshqa odam bo'lsa hech qachon moslikni tasdiqlamang.
 
 2) PASSIV JONLILIK (liveness / anti-spoofing): MUHIM QOIDA — real odam kameraga tik, tinch o'tirganda, ayniqsa yaxshi yoritilgan xonada, ~2.5-3 soniya ichida kadrlar orasida farq JUDA KICHIK yoki deyarli sezilmas bo'lishi TABIIY holat — bu spoofing dalili EMAS. Faqat quyidagi ANIQ, ijobiy (pozitiv) firibgarlik belgilaridan kamida bittasi haqiqatan ko'rinsa livenessPassed=false va spoofSuspected=true qiling:
    - Qog'ozga chop etilgan fotosurat belgilari: qog'oz qirralari/burchaklari, uni ushlab turgan qo'l yoki barmoqlar ko'rinishi, notekis egilgan sirt.
@@ -577,117 +737,146 @@ Faqat faceDetected=true bo'lgandagina quyidagi vazifalarni bajaring:
    - Kadrlarda tasvir umuman harakatsiz (nafaqat yuz, balki fon, kamera shovqini va hattoki kompressiya artefaktlari ham) piksel-piksel AYNAN bir xil bo'lsa (bu ekrandan takroran ko'rsatilgan statik screenshot ekanini bildiradi).
    Agar bunday ANIQ belgi topilmasa — hattoki kadrlar juda o'xshash bo'lsa ham — buni spoofing deb hisoblamang, livenessPassed=true qiling. Shubha uchun asossiz ravishda rad etish xato hisoblanadi.
 
-3) ISHONCH DARAJASI: 0.0 dan 1.0 gacha, shaxsning mosligi qanchalik ishonchli ekanini bering. Web-kamera yorug'ligi, fokus, ekspozitsiya va bosh burchagidagi tabiiy farqlar uchun ballni asossiz pasaytirmang. Faqat shaxs boshqa odam bo'lsa yoki tasvir juda xira/noaniq bo'lsa past ball bering.
+3) ISHONCH DARAJASI: 0.0 dan 1.0 gacha o'nlik son (masalan 0.82), shaxsning mosligi qanchalik ishonchli ekanini bering. Web-kamera yorug'ligi, fokus, ekspozitsiya va bosh burchagidagi tabiiy farqlar uchun ballni asossiz pasaytirmang. Bir xil odam bo'lsa odatda 0.8 va undan yuqori bering; faqat shaxs boshqa odam bo'lsa yoki tasvir juda xira/noaniq bo'lsa past ball bering.
 
 Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
 {
-  "faceDetected": true yoki false (barcha kadrlarda aniq inson yuzi ko'rinadimi),
+  "faceDetected": true yoki false (barcha jonli kadrlarda aniq inson yuzi ko'rinadimi),
   "isMatch": true yoki false (shaxs mosligi; faceDetected=false bo'lsa avtomatik false),
   "livenessPassed": true yoki false (faqat ANIQ spoofing dalili topilsa false qiling, aks holda true; faceDetected=false bo'lsa avtomatik false),
   "spoofSuspected": true yoki false (faqat ANIQ foto/ekran belgisi topilsa true qiling),
-  "confidence": 0.0 dan 1.0 gacha son (faceDetected=false bo'lsa 0),
+  "confidence": 0.0 dan 1.0 gacha o'nlik son (faceDetected=false bo'lsa 0),
   "reason": "O'zbek tilida qisqa, aniq tushuntirish"
 }`;
 
-      // Only two fast models are tried for this endpoint (unlike other endpoints)
-      // to stay comfortably inside the serverless function's time budget even
-      // when sending several images per request.
-      const models = ["gemini-2.5-flash", "gemini-flash-latest"];
       const responseSchema = {
         type: Type.OBJECT,
         properties: {
-          faceDetected: { type: Type.BOOLEAN, description: "true only if a clear human face is visible in every frame" },
+          faceDetected: { type: Type.BOOLEAN, description: "true only if a clear human face is visible in every live frame" },
           isMatch: { type: Type.BOOLEAN, description: "true if the identity in the frames matches the enrolled photo" },
           livenessPassed: { type: Type.BOOLEAN, description: "true only if passive liveness is confirmed with no spoofing signs" },
           spoofSuspected: { type: Type.BOOLEAN, description: "true if there is any sign of a photo, screen or video replay attack" },
-          confidence: { type: Type.NUMBER, description: "Identity match confidence from 0.0 to 1.0" },
+          confidence: { type: Type.NUMBER, description: "Identity match confidence as a decimal from 0.0 to 1.0" },
           reason: { type: Type.STRING, description: "Brief explanation in Uzbek" }
         },
         required: ["faceDetected", "isMatch", "livenessPassed", "spoofSuspected", "confidence", "reason"]
       };
 
-      let response: any = null;
-      let lastError: any = null;
+      const apiKeys = getFaceIdKeys();
+      if (apiKeys.length === 0) {
+        return denyClosed(503, 'AI_NOT_CONFIGURED', "Face ID xizmati serverda sozlanmagan (GEMINI_API_KEY yo'q). Iltimos, administratorga xabar bering.");
+      }
 
-      for (const modelName of models) {
-        try {
-          console.log(`[FACE VERIFICATION] Trying model: ${modelName}...`);
-          response = await safeGenerateContent(modelName, {
-            contents: [{
-              role: "user",
-              parts: [toPart(enrolledImage), ...frameParts, { text: prompt }]
-            }],
-            config: { responseMimeType: "application/json", responseSchema }
-          }, 1, 300);
-          if (response && response.text) {
-            console.log(`[FACE VERIFICATION] Success with model: ${modelName}`);
-            break;
+      const MAX_ATTEMPTS_PER_MODEL = 2;
+      let responseText: string | null = null;
+      let usedModel: string | null = null;
+      let usedKey: string | null = null;
+      let lastClassified: ClassifiedAiError | null = null;
+
+      keyLoop:
+      for (let keyIdx = 0; keyIdx < apiKeys.length; keyIdx++) {
+      const apiKey = apiKeys[keyIdx];
+      const aiInstance = makeFaceIdAI(apiKey);
+      if (remaining() < FACE_ID_MIN_REMAINING_MS) break;
+      if (keyIdx > 0) console.warn(`[FACE VERIFICATION] Switching to fallback key #${keyIdx + 1} (${maskApiKey(apiKey)})`);
+
+      modelLoop:
+      for (const modelName of FACE_ID_MODELS) {
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_MODEL; attempt++) {
+          const timeLeft = remaining();
+          if (timeLeft < FACE_ID_MIN_REMAINING_MS) {
+            console.warn(`[FACE VERIFICATION] Time budget exhausted before trying ${modelName} (attempt ${attempt}).`);
+            if (!lastClassified) {
+              lastClassified = { code: 'AI_TIMEOUT', httpStatus: 504, reason: "AI tekshiruv javobi kechikdi. Iltimos, qayta urinib ko'ring.", transient: true, skipModel: false };
+            }
+            break modelLoop;
           }
-        } catch (err: any) {
-          console.log(`[FACE VERIFICATION] Model ${modelName} unavailable, trying next model...`, err?.message);
-          lastError = err;
-          response = null;
-        }
-      }
-
-      // NO FALLBACK: if every model failed or returned nothing, deny access.
-      // This used to silently return isMatch:true here — that was the security hole.
-      if (!response || !response.text) {
-        return denyClosed(503, "Biometrik tekshiruv xizmati vaqtincha ishlamayapti. Iltimos, birozdan so'ng qayta urinib ko'ring. Xavfsizlik nuqtai nazaridan kirish rad etildi.");
-      }
-
-      let result: any;
-      try {
-        let cleanText = response.text.trim();
-        if (cleanText.startsWith('```')) {
-          cleanText = cleanText.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
-        }
-        result = JSON.parse(cleanText);
-      } catch (parseErr) {
-        console.warn('[FACE VERIFICATION] JSON parse failed. Raw text:', response.text);
-        const firstBrace = response.text.indexOf('{');
-        const lastBrace = response.text.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          const callTimeout = Math.min(FACE_ID_PER_CALL_TIMEOUT_MS, timeLeft - 1000);
           try {
-            result = JSON.parse(response.text.substring(firstBrace, lastBrace + 1));
-          } catch {
-            return denyClosed(502, "AI javobini o'qib bo'lmadi. Xavfsizlik nuqtai nazaridan kirish rad etildi.");
+            console.log(`[FACE VERIFICATION] Trying model ${modelName} (attempt ${attempt}/${MAX_ATTEMPTS_PER_MODEL}, timeout ${callTimeout}ms)...`);
+            const response: any = await withTimeout(
+              aiInstance.models.generateContent({
+                model: modelName,
+                contents: [{ role: "user", parts: [...imageParts, { text: prompt }] }],
+                config: {
+                  responseMimeType: "application/json",
+                  responseSchema,
+                  temperature: 0.1
+                }
+              }),
+              callTimeout,
+              `Face ID model ${modelName}`
+            );
+            const text = typeof response?.text === 'string' ? response.text : '';
+            if (text.trim()) {
+              responseText = text;
+              usedModel = modelName;
+              usedKey = maskApiKey(apiKey);
+              console.log(`[FACE VERIFICATION] Success with model: ${modelName} (key ${usedKey}) in ${Date.now() - startedAt}ms`);
+              break keyLoop;
+            }
+            // Empty body (e.g. safety block) — treat as a bad response and move on.
+            lastClassified = { code: 'AI_BAD_RESPONSE', httpStatus: 502, reason: "AI javobi bo'sh keldi.", transient: false, skipModel: true };
+            console.warn(`[FACE VERIFICATION] Model ${modelName} returned an empty answer; trying next model.`);
+            break;
+          } catch (err: any) {
+            const classified = classifyAiError(err);
+            lastClassified = classified;
+            lastErrorDetail = sanitizeErrorDetail(err);
+            console.warn(`[FACE VERIFICATION] Model ${modelName} attempt ${attempt} failed (${classified.code}): ${err?.message || err}`);
+            // Invalid key / billing problem: no model on this key will work — next key.
+            if (classified.code === 'AI_NOT_CONFIGURED') continue keyLoop;
+            if (classified.skipModel) break;
+            const waitMs = classified.retryAfterSec ? classified.retryAfterSec * 1000 : 600 * attempt;
+            const canRetrySameModel = classified.transient && attempt < MAX_ATTEMPTS_PER_MODEL && waitMs + FACE_ID_MIN_REMAINING_MS < remaining();
+            if (canRetrySameModel) {
+              await new Promise(resolve => setTimeout(resolve, waitMs));
+              continue;
+            }
+            break; // next model
           }
-        } else {
-          return denyClosed(502, "AI javobini o'qib bo'lmadi. Xavfsizlik nuqtai nazaridan kirish rad etildi.");
         }
       }
+      }
 
-      // faceDetected defaults to false (fail-closed) unless the AI explicitly confirms it.
-      const faceDetected = result?.faceDetected === true;
-      const isMatch = result?.isMatch === true;
-      const livenessPassed = result?.livenessPassed === true;
-      const spoofSuspected = result?.spoofSuspected === true;
-      const confidence = typeof result?.confidence === 'number' ? result.confidence : parseFloat(result?.confidence) || 0;
-      const reason = typeof result?.reason === 'string' && result.reason
-        ? result.reason
-        : (!faceDetected ? "Kadrlarda aniq inson yuzi topilmadi." : "Tekshiruv natijasi noaniq.");
+      // NO FALLBACK: if every key/model failed or returned nothing, deny access.
+      // This used to silently return isMatch:true here — that was the security hole.
+      if (!responseText) {
+        const c = lastClassified || { code: 'AI_UNAVAILABLE' as FaceDenyCode, httpStatus: 503, reason: "Biometrik tekshiruv xizmati vaqtincha ishlamayapti. Iltimos, birozdan so'ng qayta urinib ko'ring.", transient: true, skipModel: false };
+        return denyClosed(c.httpStatus, c.code, c.reason, c.retryAfterSec ? { retryAfterSec: c.retryAfterSec } : {});
+      }
 
-      // faceDetected is checked first and independently: no face in frame means
-      // automatic denial regardless of what isMatch/confidence the model returned.
-      const verified = faceDetected && isMatch && livenessPassed && !spoofSuspected && confidence >= FACE_MATCH_THRESHOLD;
+      const parsed = parseModelJson(responseText);
+      if (!parsed) {
+        console.warn('[FACE VERIFICATION] JSON parse failed. Raw text:', responseText.slice(0, 500));
+        return denyClosed(502, 'AI_BAD_RESPONSE', "AI javobini o'qib bo'lmadi. Xavfsizlik nuqtai nazaridan kirish rad etildi. Iltimos, qayta urinib ko'ring.");
+      }
 
-      console.log(`[FACE VERIFICATION] Result: verified=${verified} faceDetected=${faceDetected} isMatch=${isMatch} liveness=${livenessPassed} spoof=${spoofSuspected} confidence=${confidence}`);
+      // The decision is made by the unit-tested policy module: faceDetected is
+      // checked first, then spoof/liveness, then identity, then the threshold.
+      const decision = decideVerification(normalizeVerdict(parsed), FACE_MATCH_THRESHOLD);
+
+      console.log(`[FACE VERIFICATION] Result: verified=${decision.verified} code=${decision.code || 'OK'} faceDetected=${decision.faceDetected} isMatch=${decision.isMatch} liveness=${decision.livenessPassed} spoof=${decision.spoofSuspected} confidence=${decision.confidence} model=${usedModel} took=${Date.now() - startedAt}ms`);
 
       return resValue.json({
-        verified,
-        isMatch: verified, // kept for frontend backward-compatibility; only true when fully verified
-        faceDetected,
-        livenessPassed,
-        spoofSuspected,
-        confidence,
-        reason
+        verified: decision.verified,
+        isMatch: decision.verified, // kept for frontend backward-compatibility; only true when fully verified
+        faceDetected: decision.faceDetected,
+        livenessPassed: decision.livenessPassed,
+        spoofSuspected: decision.spoofSuspected,
+        confidence: decision.confidence,
+        code: decision.code ?? null,
+        retryable: decision.retryable,
+        reason: decision.reason,
+        model: usedModel,
+        key: usedKey,
+        durationMs: Date.now() - startedAt
       });
 
     } catch (error: any) {
       console.error('[FACE VERIFICATION] Unexpected error:', error);
       // NO FALLBACK on exceptions either — deny closed.
-      return denyClosed(500, error?.message || 'Yuzni tekshirish jarayonida kutilmagan xatolik yuz berdi. Xavfsizlik nuqtai nazaridan kirish rad etildi.');
+      return denyClosed(500, 'AI_UNAVAILABLE', 'Yuzni tekshirish jarayonida kutilmagan xatolik yuz berdi. Xavfsizlik nuqtai nazaridan kirish rad etildi. Iltimos, qayta urinib ko\'ring.');
     }
   });
 
@@ -751,7 +940,7 @@ DIQQAT:
 - Sarlavhalarni chiroyli emoji va Visual Markdown formatda bezang. Biz uni saytda ReactMarkdown orqali ko'rsatamiz.`;
 
       // Try reliable models
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+      const models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
       let text = '';
       let errorOccurred = null;
 
@@ -817,7 +1006,7 @@ So'ralgan o'quv qo'llanmasi quyidagi tuzilish va qismlardan iborat bo'lishi lozi
 
 Materialni faqat Markdown formatida va foydalanuvchi tilida qaytar.`;
 
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+      const models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
       let text = '';
       for (const modelName of models) {
         try {
@@ -846,6 +1035,52 @@ Materialni faqat Markdown formatida va foydalanuvchi tilida qaytar.`;
     }
   });
 
+  // Ultra-fast in-memory translation caches ensuring sub-second response times
+  const theoryTranslationCache = new Map<string, string>();
+  const quizTranslationCache = new Map<string, any>();
+
+  // Helper to split long markdown textbook into balanced chunks (< 2800 chars) for parallel generation
+  const splitTextIntoBalancedChunks = (srcText: string, maxChunkLen = 2800): string[] => {
+    if (!srcText || srcText.length <= maxChunkLen) return [srcText];
+
+    const sections = srcText.split(/(?=\n## |\n### )/g);
+    const chunks: string[] = [];
+    let currentChunk = '';
+
+    for (const sec of sections) {
+      if ((currentChunk + sec).length > maxChunkLen && currentChunk.trim().length > 0) {
+        chunks.push(currentChunk.trim());
+        currentChunk = sec;
+      } else {
+        currentChunk += sec;
+      }
+    }
+    if (currentChunk.trim().length > 0) {
+      chunks.push(currentChunk.trim());
+    }
+
+    const finalChunks: string[] = [];
+    for (const ch of chunks) {
+      if (ch.length <= maxChunkLen) {
+        finalChunks.push(ch);
+      } else {
+        const paragraphs = ch.split(/\n\n+/g);
+        let subChunk = '';
+        for (const p of paragraphs) {
+          if ((subChunk + '\n\n' + p).length > maxChunkLen && subChunk.trim().length > 0) {
+            finalChunks.push(subChunk.trim());
+            subChunk = p;
+          } else {
+            subChunk = subChunk ? `${subChunk}\n\n${p}` : p;
+          }
+        }
+        if (subChunk.trim().length > 0) finalChunks.push(subChunk.trim());
+      }
+    }
+
+    return finalChunks.length > 0 ? finalChunks : [srcText];
+  };
+
   app.post('/api/translate-theory', async (req: express.Request, resValue: any) => {
     const startTime = Date.now();
     try {
@@ -854,44 +1089,90 @@ Materialni faqat Markdown formatida va foydalanuvchi tilida qaytar.`;
         return resValue.status(400).json({ error: 'Matn kiritilmagan' });
       }
 
-      // Apply latency simulation delay
-      const simDelay = getLatencyDelay();
-      if (simDelay > 0) {
-        await new Promise(resolve => setTimeout(resolve, simDelay));
-      }
-
+      // Never apply artificial simulation delays to translations to ensure < 10s guarantee
       const targetLang = language === 'ru' ? 'Russian (Русский)' : language === 'en' ? 'English' : 'Uzbek (O\'zbekcha)';
-      console.log(`Translating theory to: ${targetLang}`);
-      
-      const prompt = `Siz tibbiyot va anatomiya bo'yicha professional tarjimonisiz. Quyidagi o'zbek tilidagi anatomik darslik matnini ${targetLang} tiliga o'ta aniqlik bilan, professional tibbiy terminologiyani saqlagan holda tarjima qiling. Tarjimani faqat Markdown formatida qaytaring, ortiqcha izohlar qo'shmang.\n\nMatn:\n${text}`;
-      
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
-      let translatedText = '';
-      for (const modelName of models) {
-        try {
-          const response = await safeGenerateContent(modelName, {
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            config: {
-              temperature: 0.2
-            }
-          });
-          if (response?.text) {
-            translatedText = response.text;
-            break;
-          }
-        } catch (mErr: any) {
-          console.log(`Translation model ${modelName} busy, trying fallback...`);
+      console.log(`[AI TRANSLATOR] Translating theory to ${targetLang} (length: ${text.length} chars)`);
+
+      // 1. Instant Cache Lookup (< 1ms)
+      const cacheKey = `${language}:${crypto.createHash('md5').update(text).digest('hex')}`;
+      if (theoryTranslationCache.has(cacheKey)) {
+        const cached = theoryTranslationCache.get(cacheKey)!;
+        const isValidCached = cached !== text && (language !== 'ru' || /[а-яА-ЯёЁ]/.test(cached));
+        if (isValidCached) {
+          addPerformanceLog('translate-theory', 'cache', Date.now() - startTime, text.length, 'success');
+          return resValue.json({ translatedText: cached });
+        } else {
+          theoryTranslationCache.delete(cacheKey);
         }
       }
 
-      if (!translatedText) {
-        throw new Error('AI dan tarjima olinmadi');
+      // 2. High-speed parallel generation for < 10s guarantee
+      const chunks = splitTextIntoBalancedChunks(text, 2200);
+      const models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
+
+      const translateSingleChunk = async (chunkText: string): Promise<string> => {
+        const prompt = `You are a professional medical and anatomical translator. 
+Translate the following anatomy study material into ${targetLang}.
+Strict rules:
+1. Translate all explanations and content completely into ${targetLang}. Do NOT return text in the original language.
+2. Preserve all international anatomical Latin terminology accurately (e.g. musculus, arteria, nervus, vena, os, ligamentum, foramen, sulcus, spina).
+3. Keep all Markdown headers (##, ###) and formatting.
+4. Return ONLY the translated markdown text directly without any conversational preamble or notes.
+
+Source Text:
+${chunkText}`;
+
+        for (const modelName of models) {
+          try {
+            const genPromise = safeGenerateContent(modelName, {
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              config: {
+                temperature: 0.1
+              }
+            });
+
+            // 35s timeout safeguard per chunk
+            const timeoutPromise = new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error('Translation timeout')), 35000)
+            );
+
+            const response: any = await Promise.race([genPromise, timeoutPromise]);
+            if (response?.text && response.text.trim().length > 0) {
+              const resTrim = response.text.trim();
+              const isNotIdentical = resTrim !== chunkText.trim();
+              const isLangValid = language !== 'ru' || /[а-яА-ЯёЁ]/.test(resTrim);
+              if (isNotIdentical && isLangValid) {
+                return resTrim;
+              }
+            }
+          } catch (mErr: any) {
+            console.warn(`Translation chunk with ${modelName} warning:`, mErr?.message || mErr);
+          }
+        }
+        throw new Error('Matn qismini tarjima qilishda barcha AI modellari band');
+      };
+
+      const translatedChunks = await Promise.all(chunks.map(ch => translateSingleChunk(ch)));
+      let translatedText = translatedChunks.join('\n\n');
+
+      if (!translatedText || translatedText.trim().length === 0 || translatedText.trim() === text.trim()) {
+        throw new Error('AI tarjima matnini to\'liq taqdim eta olmadi');
       }
-      addPerformanceLog('translate-theory', 'gemini-2.5-flash', Date.now() - startTime, (text || '').length, 'success');
+
+      if (language === 'ru' && !/[а-яА-ЯёЁ]/.test(translatedText)) {
+        throw new Error('Rus tiliga tarjima qilinmadi');
+      }
+
+      // Store in memory cache
+      theoryTranslationCache.set(cacheKey, translatedText);
+      const durationMs = Date.now() - startTime;
+      console.log(`[AI TRANSLATOR] Theory translation finished in ${durationMs}ms`);
+
+      addPerformanceLog('translate-theory', 'gemini-3.1-flash-lite', durationMs, text.length, 'success');
       resValue.json({ translatedText });
     } catch (error: any) {
       console.error('Translation Error:', error);
-      addPerformanceLog('translate-theory', 'gemini-2.5-flash', Date.now() - startTime, 0, 'error', error.message || 'Tarjimada xatolik yuz berdi');
+      addPerformanceLog('translate-theory', 'gemini-3.1-flash-lite', Date.now() - startTime, 0, 'error', error.message || 'Tarjimada xatolik yuz berdi');
       resValue.status(500).json({ error: error.message || 'Tarjimada xatolik yuz berdi' });
     }
   });
@@ -904,22 +1185,29 @@ Materialni faqat Markdown formatida va foydalanuvchi tilida qaytar.`;
         return resValue.status(400).json({ error: 'Quizzes must be provided as an array.' });
       }
 
-      // Apply latency simulation delay
-      const simDelay = getLatencyDelay();
-      if (simDelay > 0) {
-        await new Promise(resolve => setTimeout(resolve, simDelay));
-      }
-      
       const targetLang = language === 'ru' ? 'Russian (Русский)' : language === 'en' ? 'English' : 'Uzbek (O\'zbekcha)';
-      console.log(`Translating ${quizzes.length} quizzes to: ${targetLang}`);
-      
+      console.log(`[AI TRANSLATOR] Translating ${quizzes.length} quizzes to ${targetLang}`);
+
       const inputJSON = JSON.stringify(quizzes.map(q => ({
         id: q.id,
         question: q.question,
         options: q.options || [],
         explanation: q.explanation || ''
       })), null, 2);
-      
+
+      // 1. Instant Cache Lookup (< 1ms)
+      const quizCacheKey = `${language}:${crypto.createHash('md5').update(inputJSON).digest('hex')}`;
+      if (quizTranslationCache.has(quizCacheKey)) {
+        const cached = quizTranslationCache.get(quizCacheKey);
+        const isValidCached = Array.isArray(cached) && (language !== 'ru' || /[а-яА-ЯёЁ]/.test(cached[0]?.question || ''));
+        if (isValidCached) {
+          addPerformanceLog('translate-quizzes', 'cache', Date.now() - startTime, inputJSON.length, 'success');
+          return resValue.json({ translatedQuizzes: cached });
+        } else {
+          quizTranslationCache.delete(quizCacheKey);
+        }
+      }
+
       const prompt = `You are a professional medical and anatomical translator. 
 Translate the following array of anatomical quizzes into ${targetLang}. The source language could be Uzbek, Russian, or English.
 Maintain highly precise and professional anatomical/medical terminology in ${targetLang}. 
@@ -928,15 +1216,16 @@ Ensure all options and explanations are translated perfectly. Keep the original 
 Input Quizzes JSON:
 ${inputJSON}`;
 
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+      const models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
       let translatedQuizzes = null;
+
       for (const modelName of models) {
         try {
-          const response = await safeGenerateContent(modelName, {
+          const genPromise = safeGenerateContent(modelName, {
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: {
               responseMimeType: "application/json",
-              temperature: 0.2,
+              temperature: 0.1,
               responseSchema: {
                 type: Type.ARRAY,
                 items: {
@@ -953,24 +1242,37 @@ ${inputJSON}`;
             }
           });
 
+          // 35s timeout safeguard
+          const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Quiz translation timeout')), 35000)
+          );
+
+          const response: any = await Promise.race([genPromise, timeoutPromise]);
           if (response?.text) {
-            translatedQuizzes = JSON.parse(response.text);
-            break;
+            const parsed = JSON.parse(response.text);
+            if (Array.isArray(parsed) && (language !== 'ru' || /[а-яА-ЯёЁ]/.test(parsed[0]?.question || ''))) {
+              translatedQuizzes = parsed;
+              break;
+            }
           }
         } catch (qErr: any) {
-          console.log(`Quiz translation model ${modelName} busy, trying fallback...`);
+          console.warn(`Quiz translation model ${modelName} warning:`, qErr?.message || qErr);
         }
       }
 
       if (!translatedQuizzes) {
-        throw new Error('AI translation did not return quizzes.');
+        throw new Error('AI translation did not return valid quizzes.');
       }
-      
-      addPerformanceLog('translate-quizzes', 'gemini-2.5-flash', Date.now() - startTime, inputJSON.length, 'success');
+
+      quizTranslationCache.set(quizCacheKey, translatedQuizzes);
+      const durationMs = Date.now() - startTime;
+      console.log(`[AI TRANSLATOR] Quizzes translation finished in ${durationMs}ms`);
+
+      addPerformanceLog('translate-quizzes', 'gemini-3.1-flash-lite', durationMs, inputJSON.length, 'success');
       resValue.json({ translatedQuizzes });
     } catch (error: any) {
       console.error('Quiz Translation Error:', error);
-      addPerformanceLog('translate-quizzes', 'gemini-3.7-flash', Date.now() - startTime, 0, 'error', error.message || 'Error occurred during quiz translation.');
+      addPerformanceLog('translate-quizzes', 'gemini-3.1-flash-lite', Date.now() - startTime, 0, 'error', error.message || 'Error occurred during quiz translation.');
       resValue.status(500).json({ error: error.message || 'Error occurred during quiz translation.' });
     }
   });
@@ -1020,20 +1322,30 @@ ${inputJSON}`;
 
       contents.push({ role: 'user', parts: currentParts });
 
-      const systemInstruction = `Siz O'zbekistondagi nufuzli Buxoro Davlat Tibbiyot Instituti (BSMI) ANATOMY platformasining yetakchi Professori asistentisiz va talabalar uchun oliy toifali akademik Anatomiya Ustozi (Ustoz o'rnida ishlovchi) hisoblanasiz.
-Ismingiz - "Anatomiya Professor AI".
+      const systemInstruction = `Siz O'zbekistondagi nufuzli Buxoro Davlat Tibbiyot Instituti (BSMI) ANATOMY platformasining yetakchi Professori asistentisiz va talabalar uchun oliy toifali akademik Anatomiya va Lotin tili Ustozi hisoblanasiz.
+Ismingiz - "Anatomiya va Lotin Tili Professor AI".
 
-Sizning vazifangiz:
-1. TALABALARNING HAQIQIY AKADEMIK USTOZI BO'LISH: Talaba so'ragan har qanday savolga darsliklardagi kabi chuqur tahlil, tizimli tushuntirish va o'ta ilmiy yondashuv bilan javob bering. Hech qachon sayoz yoki qisqa javob bilan cheklanmang — xuddi kafedra professori ma'ruza tushuntirayotgandek va talabaga individual ustozlik qilayotgandek yondashing!
-2. LOTIN VA O'ZBEK TERMINOLOGIYASINING QAT'IY ISHLATILISHI: Odam anatomiyasidagi har bitta a'zo, suyak, mushak, arterial-birlashma, boylam yoki fassiyani tushuntirayotganda ularning rasmiy Lotincha nomlarini (masalan, *musculus biceps brachii*, *arteria subclavia*, *os temporale*) qavs ichida va kursivda (*italics*) albatta ta'kidlang. Bu talabalarni darsga tayyorlashga yordam beradi.
-3. FAOL VA KUCHLI YORDAM BERISH: Talabalarga dars jarayonlarida, mustaqil ta'limda, ma'ruza konspektlarida, amaliy mashg'ulotlarda va imtihon biletlarining (colloquium, og'zaki, test imtihonlari) barchasida to'liq yo'nalish bera olasiz. Savollarni javoblashda bosqichma-bosqich, anatomik klassifikatsiya bilan tushuntiring.
-4. KLINIK KORRELYATSIYA (Clinical Connection): Har bir anatomiya darsining oxirida o'sha a'zoning yoki sistemaning travmalari, klinik jarrohlik yoki diagnostik patologiyalar bilan aloqasini (klinik ahamiyatini, masalan, churralar, infarkt, nevralgiya, stenozlar va h.k.) batafsil tibbiy o'quvchi tilida yoritib bering.
-5. TILGA MOSLASHUVCHANLIK: Foydalanuvchi qaysi tilda murojaat qilsa (o'zbek, rus yoki ingliz), tezkor va mukammal tarzda o'sha tilda javob bering. Agar o'zbek tilida gapirilsa, o'zbek tibbiyot darsliklari uslubida yozing.
-6. NO-ANATOMIK TAQIQLASH: Agar foydalanuvchi anatomiyaga va tibbiyotga mutlaqo aloqasi bo'lmagan so'rovlar bersa, ularga ustozlik ohangi bilan: "Men faqat odam anatomiyasi va tibbiy fanlar bo'yicha sizga dars bera olaman. Kelasi darsda anatomiyaga oid yangi savollaringizni kutaman." kabi chiroyli, ammo qat'iy javob yo'llang.
-7. OVOZLI REJIM VA JARVIS USLUBI: Agar ovozli muloqot rejimida gaplashilayotgan bo'lsa (Hands-Free/Jarvis), javoblarni nisbatan aniq, tushunarli, o'quvchiga yoqadigan professional tahlilda bayon qiling va ko'p keraksiz texnik markdown belgilaridan qochishga harakat qiling (chunki uni brauzer TTS o'qiydi).
-8. GOOGLE SEARCH GROUNDING (TADQIQOTLAR VA TIBBIY YANGILIKLAR): Sizga Google Search Grounding xizmati ulangan. Agar talaba eng so'nggi anatomik tadqiqotlar, yangi ilmiy kashfiyotlar, tibbiy yangiliklar, anatomiya yoki klinika sohasidagi zamonaviy yangilanishlar haqida so'rasa, yangi va ishonchli ma'lumotlarni tahlil qiling va taqdim eting.`;
+QAT'IY CHEKLOV VA RUXSAT ETILGAN MAVZULAR:
+SIZ FAQAT VA FAQAT QUYIDAGI 3 TA YO'NALISHDAGI SAVOLLARGA JAVOB BERISHINGIZ SHART:
+1. ODAM ANATOMIYASI (Human Anatomy): Suyaklar, bo'g'imlar, mushaklar, ichki a'zolar (splanxnologiya), qon-tomir va yurak, asab tizimi, sezgi a'zolari, topografik va klinik anatomiya.
+2. TIBBIY VA ANATOMIK LOTIN TILI (Medical Latin Terminology): Anatomik terminlar, lotincha grammatika, tushunchalar, nomlanishlar (masalan: musculus, sulcus, foramen, nervus, arteria va h.k.), ularning tarjimasi va to'g'ri qo'llanilishi.
+3. USHBU SAYT / PLATFORMA HAQIDA MA'LUMOT (BSMI Anatomy Platform): Ushbu portal bo'limlari (1- va 2-semestr darsliklari, 3D interaktiv atlas, anatomik 3D modellar, testlar va kollokviumlar, lotincha lug'at, natijalar va peshqadamlar jadvali, obuna va premium imkoniyatlari).
 
-      const models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+MUTLAQ TAQIQLANGAN MAVZULAR (STRICT REFUSAL RULE):
+Agar foydalanuvchining savoli odam anatomiyasiga, tibbiy lotin tiliga yoki ushbu BSMI Anatomy saytiga mutlaqo daxldor BO'LMASA (masalan: dasturlash, siyosat, boshqa fanlar, fizika, kimyo/tarix, shaxsiy suhbatlar, umumiy falsafa, o'yinlar, ob-havo, qiziqarli faktlar va boshqa har qanday begona mavzular):
+- HECH QANDAY HOLATDA ushbu begona savolga javob bermang!
+- Quyidagicha muloyim, ammo qat'iy ustozlik rad javobini bering:
+  "Hurmatli talaba! Men faqat **Odam Anatomiyasi**, **Tibbiy Lotin Tili** hamda ushbu **BSMI Anatomy platformasi** bo'yicha maxsus dasturlangan akademik AI maslahatchiman. Iltimos, faqat anatomiya, lotin terminologiyasi yoki saytimiz imkoniyatlariga oid savollarni yo'llang. Sizga anatomiyadan dars berishdan mamnun bo'laman! 🧠🫀🦴"
+  (Agar foydalanuvchi rus yoki ingliz tilida so'ragan bo'lsa, xuddi shu mazmundagi qat'iy rad javobini o'sha tilda taqdim eting).
+
+ANATOMIYA VA LOTIN TILI BO'YICHA ISHLASH USLUBI:
+1. TALABALARNING HAQIQIY AKADEMIK USTOZI BO'LISH: Anatomiya yoki lotin tili savollariga darsliklardagi kabi chuqur tahlil, tizimli tushuntirish va oliy akademik yondashuv bilan javob bering.
+2. LOTIN TERMINOLOGIYASINING QAT'IY ISHLATILISHI: Odam anatomiyasidagi har bitta a'zo, suyak, mushak, qon-tomir, boylamni tushuntirayotganda ularning rasmiy Lotincha nomlarini (masalan, *musculus biceps brachii*, *arteria subclavia*, *os temporale*) qavs ichida va kursivda (*italics*) albatta keltiring.
+3. KLINIK KORRELYATSIYA (Clinical Connection): Har bir anatomiya mavzusi yakunida o'sha a'zoning klinik ahamiyatini (travmalar, churralar, infarkt, nevralgiya, jarrohlik amaliyotidagi ahamiyati) qisqacha ta'kidlang.
+4. TILGA MOSLASHUVCHANLIK: Foydalanuvchi qaysi tilda murojaat qilsa (o'zbek, rus yoki ingliz), shu tilda mukammal va darslik talablariga mos javob bering.
+5. OVOZLI REJIM VA JARVIS USLUBI: Ovozli muloqot rejimida gaplashilayotgan bo'lsa (Hands-Free/Jarvis), javoblarni aniq, ortiqcha texnik belgilarsiz ravon audio o'qishga moslashtiring.`;
+
+      const models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"];
       let text = '';
       let groundingSources: { title: string; uri: string }[] = [];
       let errorOccurred = null;

@@ -1,15 +1,20 @@
-import { uploadToSupabasePresentation, uploadWithFallbacks, validatePresentation, type PresentationBackend, type PresentationUploadResult, type StorageBackend } from './presentationStorage';
-import { supabase, supabaseUrl, supabaseAnonKey, isSupabaseConfigured, uploadToSupabaseWithProgress } from './supabase';
-import { storage } from './firebase';
+import { uploadToSupabasePresentation } from './presentationStorage';
+import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
+import { db, storage } from './firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { ID } from 'appwrite';
-import { appwriteStorage, isAppwriteEnabled } from './appwrite';
 
 export interface UploadResult {
   url: string;
   fileName: string;
   fileType: 'pptx' | 'pdf';
   fileSize: number;
+}
+
+export interface VideoUploadResult {
+  url: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
 }
 
 /**
@@ -83,210 +88,83 @@ export async function uploadImageFile(
   throw new Error("Rasmni yuklab bo'lmadi. Iltimos qaytadan urinib ko'ring yoki rasm havolasini kiriting.");
 }
 
-const PRESENTATION_MIME: Record<'pdf' | 'pptx', string> = {
-  pdf: 'application/pdf',
-  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-};
-
-function safePresentationName(file: File): string {
-  return `${crypto.randomUUID()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-}
-
-/** 1. Supabase Storage (primary). Reports a clear reason when it is not configured at all. */
-function supabaseBackend(): PresentationBackend {
-  return {
-    name: 'Supabase Storage',
-    upload: async (file, onProgress) => {
-      if (!supabase) throw new Error('sozlanmagan (VITE_SUPABASE_URL va VITE_SUPABASE_ANON_KEY yo‘q yoki noto‘g‘ri).');
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw new Error('Supabase sessiyasini tekshirib bo‘lmadi. Qayta kiring.');
-      return uploadToSupabasePresentation(file, {
-        url: supabaseUrl,
-        key: supabaseAnonKey,
-        token: data.session?.access_token || supabaseAnonKey,
-      }, onProgress);
-    },
-  };
-}
-
-/** 2. Appwrite Storage, only when VITE_APPWRITE_PROJECT is configured. */
-function appwriteBackend(): PresentationBackend | null {
-  if (!isAppwriteEnabled() || !appwriteStorage) return null;
-  const client = appwriteStorage;
-  return {
-    name: 'Appwrite Storage',
-    upload: async (file, onProgress) => {
-      const fileType = validatePresentation(file);
-      onProgress?.(5);
-      const created = await client.createFile('presentations', ID.unique(), file);
-      const endpoint = (import.meta as any).env.VITE_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1';
-      const project = (import.meta as any).env.VITE_APPWRITE_PROJECT || '';
-      onProgress?.(100);
-      return {
-        url: `${endpoint}/storage/buckets/presentations/files/${created.$id}/view?project=${project}`,
-        fileName: file.name,
-        fileType,
-        fileSize: file.size,
-      };
-    },
-  };
-}
-
-function firebaseStorageMessage(err: any): string {
-  const code = String(err?.code || '');
-  if (code === 'storage/unauthorized') return 'yozishga ruxsat yo‘q. storage.rules dagi presentations/ qoidasi va admin Google hisobi bilan kirilganini tekshiring.';
-  if (code === 'storage/canceled') return 'yuklash bekor qilindi.';
-  if (code === 'storage/retry-limit-exceeded') return 'tarmoq javob bermadi.';
-  if (code === 'storage/unknown' || code === 'storage/project-not-found' || code === 'storage/bucket-not-found') {
-    return 'Storage yoqilmagan yoki Firebase loyihasida billing (Blaze) sozlanmagan.';
-  }
-  return err?.message || 'noma’lum xatolik.';
-}
-
-/** Resumable Firebase Storage upload that gives up after 20 s without progress (the SDK alone retries for an hour). */
-function uploadToFirebaseFolder(folder: string, file: File, contentType: string, onProgress?: (percent: number) => void): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const storageRef = ref(storage, `${folder}/${safePresentationName(file)}`);
-    const task = uploadBytesResumable(storageRef, file, { contentType });
-    let lastLoaded = 0;
-    let idle: ReturnType<typeof setTimeout>;
-    const resetIdle = () => {
-      clearTimeout(idle);
-      idle = setTimeout(() => {
-        task.cancel();
-        reject(new Error('Firebase Storage javob bermayapti (20 soniya). Tarmoq va Storage holatini tekshiring.'));
-      }, 20000);
-    };
-    resetIdle();
-    onProgress?.(0);
-    task.on(
-      'state_changed',
-      snapshot => {
-        if (snapshot.bytesTransferred > lastLoaded) { lastLoaded = snapshot.bytesTransferred; resetIdle(); }
-        if (snapshot.totalBytes > 0) onProgress?.(Math.min(99, Math.round(snapshot.bytesTransferred / snapshot.totalBytes * 100)));
-      },
-      err => { clearTimeout(idle); reject(new Error(firebaseStorageMessage(err))); },
-      async () => {
-        clearTimeout(idle);
-        try {
-          const url = await getDownloadURL(task.snapshot.ref);
-          onProgress?.(100);
-          resolve(url);
-        } catch (e: any) {
-          reject(new Error(firebaseStorageMessage(e)));
-        }
-      },
-    );
-  });
-}
-
-/** 3. Firebase Storage `presentations/` folder (storage.rules allows admins up to 150 MB). */
-function firebaseBackend(): PresentationBackend {
-  return {
-    name: 'Firebase Storage',
-    upload: async (file, onProgress) => {
-      const fileType = validatePresentation(file);
-      const url = await uploadToFirebaseFolder('presentations', file, PRESENTATION_MIME[fileType], onProgress);
-      return { url, fileName: file.name, fileType, fileSize: file.size };
-    },
-  };
-}
-
-function isLocalDevHost(): boolean {
-  if (typeof window === 'undefined') return false;
-  return /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/.test(window.location.hostname);
-}
-
-/** 4. Local dev server disk (`/api/upload`). Vercel has no durable disk, so only on localhost. */
-function localServerBackend(): PresentationBackend | null {
-  if (!isLocalDevHost()) return null;
-  return {
-    name: 'Lokal server',
-    upload: async (file, onProgress) => {
-      const fileType = validatePresentation(file);
-      const result = await uploadViaServerApi(file, onProgress);
-      return { url: result.url, fileName: result.fileName || file.name, fileType, fileSize: file.size };
-    },
-  };
-}
-
-/**
- * Upload a presentation to durable storage and keep only the URL in Firestore.
- * Order: Supabase Storage → Appwrite Storage → Firebase Storage → local dev server.
- * A backend that is unreachable (wrong URL, paused project, DNS, RLS) no longer blocks
- * the upload: the next configured service is tried, and the final error names each failure.
- */
+/** Upload presentations directly to durable storage; keep only the URL in Firestore. */
 export async function uploadPresentationFile(
   file: File,
   onProgress?: (percent: number) => void
 ): Promise<UploadResult> {
-  const backends = [supabaseBackend(), appwriteBackend(), firebaseBackend(), localServerBackend()]
-    .filter((b): b is PresentationBackend => b !== null);
-  const { backend, ...result } = await uploadWithFallbacks(file, backends, onProgress);
-  console.log(`[PRESENTATION UPLOAD] Saved via ${backend}: ${result.url}`);
-  return result;
-}
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  const fileType: 'pptx' | 'pdf' = extension === 'pdf' ? 'pdf' : 'pptx';
+  const sanitized = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  let supabaseError: string | null = null;
 
-// ---------------------------------------------------------------------------
-// Video lessons
-// ---------------------------------------------------------------------------
-
-export const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // matches the `videos` bucket limit in supabase-schema.sql
-const VIDEO_EXTENSIONS = ['mp4', 'webm', 'ogg', 'ogv', 'mov', 'mkv', 'm4v', 'avi'];
-
-/** True for URLs the <video> tag can play directly (file extension, blob: or data:video/ URLs). */
-export function isDirectVideoUrl(url: string | null | undefined): boolean {
-  if (!url) return false;
-  const clean = url.trim().toLowerCase();
-  if (clean.startsWith('blob:') || clean.startsWith('data:video/')) return true;
-  const path = clean.split(/[?#]/)[0];
-  return VIDEO_EXTENSIONS.some(ext => path.endsWith(`.${ext}`));
-}
-
-export function validateVideo(file: { name: string; size: number; type?: string }): void {
-  const extension = file.name.split('.').pop()?.toLowerCase() || '';
-  const isVideo = VIDEO_EXTENSIONS.includes(extension) || (file.type || '').startsWith('video/');
-  if (!isVideo) throw new Error('Faqat video fayl (MP4, WebM, MOV, MKV) tanlang.');
-  if (file.size === 0) throw new Error('Tanlangan fayl bo‘sh.');
-  if (file.size > MAX_VIDEO_BYTES) throw new Error('Video hajmi 500 MB dan oshmasligi kerak.');
-}
-
-/**
- * Upload a video lesson to durable storage and return its public URL.
- * Order: Supabase Storage `videos` bucket → Firebase Storage `videos/` → local dev server.
- */
-export async function uploadVideoFile(
-  file: File,
-  onProgress?: (percent: number) => void
-): Promise<{ url: string; fileName: string; fileSize: number }> {
-  type VideoResult = { url: string; fileName: string; fileSize: number };
-  const contentType = file.type || 'video/mp4';
-  const backends: StorageBackend<VideoResult>[] = [
-    {
-      name: 'Supabase Storage',
-      upload: async (f, progress) => {
-        if (!isSupabaseConfigured()) throw new Error('sozlanmagan (VITE_SUPABASE_URL va VITE_SUPABASE_ANON_KEY yo‘q yoki noto‘g‘ri).');
-        const url = await uploadToSupabaseWithProgress('videos', safePresentationName(f), f, progress);
-        return { url, fileName: f.name, fileSize: f.size };
-      },
-    },
-    {
-      name: 'Firebase Storage',
-      upload: async (f, progress) => ({ url: await uploadToFirebaseFolder('videos', f, contentType, progress), fileName: f.name, fileSize: f.size }),
-    },
-  ];
-  if (isLocalDevHost()) {
-    backends.push({
-      name: 'Lokal server',
-      upload: async (f, progress) => {
-        const result = await uploadViaServerApi(f, progress);
-        return { url: result.url, fileName: result.fileName || f.name, fileSize: f.size };
-      },
-    });
+  // 1. Primary: Try Supabase Storage
+  if (supabase && supabaseUrl && !supabaseUrl.includes('YOUR_SUPABASE_URL')) {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token || supabaseAnonKey;
+      const result = await uploadToSupabasePresentation(file, {
+        url: supabaseUrl,
+        key: supabaseAnonKey,
+        token,
+      }, onProgress);
+      if (result?.url) {
+        return result;
+      }
+    } catch (err: any) {
+      console.warn("[UPLOAD] Supabase Storage failed, falling back to Firebase Storage:", err);
+      supabaseError = err?.message || String(err);
+    }
   }
-  const { backend, ...result } = await uploadWithFallbacks(file, backends, onProgress, validateVideo);
-  console.log(`[VIDEO UPLOAD] Saved via ${backend}: ${result.url}`);
-  return result;
+
+  // 2. Secondary: Try Firebase Storage
+  try {
+    const storageRef = ref(storage, `presentations/${Date.now()}_${sanitized}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    const downloadUrl = await new Promise<string>((resolve, reject) => {
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          if (snapshot.totalBytes > 0 && onProgress) {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            onProgress(Math.round(progress));
+          }
+        },
+        (error) => reject(error),
+        async () => {
+          try {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(url);
+          } catch (e) {
+            reject(e);
+          }
+        }
+      );
+    });
+
+    if (downloadUrl) {
+      return {
+        url: downloadUrl,
+        fileName: file.name,
+        fileType,
+        fileSize: file.size
+      };
+    }
+  } catch (firebaseErr: any) {
+    console.warn("[UPLOAD] Firebase Storage fallback also failed:", firebaseErr);
+  }
+
+  // If both failed, construct a helpful and actionable error
+  if (supabaseError) {
+    throw new Error(
+      `Faylni yuklab bo'lmadi. Sabab: Supabase loyihangiz to'xtatilgan (paused) yoki Vercel'da VITE_SUPABASE_URL noto'g'ri sozlangan. Iltimos, Supabase hisobingizga kirib loyihani faollashtiring yoki pastdagi "2-usul: Fayl havolasi" orqali Google Drive havolasini kiriting.`
+    );
+  }
+
+  throw new Error(
+    "Faylni yuklab bo'lmadi. Iltimos, pastdagi '2-usul: Fayl havolasi' orqali Google Drive yoki boshqa to'g'ridan-to'g'ri havolani kiriting."
+  );
 }
 
 /**
@@ -448,3 +326,153 @@ export function getPresentationEmbedUrl(url: string, fileType: 'pdf' | 'pptx'): 
 
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(cleanUrl)}`;
 }
+
+/**
+ * Dedicated file uploader for Anatomical Video Lessons (MP4, WebM, MOV, MKV, M4V)
+ * 1. Primary: Supabase Storage (bucket: 'videos' - up to 500MB, high-speed CDN delivery)
+ * 2. Secondary: Server /api/upload (up to 150MB)
+ * 3. Fallback: Firebase Storage (bucket: 'videos')
+ */
+export async function uploadVideoFile(
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<VideoUploadResult> {
+  const MAX_VIDEO_SIZE = 500 * 1024 * 1024; // 500 MB
+  if (file.size > MAX_VIDEO_SIZE) {
+    throw new Error("Video fayl hajmi 500 MB dan oshmasligi kerak. Katta hajmdagi videolarni YouTube yoki Google Drive orqali havola sifatida joylashtirish tavsiya etiladi.");
+  }
+
+  const validVideoTypes = [
+    'video/mp4',
+    'video/webm',
+    'video/ogg',
+    'video/quicktime',
+    'video/x-matroska',
+    'video/mp2t',
+    'video/x-m4v'
+  ];
+
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  const isVideoExt = ['mp4', 'webm', 'mov', 'ogg', 'mkv', 'm4v', 'avi'].includes(ext);
+
+  if (!file.type.startsWith('video/') && !isVideoExt) {
+    throw new Error("Faqat video formatidagi fayllarni yuklash mumkin (.mp4, .webm, .mov, .m4v, .mkv).");
+  }
+
+  const sanitized = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const filePath = `videos/video_${Date.now()}_${sanitized}`;
+
+  // 1. Primary: Supabase Storage
+  if (supabase) {
+    try {
+      console.log(`[VIDEO UPLOAD] Uploading ${(file.size / 1024 / 1024).toFixed(1)} MB video to Supabase Storage 'videos'...`);
+      const { data, error } = await supabase.storage.from('videos').upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true
+      });
+      if (!error && data) {
+        const { data: { publicUrl } } = supabase.storage.from('videos').getPublicUrl(filePath);
+        if (publicUrl) {
+          if (onProgress) onProgress(100);
+          return {
+            url: publicUrl,
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type || 'video/mp4'
+          };
+        }
+      }
+    } catch (supaErr) {
+      console.warn("[VIDEO UPLOAD] Supabase Storage upload failed, trying next target...", supaErr);
+    }
+  }
+
+  // 2. Secondary: Server /api/upload (if within server limit)
+  if (file.size <= 150 * 1024 * 1024) {
+    try {
+      console.log(`[VIDEO UPLOAD] Trying server upload...`);
+      const serverResult = await uploadViaServerApi(file, onProgress);
+      if (serverResult?.url) {
+        return {
+          url: serverResult.url,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type || 'video/mp4'
+        };
+      }
+    } catch (serverErr) {
+      console.warn("[VIDEO UPLOAD] Server upload failed:", serverErr);
+    }
+  }
+
+  // 3. Fallback: Firebase Storage
+  try {
+    const storageRef = ref(storage, `videos/${Date.now()}_${sanitized}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    const downloadUrl = await new Promise<string>((resolve, reject) => {
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          if (snapshot.totalBytes > 0 && onProgress) {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            onProgress(Math.round(progress));
+          }
+        },
+        (error) => reject(error),
+        async () => {
+          try {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(url);
+          } catch (e) {
+            reject(e);
+          }
+        }
+      );
+    });
+
+    if (downloadUrl) {
+      return {
+        url: downloadUrl,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type || 'video/mp4'
+      };
+    }
+  } catch (firebaseErr: any) {
+    console.warn("[VIDEO UPLOAD] Firebase Storage fallback failed:", firebaseErr);
+  }
+
+  throw new Error(
+    "Video faylni yuklab bo'lmadi. Supabase Storage sozlamalarini tekshiring yoki videoni YouTube / Google Drive ga yuklab, havolasini kiriting."
+  );
+}
+
+/**
+ * Checks whether a given URL points directly to an HTML5 playable video stream/file
+ */
+export function isDirectVideoUrl(url: string): boolean {
+  if (!url) return false;
+  const clean = url.trim().toLowerCase();
+  
+  if (
+    clean.endsWith('.mp4') || 
+    clean.endsWith('.webm') || 
+    clean.endsWith('.ogg') || 
+    clean.endsWith('.mov') || 
+    clean.endsWith('.m4v')
+  ) {
+    return true;
+  }
+
+  if (
+    clean.includes('/storage/v1/object/public/videos/') ||
+    clean.includes('/api/files/') ||
+    (clean.includes('firebasestorage.googleapis.com') && clean.includes('videos%2F'))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+

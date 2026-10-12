@@ -1732,5 +1732,86 @@ export const dbService = {
     } catch (err) {
       console.warn("Error saving weekly goal to Firestore:", err);
     }
+  },
+
+  // 15. TOPIC COMPLETION & STUDY PROGRESS
+  async getCompletedTopics(userId: string): Promise<any[]> {
+    if (!userId) return [];
+    try {
+      const snap = await getDoc(doc(db, 'users', userId, 'progress', 'topics'));
+      if (snap.exists() && Array.isArray(snap.data().completedList)) {
+        return snap.data().completedList;
+      }
+      return [];
+    } catch (err) {
+      console.warn("Error getting completed topics from Firestore:", err);
+      return [];
+    }
+  },
+
+  async saveCompletedTopics(userId: string, completedList: any[]): Promise<void> {
+    if (!userId || !Array.isArray(completedList)) return;
+    try {
+      const progRef = doc(db, 'users', userId, 'progress', 'topics');
+      await setDoc(progRef, {
+        completedList,
+        count: completedList.length,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      if (isSupabaseConfigured() && supabase) {
+        try {
+          await supabase.from('users').update({
+            completed_topics_count: completedList.length,
+            updated_at: new Date().toISOString()
+          }).eq('id', userId);
+        } catch (supaErr) {
+          // ignore
+        }
+      }
+    } catch (err) {
+      console.warn("Error saving completed topics to Firestore:", err);
+    }
+  },
+
+  // 16. AI ASSISTANT CHAT MEMORY (Persist across sessions and devices)
+  async getSavedAiChat(userId: string): Promise<any[] | null> {
+    if (!userId) return null;
+    try {
+      const chatDoc = await getDoc(doc(db, 'users', userId, 'ai_chats', 'default_session'));
+      if (chatDoc.exists() && Array.isArray(chatDoc.data().messages)) {
+        return chatDoc.data().messages;
+      }
+    } catch (err) {
+      console.warn("Notice: Fetching remote AI chat history from Firestore:", err);
+    }
+    return null;
+  },
+
+  async saveAiChat(userId: string, messages: any[]): Promise<void> {
+    if (!userId || !Array.isArray(messages)) return;
+    try {
+      // Save max 100 recent messages to keep payload optimal
+      const sanitized = messages.slice(-100);
+      const chatRef = doc(db, 'users', userId, 'ai_chats', 'default_session');
+      await setDoc(chatRef, {
+        userId,
+        messages: sanitized,
+        messageCount: sanitized.length,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (err) {
+      console.warn("Notice: Saving AI chat history to Firestore:", err);
+    }
+  },
+
+  async clearSavedAiChat(userId: string): Promise<void> {
+    if (!userId) return;
+    try {
+      const chatRef = doc(db, 'users', userId, 'ai_chats', 'default_session');
+      await deleteDoc(chatRef);
+    } catch (err) {
+      console.warn("Notice: Clearing AI chat history from Firestore:", err);
+    }
   }
 };

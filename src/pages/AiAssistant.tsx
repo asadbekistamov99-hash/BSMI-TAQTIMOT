@@ -107,6 +107,7 @@ export default function AiAssistant({ user }: { user: any }) {
   const isSendingVoiceQueryRef = useRef(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatFeedRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const attachDiagramAndAskVoice = async (diag: typeof ANATOMICAL_DIAGRAMS[0]) => {
@@ -498,39 +499,90 @@ export default function AiAssistant({ user }: { user: any }) {
     }
   };
 
-  // Load chat session on mount
+  // Load persistent chat session on mount or when user changes
   useEffect(() => {
-    const saved = sessionStorage.getItem('bsmi_anatomy_chat_history');
-    if (saved) {
-      try {
-        setMessages(JSON.parse(saved));
-      } catch (e) {
-        console.error("Error parsing chat history:", e);
+    const loadChatHistory = async () => {
+      // 1. Try local permanent storage first for instant render
+      const localKey = user?.uid ? `bsmi_anatomy_chat_${user.uid}` : 'bsmi_anatomy_chat_guest';
+      const localSaved = localStorage.getItem(localKey) || sessionStorage.getItem('bsmi_anatomy_chat_history');
+      
+      let initialLoaded = false;
+      if (localSaved) {
+        try {
+          const parsed = JSON.parse(localSaved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setMessages(parsed);
+            initialLoaded = true;
+          }
+        } catch (e) {
+          console.error("Error parsing local chat history:", e);
+        }
       }
-    } else {
-      // Set localized initial greeting
-      const greetText = language === 'uz'
-        ? "Assalomu alaykum! Men BSMI Anatomiya sun'iy intellekt yordamchisiman. Odam anatomiyasi darsliklari, 3D atlas, tibbiy terminlar yoki testlar bo'yicha har qanday savolingiz bo'lsa yo'llang. Agar qo'lingizda biror anatomik rasm bo'lsa, uni ham biriktirib tahlil qildirishingiz mumkin! 🧠✨"
-        : language === 'ru'
-        ? "Здравствуйте! Я ИИ-помощник по анатомии БГМИ. Задавайте любые вопросы по учебникам анатомии человека, 3D-атласу, медицинским терминам или тестам. Если у вас есть анатомический рисунок или схема, вы также можете прикрепить её для анализа! 🧠✨"
-        : "Hello! I am the BSMI Anatomy AI Assistant. Ask any questions about human anatomy textbooks, 3D atlas, medical terms, or active tests. If you have an anatomical diagram or bone/organ picture, you can also attach it for visual analysis! 🧠✨";
 
-      setMessages([{
-        role: 'model',
-        parts: [{ text: greetText }],
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }]);
-    }
-  }, [language]);
+      // 2. If authenticated user, fetch synced remote chat history from Firestore
+      if (user?.uid) {
+        try {
+          const remoteHistory = await dbService.getSavedAiChat(user.uid);
+          if (remoteHistory && Array.isArray(remoteHistory) && remoteHistory.length > 0) {
+            setMessages(remoteHistory);
+            localStorage.setItem(localKey, JSON.stringify(remoteHistory));
+            initialLoaded = true;
+          }
+        } catch (e) {
+          console.warn("Could not sync remote chat history:", e);
+        }
+      }
 
-  // Persist chat session to storage
+      // 3. If no prior chat exists, initialize localized welcome message
+      if (!initialLoaded) {
+        const greetText = language === 'uz'
+          ? "Assalomu alaykum! Men BSMI Anatomiya va Lotin tili sun'iy intellekt akademik yordamchisiman. Odam anatomiyasi darsliklari (osteologiya, miologiya, splanxnologiya va b.), tibbiy lotin terminologiyasi yoki saytimiz imkoniyatlari bo'yicha har qanday savolingiz bo'lsa yo'llang. Agar anatomik diagramma yoki rasm bo'lsa, uni ham tahlil qildirishingiz mumkin! 🧠✨"
+          : language === 'ru'
+          ? "Здравствуйте! Я академический ИИ-помощник по анатомии и медицинской латыни БГМИ. Задавайте любые вопросы по учебникам анатомии человека, анатомической латыни или возможностям нашей платформы. Вы также можете прикрепить анатомический рисунок для анализа! 🧠✨"
+          : "Hello! I am the BSMI Anatomy and Medical Latin academic AI Assistant. Ask any questions about human anatomy textbooks, medical Latin terminology, or our platform features. You can also attach anatomical diagrams for visual analysis! 🧠✨";
+
+        setMessages([{
+          role: 'model',
+          parts: [{ text: greetText }],
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }]);
+      }
+    };
+
+    loadChatHistory();
+  }, [user?.uid, language]);
+
+  // Persist chat session permanently (localStorage + cloud sync)
   const saveAndSetMessages = (newMsgs: ChatMessage[]) => {
     setMessages(newMsgs);
-    sessionStorage.setItem('bsmi_anatomy_chat_history', JSON.stringify(newMsgs));
+    const localKey = user?.uid ? `bsmi_anatomy_chat_${user.uid}` : 'bsmi_anatomy_chat_guest';
+    try {
+      localStorage.setItem(localKey, JSON.stringify(newMsgs));
+      sessionStorage.setItem('bsmi_anatomy_chat_history', JSON.stringify(newMsgs));
+    } catch (e) {
+      console.warn("Local storage write warning:", e);
+    }
+
+    // Background sync to Firestore for signed in student
+    if (user?.uid) {
+      dbService.saveAiChat(user.uid, newMsgs).catch(err => {
+        console.warn("Background chat cloud sync warning:", err);
+      });
+    }
+  };
+
+  // Smoothly scroll only the chat feed to bottom without scrolling the whole browser window
+  const scrollToBottom = (smooth = true) => {
+    if (chatFeedRef.current) {
+      chatFeedRef.current.scrollTo({
+        top: chatFeedRef.current.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto'
+      });
+    }
   };
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollToBottom(true);
   }, [messages, loading]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -674,14 +726,20 @@ export default function AiAssistant({ user }: { user: any }) {
     }
   };
 
-  const handleClearChat = () => {
+  const handleClearChat = async () => {
     if (window.confirm(language === 'uz' ? "Haqiqatan ham barcha suhbatlar tarixini tozalashni xohlaysizmi?" : "Вы действительно хотите очистить всю историю чата?")) {
+      const localKey = user?.uid ? `bsmi_anatomy_chat_${user.uid}` : 'bsmi_anatomy_chat_guest';
+      localStorage.removeItem(localKey);
       sessionStorage.removeItem('bsmi_anatomy_chat_history');
+      if (user?.uid) {
+        dbService.clearSavedAiChat(user.uid).catch(e => console.warn(e));
+      }
+
       const greetText = language === 'uz'
-        ? "Suhbat tozalandi! Savollaringizni bemalol yo'llashingiz mumkin."
+        ? "Suhbat tozalandi! Odam anatomiyasi va lotin tili bo'yicha savollaringizni bemalol yo'llashingiz mumkin. 🧠✨"
         : language === 'ru'
-        ? "Чат очищен! Вы можете свободно задавать свои новые вопросы."
-        : "Conversation cleared! Feel free to ask your questions.";
+        ? "Чат очищен! Вы можете свободно задавать свои новые вопросы по анатомии и медицинской латыни. 🧠✨"
+        : "Conversation cleared! Feel free to ask your questions on anatomy and medical Latin. 🧠✨";
 
       setMessages([{
         role: 'model',
@@ -813,6 +871,15 @@ export default function AiAssistant({ user }: { user: any }) {
                 </svg>
                 {isLoggingIn ? "Kirilmoqda..." : language === 'uz' ? "Google orqali kirish" : "Войти через Google"}
               </button>
+
+              <button
+                onClick={handleGuestLogin}
+                disabled={isLoggingIn}
+                className="w-full sm:w-auto px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider rounded-2xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md shadow-indigo-600/20 active:scale-95 cursor-pointer disabled:opacity-50"
+              >
+                <Sparkles className="w-4 h-4" />
+                {language === 'uz' ? "Mehmon sifatida kirish" : "Войти как гость"}
+              </button>
               
               <button
                 onClick={() => navigate('/')}
@@ -859,17 +926,17 @@ export default function AiAssistant({ user }: { user: any }) {
         <div>
           <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-200/60 text-amber-600 px-3 py-1.5 rounded-2xl text-[10px] sm:text-xs font-black uppercase tracking-widest mb-3 select-none">
             <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-            24/7 Anatomiya AI maslahatchisi
+            24/7 Anatomiya va Lotin tili AI maslahatchisi
           </div>
           <h1 className="text-3xl sm:text-4xl font-black text-brand-primary tracking-tighter uppercase leading-none">
             {t('nav.ai_assistant')}
           </h1>
           <p className="text-slate-500 text-xs sm:text-sm mt-3 max-w-2xl font-medium">
             {language === 'uz'
-              ? "Darsliklar, atlas, test savollari yoki har qanday anatomik ob'ektlarni tahlil qilish uchun interaktiv chat. Rasm va diagramma yuklab savollar berishingiz mumkin."
+              ? "Odam anatomiyasi, tibbiy lotin tili terminologiyasi va platforma imkoniyatlari bo'yicha maxsus akademik intellektual yordamchi. Rasm yoki diagramma yuklab savollar berishingiz mumkin."
               : language === 'ru'
-              ? "Интерактивный чат для анализа учебников, атласа, вопросов тестов или любых анатомических объектов. Вы можете прикреплять фотографии и схемы."
-              : "An interactive workspace to analyze textbooks, 3D atlas databases, custom quizzes, or organic drawings. Attach screenshots or textbook figures for robust AI feedback."}
+              ? "Академический ИИ-помощник по анатомии человека, медицинской латыни и возможностям платформы. Вы можете задавать вопросы и прикреплять анатомические схемы."
+              : "Specialized academic AI assistant for Human Anatomy, Medical Latin terminology, and platform features. Attach anatomical diagrams for detailed analysis."}
           </p>
         </div>
 
@@ -1092,7 +1159,7 @@ export default function AiAssistant({ user }: { user: any }) {
             </div>
 
             {/* Chat Feed */}
-            <div className="flex-grow overflow-y-auto p-6 space-y-6 bg-[#FAFBFD]/60" style={{ scrollBehavior: 'smooth' }}>
+            <div ref={chatFeedRef} className="flex-grow overflow-y-auto p-6 space-y-6 bg-[#FAFBFD]/60" style={{ scrollBehavior: 'smooth' }}>
               <AnimatePresence initial={false}>
                 {messages.map((msg, index) => (
                   <motion.div
@@ -1376,8 +1443,8 @@ export default function AiAssistant({ user }: { user: any }) {
                       disabled={loading}
                       placeholder={
                         language === 'uz' 
-                          ? "Savolingizni bu yerga yozing (Masalan: 'Osteon tuzilishi qanday', 'Murtak suyaklari')..." 
-                          : "Напишите свой вопрос здесь (например: 'как устроена почка', 'названия костей черепа')..."
+                          ? "Anatomiya, lotin tili yoki sayt bo'yicha savol bering (Masalan: 'Osteon tuzilishi', 'Musculus biceps', '1-semestr mavzulari')..." 
+                          : "Задайте вопрос по анатомии, латыни или сайту (например: 'Строение остеона', 'Musculus biceps')..."
                       }
                       className="flex-grow bg-transparent text-sm font-medium focus:outline-none focus:ring-0 text-slate-800 outline-none resize-none overflow-y-auto max-h-20 h-10 py-2.5 px-0 leading-relaxed font-sans scrollbar-none"
                       rows={1}

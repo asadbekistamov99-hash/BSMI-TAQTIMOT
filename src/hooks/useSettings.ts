@@ -67,7 +67,9 @@ const defaultSettings: SystemSettings = {
     enableQuizzes: true,
     enableMidterms: true,
     enableLatin: true,
-    enableNotifications: true
+    enableNotifications: true,
+    enableFaceId: true,
+    faceIdEngine: 'local'
   }
 };
 

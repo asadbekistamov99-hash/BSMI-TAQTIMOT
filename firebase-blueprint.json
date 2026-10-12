@@ -154,6 +154,16 @@
         "createdAt": { "type": "string", "format": "date-time" }
       }
     },
+    "ai_chat": {
+      "title": "AI Assistant Chat History",
+      "description": "Saved anatomy chat messages for a student",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "messages": { "type": "array", "items": { "type": "object" } },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "admin": {
       "title": "Admin",
       "description": "Privileged administrator access record",
@@ -339,6 +349,10 @@
     "users/{userId}/pomodoro_sessions/{sessionId}": {
       "schema": "pomodoro_session",
       "description": "Completed study timer sessions for a specific user"
+    },
+    "users/{userId}/ai_chats/{chatId}": {
+      "schema": "ai_chat",
+      "description": "Saved AI conversation messages for a specific user"
     },
     "payments": {
       "schema": "payment",
