@@ -1067,4 +1067,116 @@ export const SEED_MODELS: AnatomyModel[] = [
     tags: ['vegetativ nerv tizimi', 'autonomic nervous system', 'systema nervosum autonomicum', 'вегетативная нервная система', 'bel-dumgaza chigali', 'plexus lumbosacralis'],
     topicIds: ['sem_3_top_7', 'sem_3_top_12'],
   },
+
+  // ======================================================================
+  // Qo'shimcha modellar (2026-oktabr): eng kam qamrab olingan mavzular uchun
+  // ======================================================================
+
+  // ---------------- sem_2_top_9, sem_2_top_10: aorta ravog'i va o'mrov osti arteriyasi ----------------
+  {
+    id: 'aortic-arch-ipgeorgiev',
+    title: { uz: "Aorta ravog'i va uning tarmoqlari", ru: 'Дуга аорты и её ветви', en: 'Aortic Arch and Its Branches' },
+    description: {
+      uz: "KT tasviri asosida yasalgan aorta ravog'i: o'mrov osti, umumiy uyqu va umurtqa arteriyalarining boshlanishi ko'rinadi.",
+      ru: 'Дуга аорты по данным КТ: видны начала подключичных, общих сонных и позвоночных артерий.',
+      en: 'A CT-based aortic arch showing the origins of the subclavian, common carotid and vertebral arteries.',
+    },
+    system: 'vessel', region: 'thorax',
+    embedUrl: sk('78a662d96d054cccb178035ec7ef30a6'),
+    thumbnail: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Arteries_and_veins_en.svg/400px-Arteries_and_veins_en.svg.png',
+    source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/aortic-arch-78a662d96d054cccb178035ec7ef30a6',
+    license: 'Sketchfab (muallif litsenziyasi)', author: 'IPGeorgiev',
+    tags: ["aorta ravog'i", "o'mrov osti arteriyasi", 'arcus aortae', 'arteria subclavia', 'arteria carotis communis', 'дуга аорты', 'подключичная артерия'],
+    topicIds: ['sem_2_top_9', 'sem_2_top_10'],
+  },
+
+  // ---------------- sem_2_top_11: ko'krak va qorin aortasi ----------------
+  {
+    id: 'aorta-thoracic-abdominal-henrikson',
+    title: { uz: 'Aorta: ko\'krak va qorin qismlari', ru: 'Аорта: грудной и брюшной отделы', en: 'Aorta — Thoracic and Abdominal Parts' },
+    description: {
+      uz: "Aorta ravog'idan qorin aortasining bo'linishigacha: yirik tarmoqlar va mo'ljal uchun yarim shaffof umurtqa pog'onasi.",
+      ru: 'Аорта от дуги до бифуркации брюшной аорты: крупные ветви и полупрозрачный позвоночник для ориентира.',
+      en: 'The aorta from the arch to the abdominal bifurcation, with major branches and a semi-transparent vertebral column for reference.',
+    },
+    system: 'vessel', region: 'thorax',
+    embedUrl: sk('d6519fbc65444c65852a037fa9874bba'),
+    thumbnail: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/Circulatory_System_en.svg/400px-Circulatory_System_en.svg.png',
+    source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/aorta-d6519fbc65444c65852a037fa9874bba',
+    license: 'Sketchfab (muallif litsenziyasi)', author: 'henrikson212',
+    tags: ['aorta', "ko'krak aortasi", 'qorin aortasi', 'aorta thoracica', 'aorta abdominalis', 'грудная аорта', 'брюшная аорта'],
+    topicIds: ['sem_2_top_11', 'sem_2_top_9'],
+  },
+
+  // ---------------- sem_2_top_12: pastki kovak vena ----------------
+  {
+    id: 'ivc-tributaries-vivekanatomy',
+    title: { uz: 'Pastki kovak vena irmoqlari', ru: 'Притоки нижней полой вены', en: 'Inferior Vena Cava Tributaries' },
+    description: {
+      uz: "Qorin pardasi orqasidagi pastki kovak vena va uning irmoqlari, toq vena (v. azygos) hosil bo'lishi bilan.",
+      ru: 'Нижняя полая вена в забрюшинном пространстве и её притоки, включая формирование непарной вены.',
+      en: 'The retroperitoneal inferior vena cava and its tributaries, including the formation of the azygos vein.',
+    },
+    system: 'vessel', region: 'abdomen',
+    embedUrl: sk('ad495aec9a014316973f1696306d6a5f'),
+    thumbnail: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Arteries_and_veins_en.svg/400px-Arteries_and_veins_en.svg.png',
+    source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/retroperitoneum-4-inferior-venacava-tributaries-ad495aec9a014316973f1696306d6a5f',
+    license: 'Sketchfab (muallif litsenziyasi)', author: 'VivekAnatomy',
+    tags: ['pastki kovak vena', 'vena cava inferior', 'vena azygos', 'нижняя полая вена'],
+    topicIds: ['sem_2_top_12'],
+  },
+
+  // ---------------- sem_3_top_7: dumg'aza chigali va quymich nervi ----------------
+  {
+    id: 'sciatic-nerve-sacral-plexus-dundee',
+    title: { uz: "Quymich nervi va dumg'aza chigali", ru: 'Седалищный нерв и крестцовое сплетение', en: 'Sciatic Nerve and Sacral Plexus' },
+    description: {
+      uz: "Quymich nervining dumg'aza chigalidan boshlanishi va oyoqni innervatsiya qilishi alohida ajratib ko'rsatilgan preparat.",
+      ru: 'Выделенный седалищный нерв: начало от крестцового сплетения и иннервация нижней конечности.',
+      en: 'An isolated sciatic nerve showing its origin from the sacral plexus and its supply of the lower limb.',
+    },
+    system: 'nerve', region: 'lowerLimb',
+    embedUrl: sk('7ed2c0a2283a4a4889a636d8ecdbe168'),
+    thumbnail: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/Spinal_cord_diagram.svg/400px-Spinal_cord_diagram.svg.png',
+    source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/sciatic-nerve-origin-and-supply-sophia-peters-7ed2c0a2283a4a4889a636d8ecdbe168',
+    license: 'Sketchfab (muallif litsenziyasi)', author: 'University of Dundee, CAHID (@anatomy_dundee)',
+    tags: ["dumg'aza chigali", 'quymich nervi', 'plexus sacralis', 'nervus ischiadicus', 'крестцовое сплетение', 'седалищный нерв'],
+    topicIds: ['sem_3_top_7'],
+  },
+
+  // ---------------- sem_3_top_10: uch shoxli nerv (V juft) ----------------
+  {
+    id: 'trigeminal-nerves-migraine',
+    title: { uz: 'Uch shoxli nerv (V juft)', ru: 'Тройничный нерв (V пара)', en: 'Trigeminal Nerve (CN V)' },
+    description: {
+      uz: "Uch shoxli nervning ko'z, yuqori jag' va pastki jag' tarmoqlari yuz va bosh sohasida.",
+      ru: 'Глазная, верхнечелюстная и нижнечелюстная ветви тройничного нерва в области лица и головы.',
+      en: 'The ophthalmic, maxillary and mandibular branches of the trigeminal nerve across the face and head.',
+    },
+    system: 'nerve', region: 'head',
+    embedUrl: sk('5c1146da6041473bb02ee98d53b7cf69'),
+    thumbnail: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/Nervous_system_diagram.png/400px-Nervous_system_diagram.png',
+    source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/trigeminal-nerves-5c1146da6041473bb02ee98d53b7cf69',
+    license: 'Sketchfab (muallif litsenziyasi)', author: 'Association of Migraine Disorders (@migraine)',
+    tags: ['uch shoxli nerv', 'nervus trigeminus', 'V juft', 'тройничный нерв'],
+    topicIds: ['sem_3_top_10'],
+  },
+
+  // ---------------- sem_3_top_13: o'rta va ichki quloq ----------------
+  {
+    id: 'ear-structures-anatomary',
+    title: { uz: "Quloq tuzilmalari: o'rta va ichki quloq", ru: 'Структуры уха: среднее и внутреннее ухо', en: 'Structures of the Ear — Middle and Inner Ear' },
+    description: {
+      uz: "Shaffof chakka suyagi ichidagi eshituv suyakchalari (bolg'acha, sandon, uzangi) va ichki quloq labirinti.",
+      ru: 'Слуховые косточки (молоточек, наковальня, стремя) и лабиринт внутреннего уха внутри прозрачной височной кости.',
+      en: 'The auditory ossicles (malleus, incus, stapes) and the inner-ear labyrinth inside a transparent temporal bone.',
+    },
+    system: 'organ', region: 'head',
+    embedUrl: sk('36418178e0cf499694ac21e82ab2e77c'),
+    thumbnail: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/Anatomy_of_the_Human_Ear.svg/400px-Anatomy_of_the_Human_Ear.svg.png',
+    source: 'Sketchfab', sourceUrl: 'https://sketchfab.com/3d-models/structures-of-the-ear-36418178e0cf499694ac21e82ab2e77c',
+    license: 'Sketchfab (muallif litsenziyasi)', author: 'Anatomary',
+    tags: ["eshituv suyakchalari", "o'rta quloq", 'ossicula auditus', 'malleus', 'incus', 'stapes', 'слуховые косточки'],
+    topicIds: ['sem_3_top_13'],
+  },
 ];
