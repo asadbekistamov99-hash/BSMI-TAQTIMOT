@@ -6978,13 +6978,21 @@ function AIChatAssistant({ settings }: { settings: any }) {
       }
       const data = await res.json();
       
-      if (data.functionCall) {
-        setMessages(prev => [...prev, { role: 'model', content: `⚙️ Amal bajarilmoqda: **${data.functionCall.name}**...` }]);
+      const calls: any[] = Array.isArray(data.functionCalls) && data.functionCalls.length > 0
+        ? data.functionCalls
+        : (data.functionCall ? [data.functionCall] : []);
+      if (calls.length > 0) {
         setIsExecuting(true);
-        await executeFunctionCall(data.functionCall);
+        for (const call of calls) {
+          setMessages(prev => [...prev, { role: 'model', content: `⚙️ Amal bajarilmoqda: **${call.name}**...` }]);
+          await executeFunctionCall(call, data.authorized === true);
+        }
         setIsExecuting(false);
       } else {
-        setMessages(prev => [...prev, { role: 'model', content: data.text }]);
+        // Funksiya chaqirilmagan bo'lsa, AI matni amal bajarilgandek ko'rinmasligi kerak
+        const claimsDone = /✅|bajarildi|o['ʻ’]zgartirildi|yangilandi|saqlandi|muvaffaqiyatli/i.test(data.text || '');
+        const note = claimsDone ? "\n\n> ℹ️ **Diqqat:** bu javobda hech qanday amal bajarilmadi, ma'lumotlar o'zgarmadi. Buyruqni aniqroq qayta yozing." : '';
+        setMessages(prev => [...prev, { role: 'model', content: (data.text || '') + note }]);
       }
     } catch (err: any) {
       setMessages(prev => [...prev, { role: 'model', content: `❌ Xatolik yuz berdi: ${err.message}` }]);
@@ -6993,15 +7001,14 @@ function AIChatAssistant({ settings }: { settings: any }) {
     }
   };
 
-  const executeFunctionCall = async (call: any) => {
-    const { name, args } = call;
+  const executeFunctionCall = async (call: any, authorized: boolean) => {
+    const { name } = call;
+    const args = call.args || {};
     
-    // Xavfsizlik tekshiruvi
-    const isReadOnly = ['list_topics', 'list_users', 'list_pending_payments'].includes(name);
-    const hasCodeInHistory = messages.some(m => m.role === 'user' && m.content.toLowerCase().includes('qwsxazxc123'));
-    const isCodeInArgs = Object.values(args || {}).some(v => typeof v === 'string' && v.toLowerCase().includes('qwsxazxc123'));
+    // Xavfsizlik tekshiruvi: maxfiy kod serverda tekshiriladi (joriy xabar ham hisobga olinadi)
+    const isReadOnly = ['list_topics', 'list_users', 'list_pending_payments', 'get_system_stats'].includes(name);
     
-    if (!isReadOnly && !hasCodeInHistory && !isCodeInArgs) {
+    if (!isReadOnly && !authorized) {
       setMessages(prev => [...prev, { 
         role: 'model', 
         content: `⚠️ **XAVFSIZLIK TO'SIG'I:** Ushbu o'zgartirish yoki amalni bajarish uchun avval xavfsizlik parolini (Maxfiy kod) yozishingiz lozim. Iltimos, maxfiy kodni kiriting!` 
@@ -7254,98 +7261,78 @@ function AIChatAssistant({ settings }: { settings: any }) {
         setMessages(prev => [...prev, { role: 'model', content: `🎥 **${typeof topicData.title === 'string' ? topicData.title : (topicData.title?.uz || 'Mavzu')}** darsiga yangi YouTube video darsi qo'shildi:\n- URL: ${videoUrl}` }]);
         if (typeof (window as any).refreshTopics === 'function') (window as any).refreshTopics();
       } else if (name === 'update_site_settings') {
-        const newSettings = { ...settings };
-        const updatedFields: string[] = [];
+        const topFields: Record<string, { label: string, kind: 'string' | 'number' }> = {
+          siteName: { label: 'Sayt nomi', kind: 'string' },
+          tagline: { label: 'Shior', kind: 'string' },
+          contactEmail: { label: 'Email', kind: 'string' },
+          contactPhone: { label: 'Telefon', kind: 'string' },
+          logoUrl: { label: 'Logo URL', kind: 'string' },
+          priceUZS: { label: 'Semestr narxi (UZS)', kind: 'number' },
+          priceUSD: { label: 'Semestr narxi (USD)', kind: 'number' },
+          durationMonths: { label: 'Muddat (oy)', kind: 'number' },
+          telegramBotUsername: { label: 'Telegram Bot', kind: 'string' },
+          footerText: { label: 'Footer matni', kind: 'string' },
+        };
+        const designFields: Record<string, string> = {
+          primaryColor: 'Asosiy rang',
+          accentColor: "Urg'u rangi",
+          backgroundColor: 'Fon rangi',
+          cardColor: 'Blok rangi',
+          textColor: 'Matn rangi',
+          mutedColor: 'Xira matn',
+          borderRadius: 'Burchak yumaloqligi',
+          fontFamily: 'Shrift oilasi',
+          glassEffect: 'Shaffoflik (glass)',
+        };
 
-        if (args.siteName !== undefined) {
-          newSettings.siteName = args.siteName;
-          updatedFields.push(`Sayt nomi: **${args.siteName}**`);
+        // Faqat so'ralgan maydonlar yoziladi (merge), qolgan sozlamalar ustidan yozilmaydi
+        const updates: any = {};
+        const expected: { path: string[], label: string, value: any }[] = [];
+        for (const [key, meta] of Object.entries(topFields)) {
+          if (args[key] === undefined || args[key] === null || args[key] === '') continue;
+          let value: any = args[key];
+          if (meta.kind === 'number') {
+            value = Number(String(value).replace(/[^\d.]/g, ''));
+            if (!Number.isFinite(value) || value <= 0) {
+              throw new Error(`${meta.label} uchun noto'g'ri qiymat: ${args[key]}`);
+            }
+          }
+          updates[key] = value;
+          expected.push({ path: [key], label: meta.label, value });
         }
-        if (args.tagline !== undefined) {
-          newSettings.tagline = args.tagline;
-          updatedFields.push(`Shior: **${args.tagline}**`);
-        }
-        if (args.contactEmail !== undefined) {
-          newSettings.contactEmail = args.contactEmail;
-          updatedFields.push(`Email: **${args.contactEmail}**`);
-        }
-        if (args.contactPhone !== undefined) {
-          newSettings.contactPhone = args.contactPhone;
-          updatedFields.push(`Telefon: **${args.contactPhone}**`);
-        }
-        if (args.logoUrl !== undefined) {
-          newSettings.logoUrl = args.logoUrl;
-          updatedFields.push(`Logo URL: **${args.logoUrl}**`);
-        }
-        if (args.priceUZS !== undefined) {
-          newSettings.priceUZS = Number(args.priceUZS);
-          updatedFields.push(`Uzs Narxi: **${Number(args.priceUZS).toLocaleString()} UZS**`);
-        }
-        if (args.priceUSD !== undefined) {
-          newSettings.priceUSD = Number(args.priceUSD);
-          updatedFields.push(`Usd Narxi: **$${args.priceUSD} USD**`);
-        }
-        if (args.durationMonths !== undefined) {
-          newSettings.durationMonths = Number(args.durationMonths);
-          updatedFields.push(`Muddat: **${args.durationMonths} oy**`);
-        }
-        if (args.telegramBotUsername !== undefined) {
-          newSettings.telegramBotUsername = args.telegramBotUsername;
-          updatedFields.push(`Telegram Bot: **${args.telegramBotUsername}**`);
-        }
-        if (args.footerText !== undefined) {
-          newSettings.footerText = args.footerText;
-          updatedFields.push(`Footer matni: **${args.footerText}**`);
-        }
-
-        // Handle design colors and styling
-        if (!newSettings.design) {
-          newSettings.design = {};
+        for (const [key, label] of Object.entries(designFields)) {
+          if (args[key] === undefined || args[key] === null || args[key] === '') continue;
+          const value = key === 'glassEffect' ? Boolean(args[key]) : args[key];
+          updates.design = { ...(updates.design || {}), [key]: value };
+          expected.push({ path: ['design', key], label, value });
         }
 
-        if (args.primaryColor !== undefined) {
-          newSettings.design.primaryColor = args.primaryColor;
-          updatedFields.push(`Asosiy rang: <span style="color:${args.primaryColor}">**${args.primaryColor}**</span>`);
-        }
-        if (args.accentColor !== undefined) {
-          newSettings.design.accentColor = args.accentColor;
-          updatedFields.push(`Urg'u rangi: <span style="color:${args.accentColor}">**${args.accentColor}**</span>`);
-        }
-        if (args.backgroundColor !== undefined) {
-          newSettings.design.backgroundColor = args.backgroundColor;
-          updatedFields.push(`Fon rangi: <span style="color:${args.backgroundColor}">**${args.backgroundColor}**</span>`);
-        }
-        if (args.cardColor !== undefined) {
-          newSettings.design.cardColor = args.cardColor;
-          updatedFields.push(`Blok rangi: <span style="color:${args.cardColor}">**${args.cardColor}**</span>`);
-        }
-        if (args.textColor !== undefined) {
-          newSettings.design.textColor = args.textColor;
-          updatedFields.push(`Matn rangi: <span style="color:${args.textColor}">**${args.textColor}**</span>`);
-        }
-        if (args.mutedColor !== undefined) {
-          newSettings.design.mutedColor = args.mutedColor;
-          updatedFields.push(`Xira matn: <span style="color:${args.mutedColor}">**${args.mutedColor}**</span>`);
-        }
-        if (args.borderRadius !== undefined) {
-          newSettings.design.borderRadius = args.borderRadius;
-          updatedFields.push(`Burchak yumaloqligi: **${args.borderRadius}**`);
-        }
-        if (args.fontFamily !== undefined) {
-          newSettings.design.fontFamily = args.fontFamily;
-          updatedFields.push(`Shrift oilasi: **${args.fontFamily}**`);
-        }
-        if (args.glassEffect !== undefined) {
-          newSettings.design.glassEffect = Boolean(args.glassEffect);
-          updatedFields.push(`Shaffoflik (glass): **${args.glassEffect ? "Yoqilgan" : "O'chirilgan"}**`);
+        if (expected.length === 0) {
+          throw new Error("O'zgartiriladigan sozlama aniqlanmadi. Masalan: \"semestr narxini 50000 so'm qil\" deb yozing.");
         }
 
-        await setDoc(doc(db, 'settings', 'global'), newSettings);
-        
-        let successReport = "🎨 **Sayt sozlamalari va dizayni yangilandi!**\n\nQuyidagi o'zgarishlar muvaffaqiyatli saqlandi:\n";
-        updatedFields.forEach(field => {
-          successReport += `- ${field}\n`;
+        const settingsRef = doc(db, 'settings', 'global');
+        await setDoc(settingsRef, updates, { merge: true });
+
+        // Bazadan qayta o'qib, haqiqatan saqlanganini tekshiramiz
+        const savedSnap = await getDoc(settingsRef);
+        const saved: any = savedSnap.exists() ? savedSnap.data() : {};
+        const failed = expected.filter(e => e.path.reduce((o: any, k) => (o ? o[k] : undefined), saved) !== e.value);
+        if (failed.length > 0) {
+          throw new Error(`Bazaga saqlanmadi: ${failed.map(f => f.label).join(', ')}. Admin hisobingiz bilan qayta kiring.`);
+        }
+
+        const format = (e: { path: string[], value: any }) => {
+          if (e.path[0] === 'priceUZS') return `${Number(e.value).toLocaleString('uz-UZ')} so'm`;
+          if (e.path[0] === 'priceUSD') return `$${e.value}`;
+          if (e.path[1] === 'glassEffect') return e.value ? 'Yoqilgan' : "O'chirilgan";
+          return String(e.value);
+        };
+        let successReport = "✅ **Sozlamalar bazaga saqlandi va tekshirildi:**\n";
+        expected.forEach(e => {
+          successReport += `- ${e.label}: **${format(e)}**\n`;
         });
+        successReport += "\nO'zgarish saytda darhol ko'rinadi (sahifani yangilang).";
         
         setMessages(prev => [...prev, { role: 'model', content: successReport }]);
       } else if (name === 'list_pending_payments') {
