@@ -30,3 +30,35 @@ test('network failure rejects and never returns base64 fallback', async () => {
  const xhr={upload:{},open(){},setRequestHeader(){},send(){this.onerror();}};
  await assert.rejects(uploadToSupabasePresentation(new File(['abc'],'a.pdf'),{url:'https://example.supabase.co',key:'k',token:'t'},undefined,()=>xhr),/DNS/);
 });
+
+import { uploadWithFallbacks } from '../src/lib/presentationStorage.ts';
+
+const ok = (name) => ({ name, upload: async (file) => ({ url: `https://${name}/x.pdf`, fileName: file.name, fileType: 'pdf', fileSize: file.size }) });
+const down = (name, message) => ({ name, upload: async () => { throw new Error(message); } });
+
+test('unreachable Supabase falls back to the next configured storage', async () => {
+ const progress = [];
+ const result = await uploadWithFallbacks(new File(['abc'], 'a.pdf'), [down('Supabase Storage', 'DNS xato'), ok('Firebase Storage')], p => progress.push(p));
+ assert.equal(result.backend, 'Firebase Storage');
+ assert.equal(result.url, 'https://Firebase Storage/x.pdf');
+ assert.ok(progress.includes(0), 'progress resets before the next backend');
+});
+
+test('when every storage fails the error names each service', async () => {
+ await assert.rejects(
+  uploadWithFallbacks(new File(['abc'], 'a.pdf'), [down('Supabase Storage', 'ulanib bo‘lmadi'), down('Firebase Storage', 'ruxsat yo‘q')]),
+  err => /Supabase Storage: ulanib bo‘lmadi/.test(err.message) && /Firebase Storage: ruxsat yo‘q/.test(err.message) && /Google Drive/.test(err.message),
+ );
+});
+
+test('validation errors are thrown before any backend is tried', async () => {
+ let called = false;
+ const spy = { name: 'x', upload: async () => { called = true; throw new Error('never'); } };
+ await assert.rejects(uploadWithFallbacks(new File([new Uint8Array(MAX_PRESENTATION_BYTES + 1)], 'big.pptx'), [spy]), /25 MB/);
+ assert.equal(called, false);
+});
+
+test('network error message names the Supabase host', async () => {
+ const xhr={upload:{},open(){},setRequestHeader(){},send(){this.onerror();}};
+ await assert.rejects(uploadToSupabasePresentation(new File(['abc'],'a.pdf'),{url:'https://abc.supabase.co',key:'k',token:'t'},undefined,()=>xhr),/abc\.supabase\.co/);
+});

@@ -8,6 +8,56 @@ export function validatePresentation(file: { name: string; size: number }): 'pdf
   return extension;
 }
 
+export interface PresentationUploadResult {
+  url: string;
+  fileName: string;
+  fileType: 'pdf' | 'pptx';
+  fileSize: number;
+}
+
+/** One storage service that can receive a file (Supabase, Firebase Storage, Appwrite, local server...). */
+export interface StorageBackend<T> {
+  name: string;
+  upload: (file: File, onProgress?: (percent: number) => void) => Promise<T>;
+}
+
+export type PresentationBackend = StorageBackend<PresentationUploadResult>;
+
+/**
+ * Try each storage backend in order and return the first successful upload.
+ * Validation runs once up front; a validation error never triggers a fallback.
+ * If every backend fails, the thrown error lists what each service reported so the
+ * administrator can see which configuration to fix.
+ */
+export async function uploadWithFallbacks<T>(
+  file: File,
+  backends: StorageBackend<T>[],
+  onProgress?: (percent: number) => void,
+  validate: (file: { name: string; size: number }) => unknown = validatePresentation,
+): Promise<T & { backend: string }> {
+  validate(file);
+  if (backends.length === 0) {
+    throw new Error('Fayl saqlash xizmati sozlanmagan. VITE_SUPABASE_URL va VITE_SUPABASE_ANON_KEY ni tekshiring.');
+  }
+  const failures: string[] = [];
+  for (const backend of backends) {
+    try {
+      const result = await backend.upload(file, onProgress);
+      return { ...result, backend: backend.name };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[UPLOAD] ${backend.name} failed, trying next storage...`, error);
+      failures.push(`${backend.name}: ${message}`);
+      onProgress?.(0);
+    }
+  }
+  throw new Error(
+    'Faylni birorta saqlash xizmatiga yuklab bo‘lmadi.\n' +
+    failures.map(f => `• ${f}`).join('\n') +
+    '\nMuqobil yechim: faylni Google Drive yoki YouTube’ga yuklab, havolasini kiriting.',
+  );
+}
+
 export function storageUploadError(status: number, body: string): Error {
   let message = '';
   try { const parsed = JSON.parse(body); message = String(parsed.message || parsed.error || ''); } catch {}
@@ -24,9 +74,10 @@ export function uploadToSupabasePresentation(
   config: { url: string; key: string; token: string },
   onProgress?: (percent: number) => void,
   makeRequest: () => XMLHttpRequest = () => new XMLHttpRequest(),
-): Promise<{ url: string; fileName: string; fileType: 'pdf' | 'pptx'; fileSize: number }> {
+): Promise<PresentationUploadResult> {
   const fileType = validatePresentation(file);
   const baseUrl = config.url.replace(/\/$/, '');
+  const host = baseUrl.replace(/^https?:\/\//, '');
   if (!baseUrl.startsWith('https://') || !config.key || !config.token) throw new Error('Supabase URL yoki kaliti noto‘g‘ri sozlangan.');
   const filename = `${crypto.randomUUID()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
   const objectPath = `presentations/${encodeURIComponent(filename)}`;
@@ -62,7 +113,7 @@ export function uploadToSupabasePresentation(
       onProgress?.(100);
       resolve({ url: `${baseUrl}/storage/v1/object/public/${objectPath}`, fileName: file.name, fileType, fileSize: file.size });
     };
-    xhr.onerror = () => fail(new Error('Supabase manziliga ulanib bo‘lmadi. VITE_SUPABASE_URL, DNS va internet aloqasini tekshiring.'));
+    xhr.onerror = () => fail(new Error(`Supabase manziliga (${host}) ulanib bo‘lmadi. VITE_SUPABASE_URL to‘g‘riligini, loyiha faol (pause qilinmagan) ekanini, DNS va internet aloqasini tekshiring.`));
     xhr.ontimeout = () => fail(new Error('Supabase yuklash vaqti tugadi. Qayta urinib ko‘ring.'));
     xhr.onabort = () => fail(new Error('Fayl yuklash bekor qilindi.'));
     resetIdle();

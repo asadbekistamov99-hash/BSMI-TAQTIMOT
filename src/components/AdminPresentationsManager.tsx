@@ -1045,7 +1045,7 @@ export default function AdminPresentationsManager({
               ) : saveError && (
                 <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-bold flex items-center gap-2.5">
                   <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{saveError}</span>
+                  <span className="whitespace-pre-line">{saveError}</span>
                 </div>
               )}
 
