@@ -1478,6 +1478,9 @@ export default function AiAssistant({ user }: { user: any }) {
               )}
             </div>
           </div>
+
+          {/* Shaxsiy AI kaliti: chat tagidagi bo'sh joyga joylashadi */}
+          <AiApiKeyPanel user={user} />
         </div>
       </div>
 
@@ -1550,8 +1553,6 @@ export default function AiAssistant({ user }: { user: any }) {
           </div>
         )}
       </AnimatePresence>
-
-      <AiApiKeyPanel user={user} />
     </div>
   );
 }

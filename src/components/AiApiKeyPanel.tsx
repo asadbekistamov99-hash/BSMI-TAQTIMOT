@@ -106,7 +106,7 @@ export default function AiApiKeyPanel({ user }: { user: any }) {
   };
 
   return (
-    <section className="mt-10 bg-[#0D1117] border-2 border-cyan-500/20 rounded-[32px] p-6 sm:p-8 text-white shadow-xl">
+    <section className="mt-6 bg-[#0D1117] border-2 border-cyan-500/20 rounded-[32px] p-6 sm:p-8 text-white shadow-xl">
       <div className="flex items-center gap-3 mb-2">
         <div className="w-10 h-10 bg-cyan-500/15 rounded-xl flex items-center justify-center text-cyan-400">
           <Key size={20} />
