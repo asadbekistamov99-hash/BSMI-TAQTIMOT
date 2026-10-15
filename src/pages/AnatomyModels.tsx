@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Search, X, Box, Heart, Activity, Zap, GitBranch, Bone, Layers, Maximize2,
   ExternalLink, ShieldCheck, Plus, Upload, Download, Trash2, Pencil, Save,
-  MapPin, Sparkles, Filter, AlertTriangle, RotateCcw,
+  MapPin, Sparkles, Filter, AlertTriangle, RotateCcw, Lock, Clock, ShieldAlert,
 } from 'lucide-react';
 import '@google/model-viewer';
 import { useLanguage } from '../hooks/useLanguage';
@@ -15,6 +15,9 @@ import {
 import Anatomy3DSuite from '../components/Anatomy3DSuite';
 import { dbService } from '../lib/dbService';
 import SEO from '../components/SEO';
+import PaymentModal from '../components/PaymentModal';
+import { auth, googleProvider } from '../lib/firebase';
+import { signInWithPopup } from 'firebase/auth';
 
 // Premium 3D Generated System Backdrops
 import skeletalBackdrop from '../assets/images/skeletal_system_backdrop_1783853676839.jpg';
@@ -93,9 +96,9 @@ const emptyModel = (): AnatomyModel => ({
   pins: [],
 });
 
-export default function AnatomyModels({ isAdmin: isAdminProp }: { isAdmin?: boolean; user?: any }) {
+export default function AnatomyModels({ isAdmin: isAdminProp, user }: { isAdmin?: boolean; user?: any }) {
   const { language } = useLanguage();
-  const isAdmin = isAdminProp ?? !!sessionStorage.getItem('adminToken');
+  const isAdmin = isAdminProp ?? !!sessionStorage.getItem('adminToken') ?? !!localStorage.getItem('adminToken');
   const lang = language as 'uz' | 'ru' | 'en';
 
   const [searchParams] = useSearchParams();
@@ -108,6 +111,94 @@ export default function AnatomyModels({ isAdmin: isAdminProp }: { isAdmin?: bool
   const [launch3D, setLaunch3D] = useState<AnatomyModel | null>(null);
   const [showAdmin, setShowAdmin] = useState(false);
   const [dbLoading, setDbLoading] = useState(true);
+
+  // Obunani tekshirish holatlari
+  const [isSubscribed, setIsSubscribed] = useState<boolean>(() => {
+    if (isAdmin || user?.isAdmin) return true;
+    if (user?.purchasedSemesters && Array.isArray(user.purchasedSemesters) && user.purchasedSemesters.length > 0) return true;
+    return false;
+  });
+  const [isPending, setIsPending] = useState<boolean>(false);
+  const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+
+  // Foydalanuvchi obunasini sinchkovlik bilan tekshirish
+  const verifySubscription = async () => {
+    if (isAdmin || user?.isAdmin) {
+      setIsSubscribed(true);
+      setIsPending(false);
+      return;
+    }
+    if (!user) {
+      setIsSubscribed(false);
+      setIsPending(false);
+      return;
+    }
+
+    try {
+      // 1. Foydalanuvchi profilini tekshirish
+      const profile = await dbService.getProfile(user.uid);
+      if (profile) {
+        if (profile.role === 'admin' || profile.isAdmin) {
+          setIsSubscribed(true);
+          setIsPending(false);
+          return;
+        }
+        if (profile.purchasedSemesters && profile.purchasedSemesters.length > 0) {
+          setIsSubscribed(true);
+          setIsPending(false);
+          return;
+        }
+        if (profile.expiryDate) {
+          let exp: Date | null = null;
+          if (typeof profile.expiryDate.toDate === 'function') {
+            exp = profile.expiryDate.toDate();
+          } else if (profile.expiryDate.seconds !== undefined) {
+            exp = new Date(profile.expiryDate.seconds * 1000);
+          } else {
+            exp = new Date(profile.expiryDate);
+          }
+          if (exp && exp > new Date()) {
+            setIsSubscribed(true);
+            setIsPending(false);
+            return;
+          }
+        }
+      }
+
+      // 2. To'lov yozuvlarini tekshirish (99: 3D Atlas, 1, 2, 3: Semestrlar)
+      let pendingFound = false;
+      for (const semId of [99, 1, 2, 3]) {
+        const payment = await dbService.getPayment(user.uid, semId);
+        if (payment) {
+          if (payment.status === 'completed' || payment.status === 'approved') {
+            setIsSubscribed(true);
+            setIsPending(false);
+            return;
+          } else if (payment.status === 'pending') {
+            pendingFound = true;
+          }
+        }
+      }
+
+      setIsSubscribed(false);
+      setIsPending(pendingFound);
+    } catch (e) {
+      console.error("3D model obunasini tekshirishda xatolik:", e);
+    }
+  };
+
+  useEffect(() => {
+    verifySubscription();
+  }, [user, isAdmin]);
+
+  const handleRequireSubscription = () => {
+    if (!user) {
+      setShowAuthModal(true);
+    } else {
+      setShowPaymentModal(true);
+    }
+  };
 
   useEffect(() => {
     async function fetchModels() {
@@ -242,6 +333,45 @@ export default function AnatomyModels({ isAdmin: isAdminProp }: { isAdmin?: bool
               className="w-full bg-white/10 border border-white/15 focus:border-brand-accent/60 rounded-2xl pl-12 pr-4 py-3.5 text-sm font-semibold text-white placeholder-white/40 outline-none transition-all backdrop-blur-sm"
             />
           </div>
+
+          {/* Obuna holati bildirishnomasi */}
+          {!isSubscribed && (
+            <div className="mt-8 p-5 rounded-2xl bg-amber-500/15 border border-amber-500/30 backdrop-blur-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
+              <div className="flex items-start sm:items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/25 border border-amber-500/40 text-amber-400 flex items-center justify-center shrink-0 shadow-lg shadow-amber-500/10">
+                  {isPending ? <Clock className="w-6 h-6 animate-pulse text-amber-400" /> : <Lock className="w-6 h-6 text-amber-400" />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-sm sm:text-base font-black text-white">
+                      {isPending
+                        ? (lang === 'uz' ? "Obuna to'lovingiz tekshirilmoqda" : lang === 'ru' ? "Ваш платеж на проверке" : "Subscription Verification Pending")
+                        : (lang === 'uz' ? "3D Modellar to'liq katalogi faqat obunachilar uchun ochiq" : lang === 'ru' ? "Полный каталог 3D-моделей доступен по подписке" : "3D Models Catalog is restricted to subscribers")}
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-black uppercase tracking-widest border border-amber-500/30">
+                      {isPending ? "Kutilmoqda ⏳" : "Cheklangan 🔒"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-white/80 mt-1 max-w-2xl leading-relaxed">
+                    {isPending
+                      ? (lang === 'uz' ? "Siz yuborgan to'lov cheki adminlarimiz tomonidan tekshirilmoqda. Tasdiqlanishi bilan barcha 3D modellar avtomatik ochiladi! ⏳" : lang === 'ru' ? "Ваш чек проверяется администратором. Доступ откроется сразу после подтверждения!" : "Your transaction receipt is being reviewed. Access will open shortly!")
+                      : (lang === 'uz' ? "Barcha inson a'zolari, skelet, muskullar, nervlar va qon tomirlarining interaktiv 3D modellarini 360° aylantirish, qismlarini kattalashtirish va to'liq o'rganish uchun platforma obunasini xarid qiling." : lang === 'ru' ? "Оформите подписку, чтобы получить полный доступ ко всем интерактивным 3D-моделям органов, костей, мышц и сосудов." : "Subscribe to access all interactive 3D models of organs, bones, muscles, and vessels.")}
+                  </p>
+                </div>
+              </div>
+              {!isPending && (
+                <button
+                  onClick={handleRequireSubscription}
+                  className="w-full md:w-auto px-6 py-3.5 bg-brand-accent hover:bg-yellow-400 text-brand-primary font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-xl shadow-brand-accent/20 cursor-pointer shrink-0 flex items-center justify-center gap-2 active:scale-95"
+                >
+                  <Sparkles className="w-4 h-4 text-brand-primary" />
+                  {user 
+                    ? (lang === 'uz' ? "Obunani Faollashtirish (30,000 UZS)" : lang === 'ru' ? "Оформить подписку (30,000 UZS)" : "Subscribe (30,000 UZS)")
+                    : (lang === 'uz' ? "Kirish va Obuna Bo'lish" : lang === 'ru' ? "Войти и оформить подписку" : "Log In & Subscribe")}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -330,7 +460,14 @@ export default function AnatomyModels({ isAdmin: isAdminProp }: { isAdmin?: bool
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {filtered.map((m) => (
-              <ModelCard key={m.id} model={m} lang={lang} onOpen={() => setSelected(m)} tr={tr} />
+              <ModelCard
+                key={m.id}
+                model={m}
+                lang={lang}
+                onOpen={() => setSelected(m)}
+                tr={tr}
+                isSubscribed={isSubscribed}
+              />
             ))}
           </div>
         )}
@@ -345,15 +482,22 @@ export default function AnatomyModels({ isAdmin: isAdminProp }: { isAdmin?: bool
             tr={tr}
             onClose={() => setSelected(null)}
             onLaunch3D={() => {
+              if (!isSubscribed) {
+                handleRequireSubscription();
+                return;
+              }
               setLaunch3D(selected);
               setSelected(null);
             }}
+            isSubscribed={isSubscribed}
+            isPending={isPending}
+            onRequireSubscription={handleRequireSubscription}
           />
         )}
       </AnimatePresence>
 
-      {/* Full-screen GLB 3D suite */}
-      {launch3D && launch3D.fileUrl && (
+      {/* Full-screen GLB 3D suite - Faqat obuna bo'lgan foydalanuvchilar uchun */}
+      {launch3D && isSubscribed && launch3D.fileUrl && (
         <Anatomy3DSuite
           src={launch3D.fileUrl || ''}
           alt={tr(launch3D.title)}
@@ -361,6 +505,35 @@ export default function AnatomyModels({ isAdmin: isAdminProp }: { isAdmin?: bool
           onBack={() => setLaunch3D(null)}
         />
       )}
+
+      {/* Obuna to'lov modali */}
+      {showPaymentModal && user && (
+        <PaymentModal
+          semesterId={99}
+          user={user}
+          onClose={() => setShowPaymentModal(false)}
+          onSuccess={() => {
+            setShowPaymentModal(false);
+            setIsSubscribed(true);
+            verifySubscription();
+          }}
+        />
+      )}
+
+      {/* Profilga kirish modali (mehmonlar uchun) */}
+      <AnimatePresence>
+        {showAuthModal && (
+          <AuthPromptModal
+            lang={lang}
+            onClose={() => setShowAuthModal(false)}
+            onSuccessLogin={() => {
+              setShowAuthModal(false);
+              verifySubscription();
+              setShowPaymentModal(true);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -393,9 +566,13 @@ function FilterChip({
 // Model card
 // ---------------------------------------------------------------------------
 function ModelCard({
-  model, lang, onOpen, tr,
+  model, lang, onOpen, tr, isSubscribed,
 }: {
-  model: AnatomyModel; lang: 'uz' | 'ru' | 'en'; onOpen: () => void; tr: (o: any, f?: string) => string;
+  model: AnatomyModel;
+  lang: 'uz' | 'ru' | 'en';
+  onOpen: () => void;
+  tr: (o: any, f?: string) => string;
+  isSubscribed: boolean;
 }) {
   const sm = getSystemMeta(model.system);
   const Icon = ICONS[sm.icon] || Box;
@@ -406,7 +583,7 @@ function ModelCard({
     <motion.button
       layout
       onClick={onOpen}
-      className="group text-left bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden hover:border-brand-accent/50 hover:shadow-2xl hover:shadow-slate-950 transition-all cursor-pointer flex flex-col"
+      className="group text-left bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden hover:border-brand-accent/50 hover:shadow-2xl hover:shadow-slate-950 transition-all cursor-pointer flex flex-col relative"
     >
       {/* Thumbnail */}
       <div className="relative aspect-[4/3] bg-slate-950 overflow-hidden w-full">
@@ -420,7 +597,7 @@ function ModelCard({
               onError={() => setImgOk(false)}
               referrerPolicy="no-referrer"
               loading="lazy"
-              className="absolute inset-0 w-full h-full object-contain p-4 z-10 group-hover:scale-110 transition-transform duration-500"
+              className={`absolute inset-0 w-full h-full object-contain p-4 z-10 group-hover:scale-110 transition-transform duration-500 ${!isSubscribed ? 'filter contrast-95 opacity-90' : ''}`}
             />
           </>
         ) : (
@@ -446,28 +623,57 @@ function ModelCard({
             <Icon className="w-3 h-3" /> {sm.label[lang]}
           </span>
         </div>
-        <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-          <span className="px-2.5 py-1.5 bg-brand-accent text-brand-primary rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-lg">
-            <Maximize2 className="w-3 h-3" /> {model.fileUrl && !model.embedUrl ? 'GLB' : '3D'}
+
+        {/* Lock indicator top right if not subscribed */}
+        {!isSubscribed && (
+          <div className="absolute top-3 right-3 z-20">
+            <span className="px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1 backdrop-blur-md shadow-md">
+              <Lock className="w-3 h-3" /> Obuna
+            </span>
+          </div>
+        )}
+
+        <div className="absolute bottom-3 right-3 opacity-90 group-hover:opacity-100 transition-opacity z-20">
+          <span className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-lg ${
+            isSubscribed 
+              ? 'bg-brand-accent text-brand-primary' 
+              : 'bg-slate-900/90 text-amber-400 border border-amber-500/30'
+          }`}>
+            {isSubscribed ? (
+              <>
+                <Maximize2 className="w-3 h-3" /> {model.fileUrl && !model.embedUrl ? 'GLB' : '3D'}
+              </>
+            ) : (
+              <>
+                <Lock className="w-3 h-3" /> 3D (🔒)
+              </>
+            )}
           </span>
         </div>
       </div>
       {/* Body */}
       <div className="p-4 flex flex-col flex-grow">
-        <h3 className="text-sm font-black text-brand-primary leading-tight line-clamp-2">{tr(model.title)}</h3>
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-sm font-black text-white group-hover:text-brand-accent transition-colors leading-tight line-clamp-2">
+            {tr(model.title)}
+          </h3>
+          {!isSubscribed && (
+            <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+          )}
+        </div>
         {tr(model.description) && (
           <p className="text-[11px] text-slate-400 font-semibold mt-1.5 line-clamp-2 leading-relaxed">{tr(model.description)}</p>
         )}
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-800">
           {model.license ? (
-            <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 flex items-center gap-1">
+            <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
               <ShieldCheck className="w-3 h-3" /> {model.license}
             </span>
           ) : (
             <span />
           )}
           {model.pins && model.pins.length > 0 && (
-            <span className="text-[9px] font-black uppercase tracking-wider text-violet-500 flex items-center gap-1">
+            <span className="text-[9px] font-black uppercase tracking-wider text-violet-400 flex items-center gap-1">
               <MapPin className="w-3 h-3" /> {model.pins.length}
             </span>
           )}
@@ -481,9 +687,23 @@ function ModelCard({
 // Detail modal (embed → iframe, glb → 3D suite tugmasi)
 // ---------------------------------------------------------------------------
 function DetailModal({
-  model, lang, tr, onClose, onLaunch3D,
+  model,
+  lang,
+  tr,
+  onClose,
+  onLaunch3D,
+  isSubscribed,
+  isPending,
+  onRequireSubscription,
 }: {
-  model: AnatomyModel; lang: 'uz' | 'ru' | 'en'; tr: (o: any, f?: string) => string; onClose: () => void; onLaunch3D: () => void;
+  model: AnatomyModel;
+  lang: 'uz' | 'ru' | 'en';
+  tr: (o: any, f?: string) => string;
+  onClose: () => void;
+  onLaunch3D: () => void;
+  isSubscribed: boolean;
+  isPending: boolean;
+  onRequireSubscription: () => void;
 }) {
   const sm = getSystemMeta(model.system);
   const Icon = ICONS[sm.icon] || Box;
@@ -505,7 +725,7 @@ function DetailModal({
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
       onClick={onClose}
     >
       <motion.div
@@ -514,13 +734,21 @@ function DetailModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between p-5 border-b border-slate-100">
+        <div className="flex items-start justify-between p-5 border-b border-slate-100 bg-slate-50/50">
           <div className="flex items-start gap-3 min-w-0">
             <span className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${sm.badge}`}>
               <Icon className="w-5 h-5" />
             </span>
             <div className="min-w-0">
-              <h2 className="text-lg font-black text-brand-primary tracking-tight leading-tight truncate">{tr(model.title)}</h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-lg font-black text-brand-primary tracking-tight leading-tight truncate">{tr(model.title)}</h2>
+                {!isSubscribed && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-700 text-[10px] font-black uppercase tracking-wider">
+                    <Lock className="w-3 h-3 text-amber-600" />
+                    {isPending ? "To'lov kutilmoqda" : "Obuna talab qilinadi"}
+                  </span>
+                )}
+              </div>
               <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border ${sm.badge}`}>
                 {sm.label[lang]}
               </span>
@@ -534,7 +762,61 @@ function DetailModal({
         {/* Viewer */}
         <div className="flex-grow overflow-y-auto">
           <div className="relative bg-slate-900 aspect-video w-full">
-            {model.embedUrl ? (
+            {!isSubscribed ? (
+              /* Obuna bo'lmagan foydalanuvchilar uchun 3D ko'rish bloklangan ekran */
+              <div className="relative w-full h-full flex flex-col items-center justify-center p-6 text-center bg-slate-950 overflow-hidden">
+                {model.thumbnail ? (
+                  <img
+                    src={model.thumbnail}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-contain filter blur-2xl opacity-20 pointer-events-none scale-110"
+                  />
+                ) : (
+                  <img
+                    src={systemBackdrop}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover filter blur-2xl opacity-25 pointer-events-none"
+                  />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/75 to-slate-950/50" />
+
+                <div className="relative z-10 max-w-md mx-auto flex flex-col items-center px-4">
+                  <div className="w-16 h-16 rounded-2xl bg-amber-500/15 border border-amber-500/35 text-amber-400 flex items-center justify-center mb-4 shadow-xl">
+                    {isPending ? (
+                      <Clock className="w-8 h-8 animate-pulse text-amber-400" />
+                    ) : (
+                      <Lock className="w-8 h-8 text-amber-400" />
+                    )}
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-black uppercase tracking-widest mb-2">
+                    {lang === 'uz' ? "Premium 3D Anatomiya" : lang === 'ru' ? "Премиум 3D Анатомия" : "Premium 3D Anatomy"}
+                  </span>
+                  <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                    {isPending 
+                      ? (lang === 'uz' ? "To'lov Ko'rib Chiqilmoqda" : lang === 'ru' ? "Платеж проверяется" : "Payment Pending")
+                      : (lang === 'uz' ? "3D Model Ko'rish Cheklangan" : lang === 'ru' ? "3D Модель заблокирована" : "3D Model Locked")}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-300 font-medium mt-2 leading-relaxed">
+                    {isPending 
+                      ? (lang === 'uz' ? "Siz yuborgan obuna to'lovi adminlarimiz tomonidan tekshirilmoqda. Tasdiqlanishi bilan ushbu 3D model darhol to'liq ochiladi! ⏳" : lang === 'ru' ? "Ваш платеж проверяется администратором. Доступ откроется сразу после подтверждения! ⏳" : "Your subscription is currently being verified. Full 3D access will unlock shortly! ⏳")
+                      : (lang === 'uz' ? `"${tr(model.title)}" va barcha boshqa 3D anatomik modellarni 360° interaktiv aylantirish, qismlarini kattalashtirish va pin belgilarini o'rganish uchun platforma obunasini sotib olish lozim.` : lang === 'ru' ? `Для интерактивного просмотра 3D-модели "${tr(model.title)}" и всех анатомических структур оформите подписку.` : `A subscription is required to interact with "${tr(model.title)}" and all 3D anatomical models.`)}
+                  </p>
+                  {!isPending ? (
+                    <button
+                      onClick={onRequireSubscription}
+                      className="mt-6 px-8 py-3.5 bg-brand-accent hover:bg-yellow-400 text-brand-primary rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-accent/20 transition-all cursor-pointer flex items-center gap-2 active:scale-95"
+                    >
+                      <Sparkles className="w-4 h-4 text-brand-primary" />
+                      {lang === 'uz' ? "Obunani Faollashtirish (30,000 UZS)" : lang === 'ru' ? "Оформить подписку (30,000 UZS)" : "Subscribe Now (30,000 UZS)"}
+                    </button>
+                  ) : (
+                    <span className="mt-4 text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-4 py-2 rounded-xl">
+                      Admin tasdiqlashi kutilmoqda...
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : model.embedUrl ? (
               <iframe
                 title={tr(model.title)}
                 src={model.embedUrl}
@@ -581,7 +863,7 @@ function DetailModal({
           </div>
 
           <div className="p-5 space-y-5">
-            {model.embedUrl && (
+            {model.embedUrl && isSubscribed && (
               <p className="text-[11px] text-slate-400 font-semibold flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-brand-accent" /> {L.embedNote}
               </p>
@@ -591,13 +873,25 @@ function DetailModal({
               <p className="text-sm text-slate-600 font-medium leading-relaxed">{tr(model.description)}</p>
             )}
 
-            {/* GLB launch button (also outside viewer for clarity) */}
-            {isGlb && (
+            {/* Launch / Subscribe Action button */}
+            {isSubscribed ? (
+              isGlb && (
+                <button
+                  onClick={onLaunch3D}
+                  className="w-full sm:w-auto px-6 py-3.5 bg-brand-primary hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <Maximize2 className="w-4 h-4" /> {L.open3d}
+                </button>
+              )
+            ) : (
               <button
-                onClick={onLaunch3D}
-                className="w-full sm:w-auto px-6 py-3.5 bg-brand-primary hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all cursor-pointer"
+                onClick={onRequireSubscription}
+                className="w-full sm:w-auto px-6 py-3.5 bg-brand-accent hover:bg-yellow-400 text-brand-primary rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-brand-accent/20"
               >
-                <Maximize2 className="w-4 h-4" /> {L.open3d}
+                <Lock className="w-4 h-4" />
+                {isPending 
+                  ? (lang === 'uz' ? "To'lov tekshirilmoqda ⏳" : lang === 'ru' ? "Платеж проверяется ⏳" : "Payment Pending ⏳")
+                  : (lang === 'uz' ? "3D Ko'rish Uchun Obuna Bo'lish" : lang === 'ru' ? "Оформить подписку для 3D" : "Subscribe to View 3D")}
               </button>
             )}
 
@@ -644,6 +938,106 @@ function DetailModal({
               </div>
             )}
           </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mehmonlar uchun tizimga kirish modali
+// ---------------------------------------------------------------------------
+function AuthPromptModal({
+  lang,
+  onClose,
+  onSuccessLogin,
+}: {
+  lang: 'uz' | 'ru' | 'en';
+  onClose: () => void;
+  onSuccessLogin: () => void;
+}) {
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const handleLogin = async () => {
+    setIsLoggingIn(true);
+    setAuthError(null);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
+      const { db } = await import('../lib/firebase');
+      await setDoc(doc(db, 'users', result.user.uid), {
+        displayName: result.user.displayName,
+        email: result.user.email,
+        photoURL: result.user.photoURL,
+        lastLogin: serverTimestamp(),
+      }, { merge: true });
+      onSuccessLogin();
+    } catch (e: any) {
+      console.error("Login failed:", e);
+      setAuthError(e?.message || "Kirishda xatolik yuz berdi");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+      className="fixed inset-0 z-[130] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+    >
+      <motion.div
+        initial={{ scale: 0.94, y: 16 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.94, y: 16 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 sm:p-8 text-center shadow-2xl relative"
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition-all cursor-pointer"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto mb-5 shadow-lg">
+          <Lock className="w-8 h-8" />
+        </div>
+
+        <h3 className="text-xl font-black text-white tracking-tight">
+          {lang === 'uz' ? "Avval profilingizga kiring" : lang === 'ru' ? "Войдите в аккаунт" : "Please sign in first"}
+        </h3>
+        <p className="text-xs text-slate-300 font-medium mt-2 leading-relaxed">
+          {lang === 'uz'
+            ? "3D modellar obunasini sotib olish va profilingizga biriktirish uchun Google akkauntingiz orqali tizimga kiring."
+            : lang === 'ru'
+            ? "Для покупки подписки на 3D-модели и привязки к аккаунту войдите через Google."
+            : "Sign in with Google to purchase and link the 3D models subscription to your account."}
+        </p>
+
+        {authError && (
+          <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs text-left">
+            {authError}
+          </div>
+        )}
+
+        <div className="mt-6 flex flex-col gap-3">
+          <button
+            onClick={handleLogin}
+            disabled={isLoggingIn}
+            className="w-full py-3.5 px-4 bg-white hover:bg-slate-100 text-slate-900 font-black rounded-xl text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer disabled:opacity-50"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+            </svg>
+            {isLoggingIn ? "KIRILMOQDA..." : (lang === 'uz' ? "Google orqali kirish" : lang === 'ru' ? "Войти через Google" : "Sign in with Google")}
+          </button>
         </div>
       </motion.div>
     </motion.div>

@@ -16,6 +16,7 @@ import PaymentModal from '../components/PaymentModal';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
 import SEO from '../components/SEO';
+import { parseTopicTitle } from './TopicDetail';
 
 const DEFAULT_SEMESTER_INFO: Record<number, SemesterType> = {
   1: {
@@ -554,12 +555,28 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
                     }`}>
                       {topic.order}
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-base sm:text-lg font-bold text-brand-primary tracking-tight group-hover:text-brand-accent transition-colors">
-                          {getLocalized(topic.title)}
-                        </h3>
-                      </div>
+                    <div className="min-w-0">
+                      {(() => {
+                        const rawTitle = getLocalized(topic.title);
+                        const parsed = parseTopicTitle(rawTitle);
+                        return (
+                          <div className="mb-1">
+                            <h3 className="text-base sm:text-lg font-bold text-brand-primary tracking-tight group-hover:text-brand-accent transition-colors">
+                              {parsed.mainTitle || rawTitle}
+                            </h3>
+                            {parsed.subParts.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1.5 mt-1 mb-2">
+                                {parsed.subParts.map((sub, sIdx) => (
+                                  <span key={sIdx} className="text-xs text-slate-500 font-medium inline-flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-brand-accent/60 shrink-0"></span>
+                                    <span>{sub}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <div className="flex flex-wrap items-center gap-3 sm:gap-6 text-[10px] text-brand-muted font-black tracking-widest uppercase">
                         <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-brand-accent" /> {t('topic.theory').toUpperCase()}</span>
                         <span className="flex items-center gap-1.5"><PlayCircle className="w-3.5 h-3.5 text-brand-accent" /> {t('topic.video').toUpperCase()}</span>
@@ -569,20 +586,30 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
                             m => m.topicIds?.includes(`sem_${semesterId}_top_${topic.order}`) || (topic.defaultModelId && m.id === topic.defaultModelId)
                           );
                           if (!topicModel) return null;
-                          return (
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
+                                if (!isUnlocked) {
+                                  setShowPaymentModal(true);
+                                  return;
+                                }
                                 setSelected3DModel(topicModel);
                               }}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 hover:border-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all shadow-xs cursor-pointer"
-                              title={getLocalized(topicModel.title)}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all shadow-xs cursor-pointer border ${
+                                isUnlocked 
+                                  ? 'bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border-emerald-200 hover:border-emerald-600'
+                                  : 'bg-amber-50 hover:bg-amber-500 text-amber-700 hover:text-white border-amber-200 hover:border-amber-500'
+                              }`}
+                              title={isUnlocked ? getLocalized(topicModel.title) : `${getLocalized(topicModel.title)} (Obuna talab qilinadi)`}
                             >
-                              <Box className="w-3.5 h-3.5 text-emerald-600 group-hover:text-white" />
-                              <span>3D: {getLocalized(topicModel.title)}</span>
+                              {isUnlocked ? (
+                                <Box className="w-3.5 h-3.5 text-emerald-600 group-hover:text-white" />
+                              ) : (
+                                <Lock className="w-3.5 h-3.5 text-amber-600 group-hover:text-white" />
+                              )}
+                              <span>3D: {getLocalized(topicModel.title)} {!isUnlocked && '🔒'}</span>
                             </button>
-                          );
                         })()}
                         {!isUnlocked && (
                           <span className="flex items-center gap-1 text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full font-bold">
@@ -639,6 +666,8 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
         isOpen={!!selected3DModel}
         onClose={() => setSelected3DModel(null)}
         language={language}
+        isLocked={!isUnlocked}
+        onSubscribe={() => setShowPaymentModal(true)}
       />
     </div>
   );

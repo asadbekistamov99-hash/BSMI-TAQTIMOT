@@ -48,6 +48,28 @@ function RelatedModelThumb({ src, alt }: { src?: string; alt: string }) {
   );
 }
 
+export function parseTopicTitle(titleStr: string) {
+  if (!titleStr) return { orderPrefix: '', mainTitle: '', subParts: [] };
+  let str = titleStr.trim();
+  let orderPrefix = '';
+
+  const prefixMatch = str.match(/^(\d+[-–]mavzu|тема\s*\d+|topic\s*\d+)\s*[:–-]\s*/i);
+  if (prefixMatch) {
+    orderPrefix = prefixMatch[1];
+    str = str.substring(prefixMatch[0].length).trim();
+  }
+
+  const parts = str.split(/(?<=[.!?])\s+(?=[A-ZА-ЯЁЎҚҒҲ0-9])/).map(p => p.trim().replace(/[.;]$/, '')).filter(Boolean);
+  if (parts.length <= 1) {
+    const colonParts = str.split(':').map(p => p.trim()).filter(Boolean);
+    if (colonParts.length > 1) {
+      return { orderPrefix, mainTitle: colonParts[0], subParts: colonParts.slice(1) };
+    }
+    return { orderPrefix, mainTitle: str, subParts: [] };
+  }
+  return { orderPrefix, mainTitle: parts[0], subParts: parts.slice(1) };
+}
+
 function Countdown({ createdAt }: { createdAt: any }) {
   const [timeLeft, setTimeLeft] = useState<string>('');
   const { t } = useLanguage();
@@ -1032,6 +1054,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
   const totalResultsCount = matchedLatin.length + matchedTerms.length + matchedAtlas.length + matchedTheoryParas.length;
 
   const topicTitle = getLocalized(topic.title) || 'Anatomiya Mavzusi';
+  const parsedTopicTitle = parseTopicTitle(topicTitle);
   const topicShortDesc = theoryText 
     ? theoryText.replace(/[#*`_\[\]]/g, '').substring(0, 160).trim() + '...'
     : `BSMI ${topic.semester}-semestr ${topicTitle} mavzusi bo'yicha to'liq nazariy darslik, klinik keyslar va terminlar.`;
@@ -1046,24 +1069,34 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
         ogType="article"
       />
       {/* Header */}
-      <header className="bg-brand-primary py-20 relative overflow-hidden">
+      <header className="bg-brand-primary py-16 sm:py-20 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-1/3 h-full bg-brand-accent/10 blur-[100px] -mr-20"></div>
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <Link to={`/semester/${topic.semester}`} className="text-xs font-black text-brand-accent hover:text-white transition-all flex items-center gap-2 mb-8 uppercase tracking-[0.2em]">
+          <Link to={`/semester/${topic.semester}`} className="text-xs font-black text-brand-accent hover:text-white transition-all flex items-center gap-2 mb-6 sm:mb-8 uppercase tracking-[0.2em]">
             ← SEMESTR {topic.semester} {t('study.topics_list').toUpperCase()}
           </Link>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <div className="flex items-center gap-4 mb-6">
+            <div className="flex items-center gap-4 mb-4">
               <span className="px-4 py-1.5 bg-brand-accent/20 border border-brand-accent/30 text-brand-accent rounded-lg font-black uppercase tracking-widest text-[10px]">
                 {t('study.unlocked').toUpperCase()} {topic.order}
               </span>
             </div>
-            <h1 className="text-4xl md:text-6xl font-black text-white tracking-tight leading-[1.1] mb-2 max-w-4xl">
-              {getLocalized(topic.title)}
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight leading-[1.15] mb-4 max-w-4xl">
+              {parsedTopicTitle.mainTitle || topicTitle}
             </h1>
+            {parsedTopicTitle.subParts.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 mb-2 max-w-3xl">
+                {parsedTopicTitle.subParts.map((sub, idx) => (
+                  <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 backdrop-blur-md border border-white/15 text-slate-200 text-xs font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-accent"></span>
+                    {sub}
+                  </span>
+                ))}
+              </div>
+            )}
           </motion.div>
         </div>
       </header>
@@ -2322,35 +2355,42 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
             }`}
           >
             {/* Top Controls Toolbar */}
-            <div className={`px-4 sm:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b shrink-0 ${
+            <div className={`px-3 sm:px-6 py-2.5 sm:py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b shrink-0 w-full ${
               readTheme === 'light' 
                 ? 'border-slate-100 bg-slate-50' 
                 : readTheme === 'warm' 
                   ? 'border-[#EBDCC5] bg-[#FAF5ED]' 
                   : 'border-slate-800 bg-[#161a22]'
             }`}>
-              {/* Title */}
-              <div className="flex items-center gap-3">
-                <BookOpen className="w-5 h-5 text-brand-accent shrink-0" />
-                <div className="min-w-0">
-                  <span className={`text-[9px] font-black uppercase tracking-widest block leading-none mb-1 ${
-                    readTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'
-                  }`}>
-                    Mutolaa Rejimi
-                  </span>
-                  <h3 className={`font-black text-sm uppercase truncate ${
+              {/* Title Column */}
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 max-w-full md:max-w-xs lg:max-w-sm xl:max-w-md shrink">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-brand-accent/20 flex items-center justify-center shrink-0">
+                  <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary" />
+                </div>
+                <div className="min-w-0 flex flex-col">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-2 py-0.5 rounded-md bg-brand-accent/30 text-brand-primary text-[9px] sm:text-[10px] font-black uppercase tracking-wider shrink-0">
+                      {topic.order}-Mavzu
+                    </span>
+                    <span className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-widest ${
+                      readTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'
+                    }`}>
+                      Mutolaa Rejimi
+                    </span>
+                  </div>
+                  <h3 className={`font-bold text-xs sm:text-sm uppercase leading-tight truncate mt-0.5 ${
                     readTheme === 'dark' ? 'text-white' : 'text-brand-primary'
-                  }`}>
-                    {getLocalized(topic.title)}
+                  }`} title={topicTitle}>
+                    {parsedTopicTitle.mainTitle || topicTitle}
                   </h3>
                 </div>
               </div>
 
-              {/* Setting Buttons */}
-              <div className="flex flex-wrap items-center gap-4 text-xs font-sans">
+              {/* Setting Buttons Toolbar */}
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap shrink-0 text-xs font-sans ml-auto md:ml-0 overflow-x-auto">
                 {/* Text Size Controls */}
-                <div className="flex items-center gap-1">
-                  <span className={`text-[10px] font-bold mr-1 uppercase ${
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className={`text-[10px] font-bold mr-0.5 uppercase hidden sm:inline ${
                     readTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                   }`}>Matn:</span>
                   <div className={`flex items-center p-0.5 rounded-xl border ${
@@ -2358,7 +2398,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                   }`}>
                     <button 
                       onClick={() => setTextSize('normal')}
-                      className={`px-3 py-1 rounded-lg font-bold transition-all text-[11px] cursor-pointer ${
+                      className={`px-2 sm:px-2.5 py-1 rounded-lg font-bold transition-all text-[11px] cursor-pointer ${
                         textSize === 'normal' 
                           ? 'bg-brand-accent text-brand-primary font-black shadow-sm' 
                           : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-850' : 'text-slate-600 hover:bg-slate-100'
@@ -2369,7 +2409,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     </button>
                     <button 
                       onClick={() => setTextSize('large')}
-                      className={`px-3 py-1 rounded-lg font-bold transition-all text-xs cursor-pointer ${
+                      className={`px-2 sm:px-2.5 py-1 rounded-lg font-bold transition-all text-[11px] cursor-pointer ${
                         textSize === 'large' 
                           ? 'bg-brand-accent text-brand-primary font-black shadow-sm' 
                           : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-850' : 'text-slate-600 hover:bg-slate-100'
@@ -2380,7 +2420,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     </button>
                     <button 
                       onClick={() => setTextSize('extra')}
-                      className={`px-3 py-1 rounded-lg font-bold transition-all text-sm cursor-pointer ${
+                      className={`px-2 sm:px-2.5 py-1 rounded-lg font-bold transition-all text-xs cursor-pointer ${
                         textSize === 'extra' 
                           ? 'bg-brand-accent text-brand-primary font-black shadow-sm' 
                           : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-850' : 'text-slate-600 hover:bg-slate-100'
@@ -2393,8 +2433,8 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                 </div>
 
                 {/* Font Choices */}
-                <div className="flex items-center gap-1">
-                  <span className={`text-[10px] font-bold mr-1 uppercase ${
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className={`text-[10px] font-bold mr-0.5 uppercase hidden sm:inline ${
                     readTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                   }`}>Shrift:</span>
                   <div className={`flex items-center p-0.5 rounded-xl border ${
@@ -2402,7 +2442,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                   }`}>
                     <button 
                       onClick={() => setFontFamily('sans')}
-                      className={`px-2.5 py-1 rounded-lg font-bold transition-all text-[11px] cursor-pointer ${
+                      className={`px-2 sm:px-2.5 py-1 rounded-lg font-bold transition-all text-[11px] cursor-pointer ${
                         fontFamily === 'sans' 
                           ? 'bg-indigo-600 text-white shadow-sm' 
                           : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-850' : 'text-slate-600 hover:bg-slate-100'
@@ -2412,7 +2452,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     </button>
                     <button 
                       onClick={() => setFontFamily('serif')}
-                      className={`px-2.5 py-1 rounded-lg font-serif font-bold transition-all text-[11px] cursor-pointer ${
+                      className={`px-2 sm:px-2.5 py-1 rounded-lg font-serif font-bold transition-all text-[11px] cursor-pointer ${
                         fontFamily === 'serif' 
                           ? 'bg-indigo-600 text-white shadow-sm' 
                           : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-850' : 'text-slate-600 hover:bg-slate-100'
@@ -2424,8 +2464,8 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                 </div>
 
                 {/* Background theme */}
-                <div className="flex items-center gap-1">
-                  <span className={`text-[10px] font-bold mr-1 uppercase ${
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className={`text-[10px] font-bold mr-0.5 uppercase hidden sm:inline ${
                     readTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                   }`}>Mavzu:</span>
                   <div className={`flex items-center p-0.5 rounded-xl border gap-0.5 ${
@@ -2433,7 +2473,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                   }`}>
                     <button 
                       onClick={() => setReadTheme('light')}
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center border font-bold text-xs cursor-pointer ${
+                      className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center border font-bold text-xs cursor-pointer ${
                         readTheme === 'light' ? 'border-indigo-600 ring-2 ring-indigo-600/10 bg-white' : 'border-slate-100 bg-white'
                       } text-slate-800`}
                       title="Kunduzgi"
@@ -2442,7 +2482,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     </button>
                     <button 
                       onClick={() => setReadTheme('warm')}
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center border font-bold text-xs cursor-pointer ${
+                      className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center border font-bold text-xs cursor-pointer ${
                         readTheme === 'warm' ? 'border-amber-600 ring-2 ring-amber-600/10 bg-[#FAF6F0]' : 'border-[#EADFCF] bg-[#FAF6F0]'
                       } text-[#2C251E]`}
                       title="Sepia"
@@ -2451,7 +2491,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     </button>
                     <button 
                       onClick={() => setReadTheme('dark')}
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center border font-bold text-xs cursor-pointer ${
+                      className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center border font-bold text-xs cursor-pointer ${
                         readTheme === 'dark' ? 'border-slate-500 ring-2 ring-slate-500/10 bg-slate-900' : 'border-slate-800 bg-slate-900'
                       } text-slate-300`}
                       title="Tungi"
@@ -2464,10 +2504,10 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                 {/* Close Button */}
                 <button 
                   onClick={() => setIsFullscreen(false)}
-                  className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-black px-4 py-2 rounded-xl active:scale-95 transition-all shadow-md cursor-pointer ml-1"
+                  className="flex items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white font-black px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl active:scale-95 transition-all shadow-md cursor-pointer shrink-0"
                 >
-                  <X className="w-4 h-4" />
-                  <span>Chiqish</span>
+                  <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="text-xs sm:text-sm">Chiqish</span>
                 </button>
               </div>
             </div>
@@ -2478,15 +2518,38 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                 fontFamily === 'serif' ? 'font-serif' : 'font-sans'
               }`}>
                 {/* Header info in reader */}
-                <div className="text-center mb-14">
+                <div className="text-center mb-10 max-w-3xl mx-auto">
                   <span className={`inline-block px-3.5 py-1 bg-brand-accent/25 border border-brand-accent/35 text-brand-primary rounded-lg font-black uppercase tracking-widest text-[9px] mb-4`}>
                     {t('study.unlocked').toUpperCase()} {topic.order}
                   </span>
-                  <h2 className={`text-3xl md:text-5xl font-black tracking-tight uppercase leading-tight mb-8 ${
+                  
+                  {/* Primary Main Title */}
+                  <h2 className={`text-2xl sm:text-3xl md:text-5xl font-black tracking-tight uppercase leading-tight mb-4 ${
                     readTheme === 'dark' ? 'text-white' : 'text-brand-primary'
                   }`}>
-                    {getLocalized(topic.title)}
+                    {parsedTopicTitle.mainTitle || topicTitle}
                   </h2>
+
+                  {/* Subtopics formatted in clean column structure ("ustunli") */}
+                  {parsedTopicTitle.subParts.length > 0 && (
+                    <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-2 mt-4 max-w-2xl mx-auto">
+                      {parsedTopicTitle.subParts.map((sub, idx) => (
+                        <div 
+                          key={idx}
+                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                            readTheme === 'dark'
+                              ? 'bg-slate-900/90 text-slate-300 border-slate-800'
+                              : readTheme === 'warm'
+                                ? 'bg-[#F2E8D8] text-[#3D3022] border-[#E0D0BB]'
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-brand-accent shrink-0"></span>
+                          <span>{sub}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Inline Tab Navigation for Immersive Reader */}
                   <div className="flex justify-center mb-8">
@@ -2858,6 +2921,8 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
         isOpen={!!selected3DModel}
         onClose={() => setSelected3DModel(null)}
         language={language}
+        isLocked={!isUnlocked}
+        onSubscribe={() => setShowPaymentModal(true)}
       />
     </div>
   );

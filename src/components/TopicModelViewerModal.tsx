@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Maximize2, ExternalLink, Box, Sparkles, Compass, RotateCcw, Eye } from 'lucide-react';
+import { X, Maximize2, ExternalLink, Box, Sparkles, Compass, RotateCcw, Eye, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import '@google/model-viewer';
 import { AnatomyModel, AnatomySystem } from '../data/anatomyModels';
@@ -12,6 +12,8 @@ interface TopicModelViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
   language?: string;
+  isLocked?: boolean;
+  onSubscribe?: () => void;
 }
 
 const SYSTEM_META: Record<AnatomySystem, { label: Record<string, string>; color: string; badge: string }> = {
@@ -52,6 +54,8 @@ export default function TopicModelViewerModal({
   isOpen,
   onClose,
   language = 'uz',
+  isLocked = false,
+  onSubscribe,
 }: TopicModelViewerModalProps) {
   const lang = (language === 'ru' || language === 'en' ? language : 'uz') as 'uz' | 'ru' | 'en';
 
@@ -115,14 +119,21 @@ export default function TopicModelViewerModal({
                   <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider border ${sysMeta.badge}`}>
                     {sysMeta.label[lang]}
                   </span>
+                  {isLocked && (
+                    <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
+                      <Lock className="w-3 h-3" /> Obuna
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5 mt-0.5">
                   <Sparkles className="w-3 h-3 text-brand-accent shrink-0" />
-                  {lang === 'uz'
-                    ? "Interaktiv 3D model — sichqoncha yoki barmog'ingiz bilan 360° aylantiring va yaqinlashtiring"
-                    : lang === 'ru'
-                    ? 'Интерактивная 3D-модель — вращайте на 360° и приближайте пальцем или мышью'
-                    : 'Interactive 3D model — rotate 360° and zoom with mouse or touch'}
+                  {isLocked 
+                    ? (lang === 'uz' ? "Ushbu 3D modelni ko'rish obuna orqali cheklangan" : lang === 'ru' ? "Просмотр модели доступен по подписке" : "3D model viewing is restricted to subscribers")
+                    : (lang === 'uz'
+                      ? "Interaktiv 3D model — sichqoncha yoki barmog'ingiz bilan 360° aylantiring va yaqinlashtiring"
+                      : lang === 'ru'
+                      ? 'Интерактивная 3D-модель — вращайте на 360° и приближайте пальцем или мышью'
+                      : 'Interactive 3D model — rotate 360° and zoom with mouse or touch')}
                 </p>
               </div>
             </div>
@@ -149,7 +160,47 @@ export default function TopicModelViewerModal({
 
           {/* 3D Viewer Area */}
           <div className="relative flex-grow bg-slate-950 w-full min-h-[420px] sm:min-h-[520px] max-h-[66vh] overflow-hidden flex items-center justify-center">
-            {model.fileUrl ? (
+            {isLocked ? (
+              <div className="relative w-full h-full flex items-center justify-center p-6 text-center bg-slate-950">
+                {model.thumbnail && (
+                  <img
+                    src={model.thumbnail}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover filter blur-2xl opacity-15 pointer-events-none"
+                  />
+                )}
+                <div className="relative z-10 max-w-md mx-auto flex flex-col items-center">
+                  <div className="w-16 h-16 rounded-2xl bg-amber-500/15 border border-amber-500/35 text-amber-400 flex items-center justify-center mb-4 shadow-xl">
+                    <Lock className="w-8 h-8" />
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-black uppercase tracking-widest mb-2">
+                    {lang === 'uz' ? "Premium 3D Anatomiya" : lang === 'ru' ? "Премиум 3D Анатомия" : "Premium 3D Anatomy"}
+                  </span>
+                  <h4 className="text-xl font-black text-white tracking-tight">
+                    {lang === 'uz' ? "3D Model Ko'rish Cheklangan" : lang === 'ru' ? "3D Модель заблокирована" : "3D Model Locked"}
+                  </h4>
+                  <p className="text-xs text-slate-300 font-medium mt-2 leading-relaxed">
+                    {lang === 'uz'
+                      ? `"${title}" va boshqa barcha 3D modellarni interaktiv ko'rish, 360° aylantirish va qismlarini o'rganish uchun obuna xarid qilishingiz lozim.`
+                      : lang === 'ru'
+                      ? `Для интерактивного просмотра 3D-модели "${title}" требуется подписка.`
+                      : `A subscription is required to interact with the 3D model "${title}".`}
+                  </p>
+                  {onSubscribe && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onSubscribe();
+                      }}
+                      className="mt-6 px-8 py-3.5 bg-brand-accent hover:bg-yellow-400 text-brand-primary rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl transition-all cursor-pointer flex items-center gap-2 active:scale-95"
+                    >
+                      <Sparkles className="w-4 h-4 text-brand-primary" />
+                      {lang === 'uz' ? "Obuna Sotib Olish" : lang === 'ru' ? "Оформить подписку" : "Subscribe Now"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : model.fileUrl ? (
               <div className="w-full h-full relative flex items-center justify-center bg-slate-950">
                 <ModelViewer
                   src={model.fileUrl}
