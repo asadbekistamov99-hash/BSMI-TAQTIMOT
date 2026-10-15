@@ -10,7 +10,7 @@ const GUIDE_STEPS = [
   <>Google akkauntingiz bilan kiring (Gmail). Agar so'ralsa, shartlarga rozilik bildiring.</>,
   <>Sahifada <b>"Create API key"</b> (yoki <b>"Get API key"</b>) tugmasini bosing.</>,
   <>Loyiha tanlang: mavjud loyihani yoki <b>"Create API key in new project"</b> variantini.</>,
-  <>Paydo bo'lgan kalitning yonidagi <b>Copy</b> (nusxalash) tugmasini bosing. Kalit <b>AIza</b> bilan boshlanadi.</>,
+  <>Paydo bo'lgan kalitning yonidagi <b>Copy</b> (nusxalash) tugmasini bosing. Kalit <b>AQ.</b> yoki <b>AIza</b> bilan boshlanadi.</>,
   <>Quyidagi maydonga kalitni qo'ying va <b>"Tekshirib saqlash"</b> tugmasini bosing. Sayt kalitni Gemini orqali haqiqatan sinaydi, ishlasa saqlanadi.</>,
 ];
 
@@ -53,7 +53,7 @@ export default function AiApiKeyPanel({ user }: { user: any }) {
     if (!uid) return;
     const key = input.trim();
     if (!isValidGeminiKeyShape(key)) {
-      setMsg({ type: 'err', text: "Kalit noto'g'ri. U 'AIza' bilan boshlanishi va to'liq nusxalangan bo'lishi kerak." });
+      setMsg({ type: 'err', text: "Kalit noto'g'ri. U 'AQ.' yoki 'AIza' bilan boshlanishi va to'liq nusxalangan bo'lishi kerak." });
       return;
     }
     setBusy(true);
@@ -152,7 +152,7 @@ export default function AiApiKeyPanel({ user }: { user: any }) {
               type={showInput || input ? 'text' : 'password'}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="AIza..."
+              placeholder="AQ...."
               autoComplete="off"
               spellCheck={false}
               className="flex-1 min-w-0 bg-[#161B22] border-2 border-white/10 focus:border-cyan-500 rounded-2xl py-3 px-4 font-mono text-sm outline-none"
