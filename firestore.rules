@@ -78,6 +78,11 @@ service cloud.firestore {
         allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       }
 
+      // Shaxsiy maxfiy sozlamalar (AI API kaliti): faqat egasi o'qiy va yoza oladi, admin ham emas
+      match /private/{docId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+
       match /badges/{badgeId} {
         allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       }

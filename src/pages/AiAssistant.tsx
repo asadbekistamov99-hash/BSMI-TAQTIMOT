@@ -6,6 +6,8 @@ import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { dbService } from '../lib/dbService';
+import { getUserAiKey, getIdTokenOrNull } from '../lib/userAiKey';
+import AiApiKeyPanel from '../components/AiApiKeyPanel';
 import SEO from '../components/SEO';
 
 import skeletalDiag from '../assets/images/skeletal_system_backdrop_1783853676839.jpg';
@@ -655,16 +657,28 @@ export default function AiAssistant({ user }: { user: any }) {
         images: base64Image ? [{ data: base64Image.data, mimeType: base64Image.mimeType }] : []
       };
 
+      // Foydalanuvchining o'z kaliti bo'lsa, u tizimga kirgan egasi tokeni bilan yuboriladi
+      const userKey = user?.uid ? await getUserAiKey(user.uid) : null;
+      const idToken = userKey ? await getIdTokenOrNull() : null;
+      if (userKey && !idToken) {
+        throw new Error(language === 'uz' ? "Shaxsiy kalit bilan ishlash uchun qayta tizimga kiring" : "Войдите снова, чтобы использовать личный ключ");
+      }
+
       const response = await fetch('/api/ai-chat', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
         },
-        body: JSON.stringify(bodyPayload)
+        body: JSON.stringify(userKey ? { ...bodyPayload, userKey } : bodyPayload)
       });
 
       if (!response.ok) {
-        throw new Error(language === 'uz' ? "Server javob berishda xatolikka yo'l qo'ydi" : "Ошибка при получении ответа от сервера");
+        const errData = await response.json().catch(() => ({}));
+        throw Object.assign(
+          new Error(errData.error || (language === 'uz' ? "Server javob berishda xatolikka yo'l qo'ydi" : "Ошибка при получении ответа от сервера")),
+          { serverMessage: true }
+        );
       }
 
       const data = await response.json();
@@ -696,9 +710,11 @@ export default function AiAssistant({ user }: { user: any }) {
       }
     } catch (error) {
       console.error("AI Error:", error);
-      const errorMessageValue = language === 'uz' 
+      // Server aniq sabab qaytargan bo'lsa (masalan, kalit limiti), o'shani ko'rsatamiz
+      const serverMsg = (error as any)?.serverMessage ? (error as any).message : '';
+      const errorMessageValue = serverMsg || (language === 'uz' 
         ? "Ulanishda xatolik yuz berdi. Iltimos tarmog'ingizni tekshirib, qayta urinib ko'ring." 
-        : "Произошла ошибка соединения. Пожалуйста, проверьте сеть и попробуйте еще раз.";
+        : "Произошла ошибка соединения. Пожалуйста, проверьте сеть и попробуйте еще раз.");
 
       const responseError: ChatMessage = {
         role: 'model',
@@ -1534,6 +1550,8 @@ export default function AiAssistant({ user }: { user: any }) {
           </div>
         )}
       </AnimatePresence>
+
+      <AiApiKeyPanel user={user} />
     </div>
   );
 }

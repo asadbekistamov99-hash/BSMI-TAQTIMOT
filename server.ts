@@ -29,6 +29,7 @@ import {
   type ClassifiedAiError
 } from './src/lib/faceVerificationPolicy.js';
 import { isActionRequest, parsePriceCommand, containsSecretCode } from './src/lib/adminChatIntent.js';
+import { isValidGeminiKeyShape } from './src/lib/aiKeyFormat.js';
 
 dotenv.config();
 
@@ -112,8 +113,8 @@ export async function createServerApp() {
     });
   };
 
-  const safeGenerateContent = async (modelName: string, config: any, retries = 2, delay = 400) => {
-    const candidateKeys = getCandidateKeys();
+  const safeGenerateContent = async (modelName: string, config: any, retries = 2, delay = 400, keysOverride?: string[]) => {
+    const candidateKeys = keysOverride ?? getCandidateKeys();
     if (candidateKeys.length === 0) {
       throw new Error('GEMINI_API_KEY sozlanmagan');
     }
@@ -1278,10 +1279,80 @@ ${inputJSON}`;
     }
   });
 
+  // --- Foydalanuvchining o'z Gemini kaliti ---
+  const FIREBASE_WEB_API_KEY: string = process.env.VITE_FIREBASE_API_KEY || (() => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf8')).apiKey || '';
+    } catch {
+      return '';
+    }
+  })();
+
+  // Firebase ID tokenni Google'ning o'z tekshiruvi orqali tasdiqlaydi va foydalanuvchi UID sini qaytaradi
+  const verifyFirebaseUid = async (idToken: string): Promise<string | null> => {
+    if (!idToken || !FIREBASE_WEB_API_KEY) return null;
+    try {
+      const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_WEB_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken })
+      });
+      if (!r.ok) return null;
+      const data: any = await r.json();
+      return data?.users?.[0]?.localId || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const bearerToken = (req: express.Request) => (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+
+  // Kalitni tekshirish: kichik so'rov yuboriladi, natija haqiqiy Gemini javobi bo'lishi shart
+  app.post('/api/ai-key/check', async (req: express.Request, res: any) => {
+    const uid = await verifyFirebaseUid(bearerToken(req));
+    if (!uid) return res.status(401).json({ ok: false, error: "Kalitni tekshirish uchun avval tizimga kiring." });
+
+    const key = String(req.body?.key || '').trim();
+    if (!isValidGeminiKeyShape(key)) {
+      return res.status(400).json({ ok: false, error: "Kalit noto'g'ri formatda. U 'AIza' bilan boshlanishi kerak." });
+    }
+
+    try {
+      const ai = makeAIClient(key);
+      const r: any = await ai.models.generateContent({
+        model: 'gemini-flash-latest',
+        contents: [{ role: 'user', parts: [{ text: 'Salom' }] }]
+      });
+      const replied = Boolean(r?.text) || (r?.candidates?.[0]?.content?.parts?.length > 0);
+      if (!replied) throw new Error('empty response');
+      return res.json({ ok: true });
+    } catch (err: any) {
+      const msg = String(err?.message || err || '');
+      let hint = "Kalit ishlamadi. Kalitni qayta nusxalab ko'ring.";
+      if (/429|quota|RESOURCE_EXHAUSTED/i.test(msg)) hint = "Bu kalit limiti tugagan yoki juda ko'p so'rov yuborilgan. Keyinroq urinib ko'ring.";
+      else if (/API_KEY_INVALID|API key not valid|PERMISSION_DENIED|\b400\b|\b403\b/i.test(msg)) hint = "Kalit noto'g'ri yoki bu kalitga ruxsat yo'q. Google AI Studio'da yangi kalit yarating.";
+      return res.status(400).json({ ok: false, error: hint });
+    }
+  });
+
   app.post('/api/ai-chat', async (req: express.Request, resValue: any) => {
     console.log('User AI Chat request received:', req.body.message?.substring(0, 50));
     const startTime = Date.now();
-    const { message, history, images } = req.body;
+    const { message, history, images, userKey } = req.body;
+
+    // Shaxsiy kalit kelgan bo'lsa: faqat tizimga kirgan egasi uchun, faqat o'z kaliti bilan ishlaydi
+    let keysOverride: string[] | undefined;
+    if (typeof userKey === 'string' && userKey.trim() !== '') {
+      const uid = await verifyFirebaseUid(bearerToken(req));
+      if (!uid) {
+        return resValue.status(401).json({ error: "Shaxsiy API kalitdan foydalanish uchun tizimga kiring." });
+      }
+      if (!isValidGeminiKeyShape(userKey)) {
+        return resValue.status(400).json({ error: "Shaxsiy API kalit noto'g'ri formatda." });
+      }
+      keysOverride = [userKey.trim()];
+    }
+
     try {
       // Apply latency simulation delay
       const simDelay = getLatencyDelay();
@@ -1361,7 +1432,7 @@ ANATOMIYA VA LOTIN TILI BO'YICHA ISHLASH USLUBI:
           const response = await safeGenerateContent(modelName, {
             contents: contents,
             config: configObj
-          });
+          }, 2, 400, keysOverride);
           
           if (response) {
             if (response.text) {
@@ -1394,6 +1465,10 @@ ANATOMIYA VA LOTIN TILI BO'YICHA ISHLASH USLUBI:
           console.log(`Model ${modelName} busy during user chat, trying fallback...`);
           errorOccurred = err;
         }
+      }
+
+      if (!text && keysOverride) {
+        return resValue.status(502).json({ error: "Sizning API kalitingiz bilan javob olinmadi. Kalitni tekshiring yoki limitini ko'ring." });
       }
 
       if (!text) {
