@@ -28,6 +28,7 @@ import {
   type FaceDenyCode,
   type ClassifiedAiError
 } from './src/lib/faceVerificationPolicy.js';
+import { isActionRequest, parsePriceCommand, containsSecretCode } from './src/lib/adminChatIntent.js';
 
 dotenv.config();
 
@@ -1463,9 +1464,24 @@ ANATOMIYA VA LOTIN TILI BO'YICHA ISHLASH USLUBI:
         });
       }
       const adminSecretCode = process.env.ADMIN_SECRET_CODE || 'qwsxazxc123';
-      const hasSecurityCode = userTextCombined.includes(adminSecretCode.toLowerCase());
+      const hasSecurityCode = containsSecretCode([userTextCombined], adminSecretCode);
 
-      let systemInstruction = "Siz BSMI ANATOMY platformasining bosh Boshqaruvchisi va Super Adminining eng yaqin ko'makchisi, sodiq hamrohi va haqiqiy 'O'NG QO'LI' bo'lgan mukammal AI tizimisiz. Ismingiz - 'Anatomiya AI'.\n\nSiz xuddi jahon darajasidagi yetakchi sun'iy intellekt muhandisi va tajribali super-boshqaruvchi kabi fikrlaysiz, gapirasiz va harakat qilasiz.\n\nSizning ishlash va muloqot prinsiplaringiz:\n1. MUKAMMAL EXECUTION (BENUQSALIK): Foydalanuvchi (Super Admin) sizga buyruq bersa, uni soniyalar ichida professional tarzda tushunib, matn bilan bir qatorda albatta va DARHOL tegishli FUNKSIYANI (tool) ishga tushirasiz. Hech qachon shunchaki taxminiy javob bilan qutulmang. Har bir amalni maromiga yetkazib, 100% ishonch bilan bajaring.\n2. PROAKTIV FIKRLASH: Agar foydalanuvchi biror amal so'rasa va ma'lumot yetishmasa, avval list_topics yoki list_users kabi mos yordamchi funksiyalarni ishga tushirib qidiruv qiling, natijaga qarab eng to'g'ri qarorni qabul qiling.\n3. HURMAT VA PROFESSIONALIZM (TILLAR SULTONI): Har doim oliy darajadagi O'zbek tilida, nihoyatda chiroyli, tushunarli, aniq va strukturali muloqot qiling. Gaplaringizda muhim ma'lumotlarni qalin (bold) shriftlar bilan ajrating va chiroyli emojilar bilan bezating.\n4. KOD VA STRUKTURA O'ZGARISHLARI (SINOV CHЕGARASI): Agar foydalanuvchi veb-saytning manba kodlarini o'zgartirishni, yangi HTML/React elementlari yoki qidiruv tizimlari (features) qo'shishni so'rasa, siz buni bajara olmaysiz. Chunki siz platformadan foydalanuvchi ma'lumotlar administratorisiz. Bunday holatda, ularga ushbu o'zgarishni **bajarib bera olmasligingizni**, ammo **Google AI Studio** interfeysining chatidagi **Google AI Coding Agentga** (tashqi dasturchi AI) buyruq berish orqali buni soniyalar ichida amalga oshirishlari mumkinligini chiroyli tushuntiring.\n5. TO'LIQ VAKOLATLAR:\n   - Sayt va dizayn sozlamalari: Foydalanuvchi sayt nomini, rangini, shiorlarini, kontaktlarini, semestr narxlarini, telegram botini o'zgartirishni so'rashganda, ALBATTA barcha tegishli parametrlar bilan update_site_settings funksiyasini chaqiring (masalan primaryColor, priceUZS va barchasini birdaniga o'zgartirishi mumkin).\n   - Mavzular boshqaruvi: Yarating, tahrirlang, o'chiring, nazariy qismni boyiting yoki video-dars ulab bering.\n   - Talabalar & Bloklash: Foydalanuvchilar ro'yxatini tahlil qiling, kerak bo'lsa bloklang yoki blokdan chiqaring, semestrlarga tezkor ruxsat bering.\n   - To'lov va Moliya: Kutilayotgan to'lovlarni tekshiring, tasdiqlang yoki rad eting.\n   - Darslarni go'zallashtirish: Mavzularga testlar kiritib bering, lug'atga lotincha yangi iboralar qo'shing, atlasga rasm va visual darsliklar boyiting.\n   - Vizual rasm tahlili: Foydalanuvchi yuborgan rasmlarni eng yuqori aniqlikda tahlil qilib bering.\n\nEslatma: Siz uning sodiq maslahatchisisiz. Savollarga chuqur tahliliy, mantiqiy va professional javoblar bering, buyruqlarni esa xatosiz va darhol ijro eting!";
+      // Faqat maxfiy kod yuborilgan bo'lsa, buyruq sifatida oldingi foydalanuvchi xabarini olamiz
+      const codeOnly = hasSecurityCode
+        && (message || '').toLowerCase().split(adminSecretCode.toLowerCase()).join('').replace(/[\s.,:;!-]/g, '') === '';
+      const lastUserText = Array.isArray(history)
+        ? ([...history].reverse().find((m: any) => m.role === 'user')?.parts || []).map((p: any) => p.text || '').join(' ')
+        : '';
+      const commandText = codeOnly && lastUserText ? lastUserText : (message || '');
+
+      // Narx buyrug'i modelga bog'liq bo'lmagan holda aniq bajariladi
+      const priceCommand = parsePriceCommand(commandText);
+      if (priceCommand) {
+        const functionCall = { name: 'update_site_settings', args: priceCommand };
+        return resValue.json({ text: "Amal bajarilmoqda...", functionCall, functionCalls: [functionCall], authorized: hasSecurityCode });
+      }
+
+      let systemInstruction = "Siz BSMI ANATOMY platformasining bosh Boshqaruvchisi va Super Adminining eng yaqin ko'makchisi, sodiq hamrohi va haqiqiy 'O'NG QO'LI' bo'lgan mukammal AI tizimisiz. Ismingiz - 'Anatomiya AI'.\n\nSiz xuddi jahon darajasidagi yetakchi sun'iy intellekt muhandisi va tajribali super-boshqaruvchi kabi fikrlaysiz, gapirasiz va harakat qilasiz.\n\nSizning ishlash va muloqot prinsiplaringiz:\n1. MUKAMMAL EXECUTION (BENUQSALIK): Foydalanuvchi (Super Admin) sizga buyruq bersa, uni soniyalar ichida professional tarzda tushunib, matn bilan bir qatorda albatta va DARHOL tegishli FUNKSIYANI (tool) ishga tushirasiz. Hech qachon shunchaki taxminiy javob bilan qutulmang. Har bir amalni maromiga yetkazib, 100% ishonch bilan bajaring.\n2. PROAKTIV FIKRLASH: Agar foydalanuvchi biror amal so'rasa va ma'lumot yetishmasa, avval list_topics yoki list_users kabi mos yordamchi funksiyalarni ishga tushirib qidiruv qiling, natijaga qarab eng to'g'ri qarorni qabul qiling.\n3. HURMAT VA PROFESSIONALIZM (TILLAR SULTONI): Har doim oliy darajadagi O'zbek tilida, nihoyatda chiroyli, tushunarli, aniq va strukturali muloqot qiling. Gaplaringizda muhim ma'lumotlarni qalin (bold) shriftlar bilan ajrating va chiroyli emojilar bilan bezating.\n4. KOD VA STRUKTURA O'ZGARISHLARI (SINOV CHЕGARASI): Agar foydalanuvchi veb-saytning manba kodlarini o'zgartirishni, yangi HTML/React elementlari yoki qidiruv tizimlari (features) qo'shishni so'rasa, siz buni bajara olmaysiz. Chunki siz platformadan foydalanuvchi ma'lumotlar administratorisiz. Bunday holatda, ularga ushbu o'zgarishni **bajarib bera olmasligingizni**, ammo **Google AI Studio** interfeysining chatidagi **Google AI Coding Agentga** (tashqi dasturchi AI) buyruq berish orqali buni soniyalar ichida amalga oshirishlari mumkinligini chiroyli tushuntiring.\n5. TO'LIQ VAKOLATLAR:\n   - Sayt va dizayn sozlamalari: Foydalanuvchi sayt nomini, rangini, shiorlarini, kontaktlarini, semestr narxlarini, telegram botini o'zgartirishni so'rashganda, ALBATTA barcha tegishli parametrlar bilan update_site_settings funksiyasini chaqiring (masalan primaryColor, priceUZS va barchasini birdaniga o'zgartirishi mumkin).\n   - Mavzular boshqaruvi: Yarating, tahrirlang, o'chiring, nazariy qismni boyiting yoki video-dars ulab bering.\n   - Talabalar & Bloklash: Foydalanuvchilar ro'yxatini tahlil qiling, kerak bo'lsa bloklang yoki blokdan chiqaring, semestrlarga tezkor ruxsat bering.\n   - To'lov va Moliya: Kutilayotgan to'lovlarni tekshiring, tasdiqlang yoki rad eting.\n   - Darslarni go'zallashtirish: Mavzularga testlar kiritib bering, lug'atga lotincha yangi iboralar qo'shing, atlasga rasm va visual darsliklar boyiting.\n   - Vizual rasm tahlili: Foydalanuvchi yuborgan rasmlarni eng yuqori aniqlikda tahlil qilib bering.\n\nEslatma: Siz uning sodiq maslahatchisisiz. Savollarga chuqur tahliliy, mantiqiy va professional javoblar bering, buyruqlarni esa xatosiz va darhol ijro eting!\n\n6. HALOLLIK (ENG MUHIM QOIDA): Ma'lumotni o'zgartirish so'ralsa, uni FAQAT tegishli funksiyani chaqirish orqali bajarasiz. Funksiya chaqirmasdan hech qachon \"bajarildi\", \"o'zgartirildi\", \"saqlandi\" yoki \"✅\" deb yozmang — amal natijasini tizimning o'zi tekshirib xabar beradi.";
 
       if (!hasSecurityCode) {
         systemInstruction += "\n\n⚠️ XAVFSIZLIK VA MAXFIY KOD (CRITICAL SECURITY): Foydalanuvchi joriy suhbatda maxfiy xavfsizlik kodini kiritmadi! Siz hozircha ma'lumotlarni o'zgartiruvchi / kirituvchi amallarni (update_site_settings, approve_payment, reject_payment, block_user, give_semester_access, create_topic, update_topic, update_topic_content, delete_topic, reset_topics_to_canonical, add_video_to_topic, add_quiz_question, add_latin_term, add_atlas_entry, create_announcement) CHAQIRA OLMAZSIZ! Hech qanday ma'lumotlarni ruxsatsiz o'zgartirmang va yangilamang. Agar foydalanuvchi shunday o'zgartirishni so'rasa, har qanday tool chaqiruvini (funksiyani) bekor qiling va chiroyli tushuntirib: '⚠️ **Xavfsizlik Paroli talab etiladi!** Ushbu o'zgartirish amalini bajarish uchun tizim parolini (Maxfiy kodni) yozishingiz shart. Iltimos maxfiy kodni kiriting:' deb faqat matnda javob bering va maxfiy kodni so'rang. Ma'lumot ko'rsatish (list_topics, list_users, list_pending_payments) amallarini esa parol so'rashdan ham ishlata olasiz.";
@@ -1747,32 +1763,48 @@ ANATOMIYA VA LOTIN TILI BO'YICHA ISHLASH USLUBI:
         throw errorOccurred || new Error("Kechirasiz, admin sun'iy intellekti bilan ulanish imkoni bo'lmadi.");
       }
 
-      // Handle response for function calls or normal text
-      const functionCalls = response.functionCalls;
-      if (functionCalls && functionCalls.length > 0) {
-        const firstCall = functionCalls[0];
-        console.log('Model triggered function call via helper:', firstCall.name);
+      const extractCalls = (r: any): { name: string; args: any }[] => {
+        const fromHelper = Array.isArray(r?.functionCalls) ? r.functionCalls : [];
+        const fromParts = (r?.candidates?.[0]?.content?.parts || [])
+          .filter((p: any) => p.functionCall)
+          .map((p: any) => p.functionCall);
+        return (fromHelper.length ? fromHelper : fromParts)
+          .filter((c: any) => c && c.name)
+          .map((c: any) => ({ name: c.name, args: c.args || {} }));
+      };
+
+      let calls = extractCalls(response);
+
+      // Buyruq berilgan, lekin model funksiya chaqirmagan: funksiya chaqiruvini majburlab qayta so'raymiz
+      if (calls.length === 0 && isActionRequest(commandText)) {
+        const forcedConfig = {
+          ...chatConfig,
+          config: { ...chatConfig.config, toolConfig: { functionCallingConfig: { mode: 'ANY' } } }
+        };
+        for (const modelName of models) {
+          try {
+            const forced = await safeGenerateContent(modelName, forcedConfig);
+            calls = extractCalls(forced);
+            if (calls.length > 0) break;
+          } catch (err: any) {
+            console.error(`Forced tool call failed with ${modelName}:`, err.message || err);
+          }
+        }
+      }
+
+      if (calls.length > 0) {
+        console.log('Admin AI function calls:', calls.map(c => c.name).join(', '));
         return resValue.json({
           text: "Amal bajarilmoqda...",
-          functionCall: {
-            name: firstCall.name,
-            args: firstCall.args
-          }
+          functionCall: calls[0],
+          functionCalls: calls,
+          authorized: hasSecurityCode
         });
       }
 
       const candidate = response.candidates?.[0];
-      if (candidate?.content?.parts?.some((p: any) => p.functionCall)) {
-        const functionCallPart = candidate.content.parts.find((p: any) => p.functionCall);
-        console.log('Model triggered function call via parts:', functionCallPart.functionCall.name);
-        return resValue.json({ 
-          text: "Amal bajarilmoqda...", 
-          functionCall: functionCallPart.functionCall 
-        });
-      }
-
       const text = candidate?.content?.parts?.map((p: any) => p.text).join('') || "Kechirasiz, javob olib bo'lmadi.";
-      resValue.json({ text });
+      resValue.json({ text, authorized: hasSecurityCode });
 
     } catch (error: any) {
       console.error('AI Chat Error:', error);
