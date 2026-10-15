@@ -1317,22 +1317,30 @@ ${inputJSON}`;
       return res.status(400).json({ ok: false, error: "Kalit noto'g'ri formatda. Google AI Studio kaliti 'AQ.' yoki 'AIza' bilan boshlanishi kerak." });
     }
 
-    try {
-      const ai = makeAIClient(key);
-      const r: any = await ai.models.generateContent({
-        model: 'gemini-flash-latest',
-        contents: [{ role: 'user', parts: [{ text: 'Salom' }] }]
-      });
-      const replied = Boolean(r?.text) || (r?.candidates?.[0]?.content?.parts?.length > 0);
-      if (!replied) throw new Error('empty response');
-      return res.json({ ok: true });
-    } catch (err: any) {
-      const msg = String(err?.message || err || '');
-      let hint = "Kalit ishlamadi. Kalitni qayta nusxalab ko'ring.";
-      if (/429|quota|RESOURCE_EXHAUSTED/i.test(msg)) hint = "Bu kalit limiti tugagan yoki juda ko'p so'rov yuborilgan. Keyinroq urinib ko'ring.";
-      else if (/API_KEY_INVALID|API key not valid|PERMISSION_DENIED|\b400\b|\b403\b/i.test(msg)) hint = "Kalit noto'g'ri yoki bu kalitga ruxsat yo'q. Google AI Studio'da yangi kalit yarating.";
-      return res.status(400).json({ ok: false, error: hint });
+    // Bir nechta modelni sinaymiz: bitta model bu kalitga ruxsat bermasligi mumkin
+    const checkModels = ['gemini-flash-latest', 'gemini-2.5-flash'];
+    let lastDetail = '';
+    for (const model of checkModels) {
+      try {
+        const ai = makeAIClient(key);
+        const r: any = await ai.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: [{ text: 'Salom' }] }]
+        });
+        const replied = Boolean(r?.text) || (r?.candidates?.[0]?.content?.parts?.length > 0);
+        if (replied) return res.json({ ok: true, model });
+        lastDetail = 'empty response';
+      } catch (err: any) {
+        lastDetail = String(err?.message || err || '').slice(0, 300);
+      }
     }
+
+    const msg = lastDetail;
+    let hint = "Kalit ishlamadi. Kalitni qayta nusxalab ko'ring.";
+    if (/429|quota|RESOURCE_EXHAUSTED/i.test(msg)) hint = "Bu kalit limiti tugagan yoki juda ko'p so'rov yuborilgan. Keyinroq urinib ko'ring.";
+    else if (/API_KEY_INVALID|API key not valid|PERMISSION_DENIED|\b403\b/i.test(msg)) hint = "Kalit Gemini tomonidan rad etildi. Google AI Studio'da shu kalit uchun Generative Language API ruxsatini va API cheklovlarini tekshiring.";
+    else if (/\b400\b|INVALID_ARGUMENT/i.test(msg)) hint = "Google bu so'rovni qabul qilmadi (400). Kalitni qayta nusxalab ko'ring yoki yangi kalit yarating.";
+    return res.status(400).json({ ok: false, error: hint, detail: msg.replace(/AQ\.[0-9A-Za-z_.\-]+|AIza[0-9A-Za-z_\-]+/g, '[kalit]') });
   });
 
   app.post('/api/ai-chat', async (req: express.Request, resValue: any) => {
