@@ -1314,7 +1314,7 @@ ${inputJSON}`;
 
     const key = String(req.body?.key || '').trim();
     if (!isValidGeminiKeyShape(key)) {
-      return res.status(400).json({ ok: false, error: "Kalit noto'g'ri formatda. U 'AIza' bilan boshlanishi kerak." });
+      return res.status(400).json({ ok: false, error: "Kalit noto'g'ri formatda. Google AI Studio kaliti 'AQ.' yoki 'AIza' bilan boshlanishi kerak." });
     }
 
     try {
