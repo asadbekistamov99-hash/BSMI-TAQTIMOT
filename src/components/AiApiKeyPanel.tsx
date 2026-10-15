@@ -46,7 +46,9 @@ export default function AiApiKeyPanel({ user }: { user: any }) {
       body: JSON.stringify({ key }),
     });
     const data = await res.json().catch(() => ({}));
-    return res.ok && data.ok ? null : (data.error || 'Kalitni tekshirib bo‘lmadi.');
+    if (res.ok && data.ok) return null;
+    const base = data.error || 'Kalitni tekshirib bo‘lmadi.';
+    return data.detail ? `${base} Google javobi: ${data.detail}` : base;
   };
 
   const handleSave = async () => {
