@@ -74,6 +74,8 @@ export interface LocalSample {
   score: number;
   /** face box width divided by frame width */
   faceRatio: number;
+  /** horizontal head rotation (see estimateYaw); NaN/undefined when unknown */
+  yaw?: number;
 }
 
 export interface LocalDecision {
@@ -86,6 +88,11 @@ export interface LocalDecision {
   /** display-only similarity 0..1 */
   confidence: number;
   samples: number;
+  /** the sample closest to a template (only on success) — used for adaptive learning */
+  bestSample?: LocalSample;
+  bestDistance?: number;
+  /** per-sample best-template distances, for diagnostics */
+  distances?: number[];
 }
 
 /** All descriptors pairwise (near-)identical → a static image replayed frame after frame. */
@@ -98,14 +105,15 @@ export function looksFrozen(samples: LocalSample[], epsilon = LOCAL_IDENTICAL_EP
 }
 
 export function decideLocalVerification(
-  enrolled: ArrayLike<number> | null | undefined,
+  enrolled: ArrayLike<number> | ArrayLike<number>[] | null | undefined,
   samples: LocalSample[],
   threshold: number = LOCAL_MATCH_DISTANCE
 ): LocalDecision {
   const t = resolveLocalThreshold(String(threshold));
   const base = { distance: Number.POSITIVE_INFINITY, confidence: 0, samples: 0 };
+  const templates = normalizeTemplates(enrolled);
 
-  if (!isDescriptor(enrolled)) {
+  if (templates.length === 0) {
     return {
       ...base,
       verified: false,
@@ -115,9 +123,14 @@ export function decideLocalVerification(
     };
   }
 
-  const usable = samples.filter(s =>
+  const detected = samples.filter(s =>
     isDescriptor(s.descriptor) && s.score >= LOCAL_MIN_DETECTION_SCORE && s.faceRatio >= LOCAL_MIN_FACE_RATIO
   );
+  // Prefer frontal frames, but never throw away a whole pass because the yaw
+  // estimate was noisy: when fewer than LOCAL_MIN_SAMPLES frontal frames exist,
+  // fall back to every detected frame (the median still resists one bad frame).
+  const frontal = detected.filter(s => typeof s.yaw !== 'number' || !Number.isFinite(s.yaw) || isFrontal(s.yaw));
+  const usable = frontal.length >= LOCAL_MIN_SAMPLES ? frontal : detected;
   const tooFar = samples.length > 0 && usable.length < LOCAL_MIN_SAMPLES && samples.some(s => s.faceRatio > 0 && s.faceRatio < LOCAL_MIN_FACE_RATIO);
 
   if (usable.length < LOCAL_MIN_SAMPLES) {
@@ -144,12 +157,14 @@ export function decideLocalVerification(
     };
   }
 
-  const distances = usable.map(s => euclideanDistance(enrolled, s.descriptor));
+  const distances = usable.map(s => bestTemplateDistance(templates, s.descriptor));
   const d = median(distances);
   const confidence = distanceToSimilarity(d);
+  let bestIdx = 0;
+  for (let i = 1; i < distances.length; i++) if (distances[i] < distances[bestIdx]) bestIdx = i;
 
   if (d <= t) {
-    return { verified: true, retryable: false, reason: 'Yuz muvaffaqiyatli solishtirildi', distance: d, confidence, samples: usable.length };
+    return { verified: true, retryable: false, reason: 'Yuz muvaffaqiyatli solishtirildi', distance: d, confidence, samples: usable.length, bestSample: usable[bestIdx], bestDistance: distances[bestIdx], distances };
   }
   if (d > LOCAL_NO_MATCH_DISTANCE) {
     return {
@@ -159,7 +174,8 @@ export function decideLocalVerification(
       reason: "Yuz ro'yxatdan o'tgan surat bilan mos kelmadi.",
       distance: d,
       confidence,
-      samples: usable.length
+      samples: usable.length,
+      distances
     };
   }
   return {
@@ -169,8 +185,145 @@ export function decideLocalVerification(
     reason: `Moslik darajasi yetarli emas (${Math.round(confidence * 100)}%). Xonani yoritib, ko'zoynak/bosh kiyimni olib, kameraga yaqinroq va to'g'ri qarang.`,
     distance: d,
     confidence,
-    samples: usable.length
+    samples: usable.length,
+    distances
   };
+}
+
+// ---------------------------------------------------------------------------
+// Multi-template matching, adaptive learning, pose and liveness helpers.
+// ---------------------------------------------------------------------------
+
+/** Maximum descriptors kept per user (each ~1 KB in Firestore). */
+export const MAX_TEMPLATES = 6;
+/** A verification this close to a template is a "strong" match that may teach a new template. */
+export const TEMPLATE_LEARN_DISTANCE = 0.42;
+/** A new template must be at least this far from every existing one to add information. */
+export const TEMPLATE_MIN_DIVERSITY = 0.22;
+/** Stop collecting as soon as this many consecutive samples all match. */
+export const EARLY_ACCEPT_SAMPLES = 3;
+/** |yaw| above this = head turned too far for a reliable descriptor. */
+export const MAX_FRONTAL_YAW = 0.42;
+/** Head-turn challenge: how far the yaw must move from the baseline. */
+export const CHALLENGE_TURN_YAW = 0.2;
+/** Head-turn challenge: yaw must come back within this of the baseline afterwards. */
+export const CHALLENGE_RETURN_YAW = 0.12;
+
+/** Accepts a single descriptor or a list and returns a clean list of valid templates. */
+export function normalizeTemplates(input: unknown): ArrayLike<number>[] {
+  if (isDescriptor(input)) return [input];
+  if (Array.isArray(input)) return input.filter(isDescriptor) as ArrayLike<number>[];
+  return [];
+}
+
+/** Smallest distance from a sample to any template (∞ when there are no templates). */
+export function bestTemplateDistance(templates: ArrayLike<number>[], sample: ArrayLike<number>): number {
+  let best = Number.POSITIVE_INFINITY;
+  for (const t of templates) {
+    const d = euclideanDistance(t, sample);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/** True when the last N usable samples all match — no need to wait for more frames. */
+export function canEarlyAccept(
+  templates: ArrayLike<number>[],
+  samples: LocalSample[],
+  threshold: number = LOCAL_MATCH_DISTANCE,
+  n: number = EARLY_ACCEPT_SAMPLES
+): boolean {
+  if (templates.length === 0 || samples.length < n) return false;
+  const tail = samples.slice(-n);
+  if (looksFrozen(tail)) return false;
+  return tail.every(s => s.score >= LOCAL_MIN_DETECTION_SCORE && s.faceRatio >= LOCAL_MIN_FACE_RATIO && bestTemplateDistance(templates, s.descriptor) <= threshold);
+}
+
+/**
+ * Adaptive learning (what phones do): after a strong match, remember the new
+ * descriptor when it is different enough from what we already store (new
+ * lighting, glasses, beard...). Never learns from a weak match, and never from a
+ * descriptor that is already represented.
+ */
+export function shouldLearnTemplate(templates: ArrayLike<number>[], candidate: ArrayLike<number>): boolean {
+  if (!isDescriptor(candidate) || templates.length === 0 || templates.length >= MAX_TEMPLATES) return false;
+  let nearest = Number.POSITIVE_INFINITY;
+  for (const t of templates) nearest = Math.min(nearest, euclideanDistance(t, candidate));
+  return nearest <= TEMPLATE_LEARN_DISTANCE && nearest >= TEMPLATE_MIN_DIVERSITY;
+}
+
+export interface Point { x: number; y: number }
+
+const dist2d = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+const mean2d = (pts: Point[]): Point => ({
+  x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+  y: pts.reduce((s, p) => s + p.y, 0) / pts.length
+});
+
+/**
+ * Horizontal head rotation from 68-point landmarks: nose tip offset from the
+ * midpoint between the eyes, normalised by the eye distance. 0 = frontal,
+ * negative/positive = turned to one side. NaN when landmarks are unusable.
+ */
+export function estimateYaw(landmarks: Point[] | null | undefined): number {
+  if (!landmarks || landmarks.length < 68) return Number.NaN;
+  const leftEye = mean2d(landmarks.slice(36, 42));
+  const rightEye = mean2d(landmarks.slice(42, 48));
+  const eyeDist = dist2d(leftEye, rightEye);
+  if (!(eyeDist > 0)) return Number.NaN;
+  const mid = { x: (leftEye.x + rightEye.x) / 2, y: (leftEye.y + rightEye.y) / 2 };
+  const nose = landmarks[30];
+  return (nose.x - mid.x) / eyeDist;
+}
+
+export function isFrontal(yaw: number, limit: number = MAX_FRONTAL_YAW): boolean {
+  return Number.isFinite(yaw) && Math.abs(yaw) <= limit;
+}
+
+/**
+ * Passive micro-motion: a live person never holds the head perfectly still. The
+ * nose tip position (normalised by face width) must vary across samples.
+ */
+export function hasMicroMotion(noseTrack: Array<{ x: number; y: number; faceWidth: number }>, minStd = 0.006): boolean {
+  const pts = noseTrack.filter(p => p.faceWidth > 0);
+  if (pts.length < 3) return false;
+  const xs = pts.map(p => p.x / p.faceWidth);
+  const ys = pts.map(p => p.y / p.faceWidth);
+  const std = (v: number[]) => {
+    const m = v.reduce((s, x) => s + x, 0) / v.length;
+    return Math.sqrt(v.reduce((s, x) => s + (x - m) * (x - m), 0) / v.length);
+  };
+  return Math.max(std(xs), std(ys)) >= minStd;
+}
+
+export type ChallengeState = 'waiting' | 'turned' | 'passed';
+
+/**
+ * Head-turn challenge evaluator (pure): feed it the yaw series so far, get the
+ * state. Passed = the head turned clearly to either side and came back to the
+ * centre. A printed photo cannot do that; a replayed video would have to guess
+ * when the challenge starts.
+ */
+export function evaluateHeadTurn(yaws: number[], baseline: number, turn = CHALLENGE_TURN_YAW, back = CHALLENGE_RETURN_YAW): ChallengeState {
+  let turnedAt = -1;
+  for (let i = 0; i < yaws.length; i++) {
+    const y = yaws[i];
+    if (!Number.isFinite(y)) continue;
+    if (turnedAt < 0 && Math.abs(y - baseline) >= turn) turnedAt = i;
+    else if (turnedAt >= 0 && Math.abs(y - baseline) <= back) return 'passed';
+  }
+  return turnedAt >= 0 ? 'turned' : 'waiting';
+}
+
+/** Live guidance text for the tracking phase (null = everything is fine). */
+export function guidanceFor(face: { score: number; faceRatio: number; yaw: number } | null, lumMean?: number): string | null {
+  if (typeof lumMean === 'number' && lumMean < 38) return "Yorug'lik kam — chiroqni yoqing";
+  if (!face) return "Yuz ko'rinmayapti — kameraga qarang";
+  if (face.faceRatio < LOCAL_MIN_FACE_RATIO) return "Yaqinroq keling";
+  if (face.faceRatio > 0.75) return "Biroz uzoqlashing";
+  if (!isFrontal(face.yaw)) return "To'g'ri qarang";
+  if (face.score < LOCAL_MIN_DETECTION_SCORE) return "Yuzingiz to'liq ko'rinsin";
+  return null;
 }
 
 /** Firestore stores plain arrays; Float32Array → number[] rounded to 5 decimals (~1 KB). */

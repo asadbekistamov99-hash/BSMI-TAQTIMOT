@@ -26,9 +26,19 @@ yuzdan 128 o'lchamli tavsif (descriptor) olinadi va ro'yxatdan o'tgan surat tavs
   (`settings/global.features.faceIdEngine`: `local` standart, `gemini` — server AI).
 - Sozlamalar: `VITE_FACE_LOCAL_THRESHOLD` (0.3–0.8), `VITE_FACE_API_SCRIPT_URL`, `VITE_FACE_API_MODEL_URL`
   (CDN bloklansa o'z serveringizga joylab ko'rsating). CDN zaxiralari: jsdelivr → unpkg → jsdelivr/gh.
-- Cheklov: brauzer dvigatelining jonlilik tekshiruvi Gemini'nikidan sodda (harakatsiz kadrlarni ushlaydi,
-  lekin sifatli video/suratni ajratmasligi mumkin). Bu deterrent sifatida yetarli; qat'iy anti-spoofing
-  kerak bo'lsa Gemini dvigateliga o'ting (ishlaydigan kalit bilan).
+- Cheklov: passiv rejimda jonlilik tekshiruvi sodda (harakatsiz kadrlar → `SPOOF`, mikro-harakat auditga
+  yoziladi). Surat/video bilan aldashga qarshi **boshni burish sinovi** bor (quyida).
+
+### Tezlik, ishonchlilik, kuchlilik (2026-09-23)
+
+| Yo'nalish | Nima qilingan |
+|---|---|
+| Tezlik | Model yuklangach darhol "isitiladi" (birinchi inferens GPU shaderlarini kompilyatsiya qiladi); tekshiruv sikli kutishsiz, ketma-ket 3 ta kadr mos kelgan zahoti to'xtaydi (odatda 0.7–1.5 s); detektor kirish o'lchami 224; kamera "tinchlanish" kutishi 0.5 s |
+| Ishonchlilik | Bir nechta **andoza** (`faceIdDescriptors`, 6 tagacha): ro'yxatdan o'tishda 3 ta to'g'ri qaragan, yorug', yaqin kadr olinadi; har kirishda eng yaqin andozaga masofa hisoblanadi; kuchli moslikdan keyin yetarlicha farq qiluvchi yangi tavsif o'z-o'zidan qo'shiladi (yangi yorug'lik, ko'zoynak, soqol) — telefonlardagi kabi "o'rganish" |
+| To'g'ri qarash | 68 nuqtali landmark'dan bosh burilishi (yaw) hisoblanadi; burilgan kadrlar hisobga olinmaydi, foydalanuvchiga "To'g'ri qarang" ko'rsatiladi |
+| Jonli ko'rsatma | Tekshiruv paytida "Yaqinroq keling", "Biroz uzoqlashing", "Yorug'lik kam", "Yuz ko'rinmayapti" |
+| Kuchlilik | Admin → Modulni Boshqarish → **"Face ID: boshni burish sinovi"** yoqilsa, yuz mos kelgach 7 soniya ichida boshni chapga/o'ngga burib qaytarish talab qilinadi (faqat landmark, 10–20 fps). Surat buni bajara olmaydi, video esa sinov vaqtini bilmaydi. Standart: o'chiq |
+| Diagnostika | Audit yozuvida masofa, kadrlar soni, davomiyligi, andozalar soni, mikro-harakat belgisi; UI "Tafsilotlar" da ham |
 
 ## Asosiy sabab (2026-09-22 da ko'rilgan "Tizim ulanishida muammo yuz berdi")
 

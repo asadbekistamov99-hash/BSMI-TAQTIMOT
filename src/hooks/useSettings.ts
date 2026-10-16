@@ -69,7 +69,8 @@ const defaultSettings: SystemSettings = {
     enableLatin: true,
     enableNotifications: true,
     enableFaceId: true,
-    faceIdEngine: 'local'
+    faceIdEngine: 'local',
+    faceIdActiveLiveness: false
   }
 };
 
