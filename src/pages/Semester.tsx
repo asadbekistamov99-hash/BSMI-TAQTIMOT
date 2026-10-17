@@ -547,30 +547,32 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
                 } group`}
               >
                 <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4 sm:gap-6">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg transition-all border ${
+                  <div className="flex items-start sm:items-center gap-4 sm:gap-6 flex-1 min-w-0">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg transition-all border shrink-0 ${
                       !isUnlocked 
                         ? "bg-slate-100 text-slate-400 border-slate-200 group-hover:bg-brand-accent group-hover:text-brand-primary group-hover:border-brand-accent" 
                         : "bg-slate-50 text-brand-primary border-brand-border group-hover:bg-brand-accent group-hover:text-brand-primary group-hover:border-brand-accent"
                     }`}>
                       {topic.order}
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       {(() => {
                         const rawTitle = getLocalized(topic.title);
                         const parsed = parseTopicTitle(rawTitle);
                         return (
                           <div className="mb-1">
-                            <h3 className="text-base sm:text-lg font-bold text-brand-primary tracking-tight group-hover:text-brand-accent transition-colors">
+                            <h3 className="text-base sm:text-lg font-bold text-brand-primary tracking-tight group-hover:text-brand-accent transition-colors leading-snug">
                               {parsed.mainTitle || rawTitle}
                             </h3>
                             {parsed.subParts.length > 0 && (
-                              <div className="flex flex-wrap items-center gap-1.5 mt-1 mb-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2 mb-2.5 max-w-2xl">
                                 {parsed.subParts.map((sub, sIdx) => (
-                                  <span key={sIdx} className="text-xs text-slate-500 font-medium inline-flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-brand-accent/60 shrink-0"></span>
-                                    <span>{sub}</span>
-                                  </span>
+                                  <div key={sIdx} className="text-xs text-slate-600 font-medium inline-flex items-center gap-1.5 bg-slate-100/70 hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200/60 transition-colors">
+                                    <span className="w-4 h-4 rounded-md bg-brand-accent/40 text-brand-primary flex items-center justify-center text-[9px] font-black shrink-0">
+                                      {sIdx + 1}
+                                    </span>
+                                    <span className="truncate">{sub}</span>
+                                  </div>
                                 ))}
                               </div>
                             )}
@@ -586,6 +588,7 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
                             m => m.topicIds?.includes(`sem_${semesterId}_top_${topic.order}`) || (topic.defaultModelId && m.id === topic.defaultModelId)
                           );
                           if (!topicModel) return null;
+                          return (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -610,6 +613,7 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
                               )}
                               <span>3D: {getLocalized(topicModel.title)} {!isUnlocked && '🔒'}</span>
                             </button>
+                          );
                         })()}
                         {!isUnlocked && (
                           <span className="flex items-center gap-1 text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full font-bold">

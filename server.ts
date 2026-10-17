@@ -1086,9 +1086,15 @@ Materialni faqat Markdown formatida va foydalanuvchi tilida qaytar.`;
   app.post('/api/translate-theory', async (req: express.Request, resValue: any) => {
     const startTime = Date.now();
     try {
-      const { text, language } = req.body;
+      const { text, language, userKey } = req.body;
       if (!text) {
         return resValue.status(400).json({ error: 'Matn kiritilmagan' });
+      }
+
+      let keysOverride: string[] | undefined;
+      if (typeof userKey === 'string' && userKey.trim() !== '' && isValidGeminiKeyShape(userKey.trim())) {
+        keysOverride = [userKey.trim()];
+        console.log('[AI TRANSLATOR] Using personal user API key for theory translation');
       }
 
       // Never apply artificial simulation delays to translations to ensure < 10s guarantee
@@ -1131,7 +1137,7 @@ ${chunkText}`;
               config: {
                 temperature: 0.1
               }
-            });
+            }, 2, 400, keysOverride);
 
             // 35s timeout safeguard per chunk
             const timeoutPromise = new Promise<never>((_, reject) => 
@@ -1182,9 +1188,15 @@ ${chunkText}`;
   app.post('/api/translate-quizzes', async (req: express.Request, resValue: any) => {
     const startTime = Date.now();
     try {
-      const { quizzes, language } = req.body;
+      const { quizzes, language, userKey } = req.body;
       if (!quizzes || !Array.isArray(quizzes) || quizzes.length === 0) {
         return resValue.status(400).json({ error: 'Quizzes must be provided as an array.' });
+      }
+
+      let keysOverride: string[] | undefined;
+      if (typeof userKey === 'string' && userKey.trim() !== '' && isValidGeminiKeyShape(userKey.trim())) {
+        keysOverride = [userKey.trim()];
+        console.log('[AI TRANSLATOR] Using personal user API key for quiz translation');
       }
 
       const targetLang = language === 'ru' ? 'Russian (Русский)' : language === 'en' ? 'English' : 'Uzbek (O\'zbekcha)';
@@ -1242,7 +1254,7 @@ ${inputJSON}`;
                 }
               }
             }
-          });
+          }, 2, 400, keysOverride);
 
           // 35s timeout safeguard
           const timeoutPromise = new Promise<never>((_, reject) => 
@@ -1501,7 +1513,13 @@ ANATOMIYA VA LOTIN TILI BO'YICHA ISHLASH USLUBI:
   app.post('/api/admin/chat', async (req: express.Request, resValue: any) => {
     console.log('Chat request received:', req.body.message?.substring(0, 50));
     try {
-      const { message, history, images } = req.body;
+      const { message, history, images, userKey } = req.body;
+      
+      let keysOverride: string[] | undefined;
+      if (typeof userKey === 'string' && userKey.trim() !== '' && isValidGeminiKeyShape(userKey.trim())) {
+        keysOverride = [userKey.trim()];
+        console.log('[ADMIN AI CHAT] Using personal user API key for admin chat');
+      }
       
       const contents = [];
       if (Array.isArray(history) && history.length > 0) {
@@ -1832,7 +1850,7 @@ ANATOMIYA VA LOTIN TILI BO'YICHA ISHLASH USLUBI:
       for (const modelName of models) {
         try {
           console.log(`Trying model: ${modelName} for Admin AI Chat...`);
-          response = await safeGenerateContent(modelName, chatConfig);
+          response = await safeGenerateContent(modelName, chatConfig, 2, 400, keysOverride);
           if (response) {
             break;
           }
@@ -1866,7 +1884,7 @@ ANATOMIYA VA LOTIN TILI BO'YICHA ISHLASH USLUBI:
         };
         for (const modelName of models) {
           try {
-            const forced = await safeGenerateContent(modelName, forcedConfig);
+            const forced = await safeGenerateContent(modelName, forcedConfig, 2, 400, keysOverride);
             calls = extractCalls(forced);
             if (calls.length > 0) break;
           } catch (err: any) {

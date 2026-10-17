@@ -6873,6 +6873,7 @@ function SupportManager() {
 }
 
 import ReactMarkdown from 'react-markdown';
+import { getActiveAiKeySync } from '../lib/userAiKey';
 
 function AIChatAssistant({ settings }: { settings: any }) {
   const [messages, setMessages] = useState<{ role: 'user' | 'model', content: string, images?: string[] }[]>([
@@ -6882,8 +6883,17 @@ function AIChatAssistant({ settings }: { settings: any }) {
   const [isTyping, setIsTyping] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
   const [selectedImages, setSelectedImages] = useState<{ data: string, mimeType: string }[]>([]);
+  const [activeKey, setActiveKey] = useState<string | null>(getActiveAiKeySync());
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyChange = (e: any) => {
+      setActiveKey(e.detail?.key || getActiveAiKeySync());
+    };
+    window.addEventListener('bsmi_ai_key_changed', handleKeyChange);
+    return () => window.removeEventListener('bsmi_ai_key_changed', handleKeyChange);
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -6968,7 +6978,8 @@ function AIChatAssistant({ settings }: { settings: any }) {
         body: JSON.stringify({ 
           message: userMessage || "Ushbu rasmni tahlil qiling va platformadagi tegishli joylarni ko'rib chiqing.", 
           history,
-          images: currentImages
+          images: currentImages,
+          userKey: activeKey || undefined
         })
       });
 
@@ -7446,6 +7457,11 @@ function AIChatAssistant({ settings }: { settings: any }) {
             <div className="flex items-center gap-2 mt-1">
               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
               <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Super Admin Rejimi</span>
+              {activeKey && (
+                <span className="text-[9px] font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/25 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                  <Key size={10} /> Shaxsiy API Kalit Faol
+                </span>
+              )}
             </div>
           </div>
         </div>

@@ -23,6 +23,7 @@ import TopicReferencesViewer from '../components/TopicReferencesViewer';
 import TopicTheoryReader from '../components/TopicTheoryReader';
 import TopicModelViewerModal from '../components/TopicModelViewerModal';
 import { ANATOMY_MODELS, SEED_MODELS, type AnatomyModel } from '../data/anatomyModels';
+import { getActiveUserAiKey } from '../lib/userAiKey';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
 import { parseDate } from '../lib/dateUtils';
@@ -59,12 +60,15 @@ export function parseTopicTitle(titleStr: string) {
     str = str.substring(prefixMatch[0].length).trim();
   }
 
-  const parts = str.split(/(?<=[.!?])\s+(?=[A-ZА-ЯЁЎҚҒҲ0-9])/).map(p => p.trim().replace(/[.;]$/, '')).filter(Boolean);
+  // Split by period followed by space or semicolon/colon
+  let parts = str.split(/\.\s+/).map(p => p.trim().replace(/[.;]$/, '')).filter(Boolean);
   if (parts.length <= 1) {
-    const colonParts = str.split(':').map(p => p.trim()).filter(Boolean);
+    const colonParts = str.split(/[:;]\s+/).map(p => p.trim().replace(/[.;]$/, '')).filter(Boolean);
     if (colonParts.length > 1) {
-      return { orderPrefix, mainTitle: colonParts[0], subParts: colonParts.slice(1) };
+      parts = colonParts;
     }
+  }
+  if (parts.length <= 1) {
     return { orderPrefix, mainTitle: str, subParts: [] };
   }
   return { orderPrefix, mainTitle: parts[0], subParts: parts.slice(1) };
@@ -323,6 +327,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
     const startT = Date.now();
     try {
       const uzText = topic.theory?.uz || (typeof topic.theory === 'string' ? topic.theory : '');
+      const userKey = await getActiveUserAiKey(auth.currentUser?.uid);
       const response = await fetch('/api/translate-theory', {
         method: 'POST',
         headers: {
@@ -330,7 +335,8 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
         },
         body: JSON.stringify({
           text: uzText,
-          language: targetLang
+          language: targetLang,
+          userKey: userKey || undefined
         }),
       });
       if (!response.ok) {
@@ -1084,17 +1090,27 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                 {t('study.unlocked').toUpperCase()} {topic.order}
               </span>
             </div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight leading-[1.15] mb-4 max-w-4xl">
+            <h1 className="text-2xl sm:text-3xl md:text-5xl font-black text-white tracking-tight leading-[1.15] mb-4 max-w-4xl">
               {parsedTopicTitle.mainTitle || topicTitle}
             </h1>
             {parsedTopicTitle.subParts.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 mb-2 max-w-3xl">
-                {parsedTopicTitle.subParts.map((sub, idx) => (
-                  <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 backdrop-blur-md border border-white/15 text-slate-200 text-xs font-semibold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-brand-accent"></span>
-                    {sub}
+              <div className="my-5 max-w-4xl">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-5 h-0.5 bg-brand-accent"></span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-brand-accent">
+                    Mavzu Tarkibiy Qismlari va Rejasi
                   </span>
-                ))}
+                </div>
+                <div className={`grid grid-cols-1 sm:grid-cols-2 ${parsedTopicTitle.subParts.length > 2 ? 'lg:grid-cols-3' : ''} gap-2.5`}>
+                  {parsedTopicTitle.subParts.map((sub, idx) => (
+                    <div key={idx} className="flex items-start gap-2.5 p-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/15 text-slate-100 text-xs font-semibold shadow-xs">
+                      <span className="w-5 h-5 rounded-lg bg-brand-accent text-brand-primary flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5 shadow-xs">
+                        {idx + 1}
+                      </span>
+                      <span className="leading-snug">{sub}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </motion.div>
@@ -2354,172 +2370,189 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                   : 'bg-[#0f1115] text-slate-200 border-slate-800'
             }`}
           >
-            {/* Top Controls Toolbar */}
-            <div className={`px-3 sm:px-6 py-2.5 sm:py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b shrink-0 w-full ${
+            {/* Top Controls Toolbar - 100% Responsive, Zero Cut-off */}
+            <div className={`px-3 sm:px-6 py-2.5 sm:py-3 border-b shrink-0 w-full transition-colors z-20 ${
               readTheme === 'light' 
-                ? 'border-slate-100 bg-slate-50' 
+                ? 'border-slate-200 bg-slate-50/95 backdrop-blur-md' 
                 : readTheme === 'warm' 
-                  ? 'border-[#EBDCC5] bg-[#FAF5ED]' 
-                  : 'border-slate-800 bg-[#161a22]'
+                  ? 'border-[#EBDCC5] bg-[#FAF5ED]/95 backdrop-blur-md' 
+                  : 'border-slate-800 bg-[#161a22]/95 backdrop-blur-md'
             }`}>
-              {/* Title Column */}
-              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 max-w-full md:max-w-xs lg:max-w-sm xl:max-w-md shrink">
-                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-brand-accent/20 flex items-center justify-center shrink-0">
-                  <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary" />
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-4">
+                {/* Topic Info & Order (Left) */}
+                <div className="flex items-center justify-between md:justify-start gap-2.5 sm:gap-3 min-w-0 max-w-full md:max-w-sm lg:max-w-md xl:max-w-lg shrink">
+                  <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-brand-accent/25 flex items-center justify-center shrink-0 shadow-xs">
+                      <BookOpen className="w-4 h-4 text-brand-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-2 py-0.5 rounded-md bg-brand-accent text-brand-primary text-[9px] sm:text-[10px] font-black uppercase tracking-wider shrink-0 shadow-xs">
+                          {topic.order}-Mavzu
+                        </span>
+                        <span className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-widest ${
+                          readTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'
+                        }`}>
+                          Mutolaa Rejimi
+                        </span>
+                      </div>
+                      <h3 className={`font-black text-xs sm:text-sm uppercase leading-tight truncate mt-0.5 ${
+                        readTheme === 'dark' ? 'text-white' : 'text-brand-primary'
+                      }`} title={topicTitle}>
+                        {parsedTopicTitle.mainTitle || topicTitle}
+                      </h3>
+                    </div>
+                  </div>
+
+                  {/* Chiqish (Mobile only - visible on small screens < md) */}
+                  <button 
+                    onClick={() => setIsFullscreen(false)}
+                    className="md:hidden flex items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white font-black px-3 py-1.5 rounded-xl active:scale-95 transition-all shadow-md cursor-pointer shrink-0"
+                    title="Chiqish"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span className="text-xs">Chiqish</span>
+                  </button>
                 </div>
-                <div className="min-w-0 flex flex-col">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-md bg-brand-accent/30 text-brand-primary text-[9px] sm:text-[10px] font-black uppercase tracking-wider shrink-0">
-                      {topic.order}-Mavzu
-                    </span>
-                    <span className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-widest ${
+
+                {/* Reader Controls Toolbar (Right) - ALWAYS 100% VISIBLE & FUNCTIONAL */}
+                <div className="flex items-center justify-between md:justify-end gap-2 sm:gap-3 shrink-0 text-xs font-sans w-full md:w-auto">
+                  {/* Matn o'lchami (A / A+ / A++) */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className={`text-[10px] font-bold mr-0.5 uppercase hidden sm:inline ${
                       readTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'
+                    }`}>Matn:</span>
+                    <div className={`flex items-center p-0.5 rounded-xl border shadow-xs ${
+                      readTheme === 'dark' ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
                     }`}>
-                      Mutolaa Rejimi
-                    </span>
+                      <button 
+                        onClick={() => setTextSize('normal')}
+                        className={`px-2.5 py-1 rounded-lg font-bold transition-all text-xs cursor-pointer ${
+                          textSize === 'normal' 
+                            ? 'bg-brand-accent text-brand-primary font-black shadow-sm ring-1 ring-brand-accent/50' 
+                            : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'
+                        }`}
+                        title="Oddiy matn o'lchami (A)"
+                      >
+                        A
+                      </button>
+                      <button 
+                        onClick={() => setTextSize('large')}
+                        className={`px-2.5 py-1 rounded-lg font-bold transition-all text-xs cursor-pointer ${
+                          textSize === 'large' 
+                            ? 'bg-brand-accent text-brand-primary font-black shadow-sm ring-1 ring-brand-accent/50' 
+                            : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'
+                        }`}
+                        title="Kattaroq matn o'lchami (A+)"
+                      >
+                        A+
+                      </button>
+                      <button 
+                        onClick={() => setTextSize('extra')}
+                        className={`px-2.5 py-1 rounded-lg font-bold transition-all text-xs cursor-pointer ${
+                          textSize === 'extra' 
+                            ? 'bg-brand-accent text-brand-primary font-black shadow-sm ring-1 ring-brand-accent/50' 
+                            : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'
+                        }`}
+                        title="Eng katta matn o'lchami (A++)"
+                      >
+                        A++
+                      </button>
+                    </div>
                   </div>
-                  <h3 className={`font-bold text-xs sm:text-sm uppercase leading-tight truncate mt-0.5 ${
-                    readTheme === 'dark' ? 'text-white' : 'text-brand-primary'
-                  }`} title={topicTitle}>
-                    {parsedTopicTitle.mainTitle || topicTitle}
-                  </h3>
-                </div>
-              </div>
 
-              {/* Setting Buttons Toolbar */}
-              <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap shrink-0 text-xs font-sans ml-auto md:ml-0 overflow-x-auto">
-                {/* Text Size Controls */}
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className={`text-[10px] font-bold mr-0.5 uppercase hidden sm:inline ${
-                    readTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'
-                  }`}>Matn:</span>
-                  <div className={`flex items-center p-0.5 rounded-xl border ${
-                    readTheme === 'dark' ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
-                  }`}>
-                    <button 
-                      onClick={() => setTextSize('normal')}
-                      className={`px-2 sm:px-2.5 py-1 rounded-lg font-bold transition-all text-[11px] cursor-pointer ${
-                        textSize === 'normal' 
-                          ? 'bg-brand-accent text-brand-primary font-black shadow-sm' 
-                          : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-850' : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                      title="Kichik"
-                    >
-                      A
-                    </button>
-                    <button 
-                      onClick={() => setTextSize('large')}
-                      className={`px-2 sm:px-2.5 py-1 rounded-lg font-bold transition-all text-[11px] cursor-pointer ${
-                        textSize === 'large' 
-                          ? 'bg-brand-accent text-brand-primary font-black shadow-sm' 
-                          : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-850' : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                      title="O'rta"
-                    >
-                      A+
-                    </button>
-                    <button 
-                      onClick={() => setTextSize('extra')}
-                      className={`px-2 sm:px-2.5 py-1 rounded-lg font-bold transition-all text-xs cursor-pointer ${
-                        textSize === 'extra' 
-                          ? 'bg-brand-accent text-brand-primary font-black shadow-sm' 
-                          : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-850' : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                      title="Katta"
-                    >
-                      A++
-                    </button>
+                  {/* Shrift turi (Sans / Serif) */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className={`text-[10px] font-bold mr-0.5 uppercase hidden sm:inline ${
+                      readTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'
+                    }`}>Shrift:</span>
+                    <div className={`flex items-center p-0.5 rounded-xl border shadow-xs ${
+                      readTheme === 'dark' ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
+                    }`}>
+                      <button 
+                        onClick={() => setFontFamily('sans')}
+                        className={`px-2.5 py-1 rounded-lg font-bold transition-all text-xs cursor-pointer ${
+                          fontFamily === 'sans' 
+                            ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500' 
+                            : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'
+                        }`}
+                        title="Zamonaviy sans-serif shrift"
+                      >
+                        Sans
+                      </button>
+                      <button 
+                        onClick={() => setFontFamily('serif')}
+                        className={`px-2.5 py-1 rounded-lg font-serif font-bold transition-all text-xs cursor-pointer ${
+                          fontFamily === 'serif' 
+                            ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500' 
+                            : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'
+                        }`}
+                        title="Klassik kitobiy serif shrift"
+                      >
+                        Serif
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                {/* Font Choices */}
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className={`text-[10px] font-bold mr-0.5 uppercase hidden sm:inline ${
-                    readTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'
-                  }`}>Shrift:</span>
-                  <div className={`flex items-center p-0.5 rounded-xl border ${
-                    readTheme === 'dark' ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
-                  }`}>
-                    <button 
-                      onClick={() => setFontFamily('sans')}
-                      className={`px-2 sm:px-2.5 py-1 rounded-lg font-bold transition-all text-[11px] cursor-pointer ${
-                        fontFamily === 'sans' 
-                          ? 'bg-indigo-600 text-white shadow-sm' 
-                          : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-850' : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      Sans
-                    </button>
-                    <button 
-                      onClick={() => setFontFamily('serif')}
-                      className={`px-2 sm:px-2.5 py-1 rounded-lg font-serif font-bold transition-all text-[11px] cursor-pointer ${
-                        fontFamily === 'serif' 
-                          ? 'bg-indigo-600 text-white shadow-sm' 
-                          : readTheme === 'dark' ? 'text-slate-300 hover:bg-slate-850' : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      Serif
-                    </button>
+                  {/* Fon Mavzusi (Oq / Sepia / Qorong'u) */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className={`text-[10px] font-bold mr-0.5 uppercase hidden sm:inline ${
+                      readTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'
+                    }`}>Mavzu:</span>
+                    <div className={`flex items-center p-0.5 rounded-xl border gap-0.5 shadow-xs ${
+                      readTheme === 'dark' ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
+                    }`}>
+                      <button 
+                        onClick={() => setReadTheme('light')}
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center border font-bold text-xs cursor-pointer transition-all ${
+                          readTheme === 'light' ? 'border-indigo-600 ring-2 ring-indigo-600/30 bg-white scale-105' : 'border-slate-200 bg-white hover:bg-slate-50'
+                        } text-slate-800`}
+                        title="Kunduzgi yorug' rejim (Oq)"
+                      >
+                        ☀
+                      </button>
+                      <button 
+                        onClick={() => setReadTheme('warm')}
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center border font-bold text-xs cursor-pointer transition-all ${
+                          readTheme === 'warm' ? 'border-amber-600 ring-2 ring-amber-600/30 bg-[#FAF6F0] scale-105' : 'border-[#EADFCF] bg-[#FAF6F0] hover:bg-[#F2E8D8]'
+                        } text-[#2C251E]`}
+                        title="Sepia issiq qog'oz rejimi (Ko'zga qulay)"
+                      >
+                        ☕
+                      </button>
+                      <button 
+                        onClick={() => setReadTheme('dark')}
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center border font-bold text-xs cursor-pointer transition-all ${
+                          readTheme === 'dark' ? 'border-slate-400 ring-2 ring-slate-400/30 bg-slate-900 scale-105' : 'border-slate-800 bg-slate-900 hover:bg-slate-850'
+                        } text-slate-200`}
+                        title="Tungi qorong'u rejim"
+                      >
+                        ☾
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                {/* Background theme */}
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className={`text-[10px] font-bold mr-0.5 uppercase hidden sm:inline ${
-                    readTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'
-                  }`}>Mavzu:</span>
-                  <div className={`flex items-center p-0.5 rounded-xl border gap-0.5 ${
-                    readTheme === 'dark' ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
-                  }`}>
-                    <button 
-                      onClick={() => setReadTheme('light')}
-                      className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center border font-bold text-xs cursor-pointer ${
-                        readTheme === 'light' ? 'border-indigo-600 ring-2 ring-indigo-600/10 bg-white' : 'border-slate-100 bg-white'
-                      } text-slate-800`}
-                      title="Kunduzgi"
-                    >
-                      ☀
-                    </button>
-                    <button 
-                      onClick={() => setReadTheme('warm')}
-                      className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center border font-bold text-xs cursor-pointer ${
-                        readTheme === 'warm' ? 'border-amber-600 ring-2 ring-amber-600/10 bg-[#FAF6F0]' : 'border-[#EADFCF] bg-[#FAF6F0]'
-                      } text-[#2C251E]`}
-                      title="Sepia"
-                    >
-                      ☕
-                    </button>
-                    <button 
-                      onClick={() => setReadTheme('dark')}
-                      className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center border font-bold text-xs cursor-pointer ${
-                        readTheme === 'dark' ? 'border-slate-500 ring-2 ring-slate-500/10 bg-slate-900' : 'border-slate-800 bg-slate-900'
-                      } text-slate-300`}
-                      title="Tungi"
-                    >
-                      ☾
-                    </button>
-                  </div>
+                  {/* Chiqish (Desktop - >= md) */}
+                  <button 
+                    onClick={() => setIsFullscreen(false)}
+                    className="hidden md:flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-black px-4 py-2 rounded-xl active:scale-95 transition-all shadow-md cursor-pointer shrink-0 ml-1"
+                    title="Mutolaa rejimidan chiqish"
+                  >
+                    <X className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Chiqish</span>
+                  </button>
                 </div>
-
-                {/* Close Button */}
-                <button 
-                  onClick={() => setIsFullscreen(false)}
-                  className="flex items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white font-black px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl active:scale-95 transition-all shadow-md cursor-pointer shrink-0"
-                >
-                  <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="text-xs sm:text-sm">Chiqish</span>
-                </button>
               </div>
             </div>
 
             {/* Main Reading Canvas */}
-            <div className="flex-1 overflow-y-auto px-6 py-12 md:px-16 md:py-20">
-              <div className={`mx-auto max-w-3xl leading-relaxed ${
-                fontFamily === 'serif' ? 'font-serif' : 'font-sans'
+            <div className="flex-1 overflow-y-auto px-6 py-10 md:px-16 md:py-16">
+              <div className={`mx-auto max-w-4xl leading-relaxed ${
+                fontFamily === 'serif' ? 'font-serif [font-family:Georgia,Cambria,"Times_New_Roman",Times,serif]' : 'font-sans'
               }`}>
                 {/* Header info in reader */}
-                <div className="text-center mb-10 max-w-3xl mx-auto">
-                  <span className={`inline-block px-3.5 py-1 bg-brand-accent/25 border border-brand-accent/35 text-brand-primary rounded-lg font-black uppercase tracking-widest text-[9px] mb-4`}>
+                <div className="text-center mb-10 max-w-4xl mx-auto">
+                  <span className="inline-block px-3.5 py-1 bg-brand-accent/25 border border-brand-accent/35 text-brand-primary rounded-lg font-black uppercase tracking-widest text-[9px] mb-4">
                     {t('study.unlocked').toUpperCase()} {topic.order}
                   </span>
                   
@@ -2532,22 +2565,33 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
 
                   {/* Subtopics formatted in clean column structure ("ustunli") */}
                   {parsedTopicTitle.subParts.length > 0 && (
-                    <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-2 mt-4 max-w-2xl mx-auto">
-                      {parsedTopicTitle.subParts.map((sub, idx) => (
-                        <div 
-                          key={idx}
-                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                            readTheme === 'dark'
-                              ? 'bg-slate-900/90 text-slate-300 border-slate-800'
-                              : readTheme === 'warm'
-                                ? 'bg-[#F2E8D8] text-[#3D3022] border-[#E0D0BB]'
-                                : 'bg-slate-100 text-slate-700 border-slate-200'
-                          }`}
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-brand-accent shrink-0"></span>
-                          <span>{sub}</span>
-                        </div>
-                      ))}
+                    <div className="my-6 max-w-3xl mx-auto">
+                      <div className="flex items-center justify-center gap-2 mb-3 opacity-75">
+                        <span className="w-6 h-0.5 bg-brand-accent"></span>
+                        <span className="text-[10px] font-black uppercase tracking-widest">
+                          {language === 'uz' ? "Mavzu rejasi va tarkibiy qismlari" : language === 'ru' ? "План темы и составные части" : "Topic plan & components"}
+                        </span>
+                        <span className="w-6 h-0.5 bg-brand-accent"></span>
+                      </div>
+                      <div className={`grid grid-cols-1 sm:grid-cols-2 ${parsedTopicTitle.subParts.length > 2 ? 'md:grid-cols-3' : ''} gap-2.5 text-left`}>
+                        {parsedTopicTitle.subParts.map((sub, idx) => (
+                          <div 
+                            key={idx}
+                            className={`p-3 rounded-2xl border transition-all flex items-start gap-2.5 shadow-xs ${
+                              readTheme === 'dark'
+                                ? 'bg-slate-900/90 text-slate-200 border-slate-800'
+                                : readTheme === 'warm'
+                                  ? 'bg-[#F2E8D8] text-[#3D3022] border-[#DFD0BC]'
+                                  : 'bg-slate-50 text-slate-800 border-slate-200'
+                            }`}
+                          >
+                            <span className="w-5 h-5 rounded-lg bg-brand-accent/35 text-brand-primary flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5 shadow-xs">
+                              {idx + 1}
+                            </span>
+                            <span className="text-xs font-bold leading-snug">{sub}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 
@@ -2819,6 +2863,80 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                                       );
                                     }
                                     return <code className={className} {...props}>{children}</code>;
+                                  },
+                                  p({ children }) {
+                                    return (
+                                      <p className={`mb-6 leading-relaxed sm:leading-loose ${
+                                        textSize === 'normal' 
+                                          ? 'text-base sm:text-lg' 
+                                          : textSize === 'large' 
+                                            ? 'text-lg sm:text-xl' 
+                                            : 'text-xl sm:text-2xl'
+                                      }`}>
+                                        {children}
+                                      </p>
+                                    );
+                                  },
+                                  h1({ children }) {
+                                    return (
+                                      <h1 className={`font-black tracking-tight mt-10 mb-5 ${
+                                        textSize === 'normal' ? 'text-2xl sm:text-3xl' : textSize === 'large' ? 'text-3xl sm:text-4xl' : 'text-4xl sm:text-5xl'
+                                      } ${readTheme === 'dark' ? 'text-white' : 'text-brand-primary'}`}>
+                                        {children}
+                                      </h1>
+                                    );
+                                  },
+                                  h2({ children }) {
+                                    return (
+                                      <h2 className={`font-black tracking-tight mt-8 mb-4 ${
+                                        textSize === 'normal' ? 'text-xl sm:text-2xl' : textSize === 'large' ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl'
+                                      } ${readTheme === 'dark' ? 'text-white' : 'text-brand-primary'}`}>
+                                        {children}
+                                      </h2>
+                                    );
+                                  },
+                                  h3({ children }) {
+                                    return (
+                                      <h3 className={`font-black tracking-tight mt-6 mb-3 ${
+                                        textSize === 'normal' ? 'text-lg sm:text-xl' : textSize === 'large' ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl'
+                                      } ${readTheme === 'dark' ? 'text-slate-100' : 'text-brand-primary'}`}>
+                                        {children}
+                                      </h3>
+                                    );
+                                  },
+                                  li({ children }) {
+                                    return (
+                                      <li className={`mb-2.5 leading-relaxed ${
+                                        textSize === 'normal' 
+                                          ? 'text-base sm:text-lg' 
+                                          : textSize === 'large' 
+                                            ? 'text-lg sm:text-xl' 
+                                            : 'text-xl sm:text-2xl'
+                                      }`}>
+                                        {children}
+                                      </li>
+                                    );
+                                  },
+                                  ul({ children }) {
+                                    return <ul className="list-disc pl-6 mb-6 space-y-1.5">{children}</ul>;
+                                  },
+                                  ol({ children }) {
+                                    return <ol className="list-decimal pl-6 mb-6 space-y-1.5">{children}</ol>;
+                                  },
+                                  blockquote({ children }) {
+                                    return (
+                                      <blockquote className={`border-l-4 pl-4 py-2 my-6 italic rounded-r-xl ${
+                                        readTheme === 'dark' 
+                                          ? 'border-brand-accent bg-slate-900/60 text-slate-300' 
+                                          : readTheme === 'warm'
+                                            ? 'border-amber-600 bg-[#F4ECDE] text-[#2F2417]'
+                                            : 'border-brand-accent bg-amber-50/50 text-slate-800'
+                                      } ${
+                                        textSize === 'normal' ? 'text-base sm:text-lg' : textSize === 'large' ? 'text-lg sm:text-xl' : 'text-xl sm:text-2xl'
+                                      }`}>
+                                        {children}
+                                      </blockquote>
+                                    );
                                   }
                                 }}
                               >

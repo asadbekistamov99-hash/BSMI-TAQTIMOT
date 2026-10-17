@@ -98,6 +98,7 @@ export default function AiAssistant({ user }: { user: any }) {
   const [handsFree, setHandsFree] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
   const [previewDiagram, setPreviewDiagram] = useState<typeof ANATOMICAL_DIAGRAMS[0] | null>(null);
+  const [hasUserApiKey, setHasUserApiKey] = useState<boolean>(false);
   
   const silenceTimerRef = useRef<any>(null);
   const inputRef = useRef('');
@@ -136,7 +137,21 @@ export default function AiAssistant({ user }: { user: any }) {
     }
   };
 
-  // Check user subscription / paid status
+  // Check user subscription / paid status and personal AI API key
+  useEffect(() => {
+    if (!user?.uid) {
+      setHasUserApiKey(false);
+      return;
+    }
+    getUserAiKey(user.uid).then(k => setHasUserApiKey(!!k));
+
+    const handleKeyChange = (e: any) => {
+      setHasUserApiKey(!!e.detail?.key);
+    };
+    window.addEventListener('bsmi_ai_key_changed', handleKeyChange);
+    return () => window.removeEventListener('bsmi_ai_key_changed', handleKeyChange);
+  }, [user?.uid]);
+
   useEffect(() => {
     const checkPaidStatus = async () => {
       if (!user) {
@@ -620,11 +635,11 @@ export default function AiAssistant({ user }: { user: any }) {
       return;
     }
 
-    if (!isPaidUser && dailyCount >= 5) {
+    if (!isPaidUser && !hasUserApiKey && dailyCount >= 5) {
       alert(
         language === 'uz'
-          ? "Siz bugungi 5 ta bepul savol limitidan foydalandingiz. Cheksiz foydalanish uchun semestrlardan birini sotib oling! 🫀🧠"
-          : "Вы израсходовали лимит из 5 бесплатных вопросов на сегодня. Приобретите любой семестр для неограниченного доступа! 🫀🧠"
+          ? "Siz bugungi 5 ta bepul savol limitidan foydalandingiz. Shaxsiy bepul API kalitingizni kiriting yoki semestrlardan birini sotib oling! 🫀🧠"
+          : "Вы израсходовали лимит из 5 бесплатных вопросов на сегодня. Введите личный бесплатный API ключ или приобретите семестр! 🫀🧠"
       );
       isSendingVoiceQueryRef.current = false;
       return;
@@ -692,8 +707,10 @@ export default function AiAssistant({ user }: { user: any }) {
 
       saveAndSetMessages([...updatedMessages, responseMessage]);
       
-      // Increment only on successful message from Gemini
-      incrementDailyCount();
+      // Increment only on successful message from Gemini when not using personal key
+      if (!hasUserApiKey && !isPaidUser) {
+        incrementDailyCount();
+      }
 
       // If hands-free is enabled, read aloud the response
       if (handsFreeRef.current) {
@@ -1124,6 +1141,10 @@ export default function AiAssistant({ user }: { user: any }) {
                       <span className="inline-flex items-center gap-1 bg-amber-500 text-slate-950 font-black text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full border border-amber-400 shadow-sm">
                         <Sparkles className="w-2.5 h-2.5" /> Premium Cheksiz
                       </span>
+                    ) : hasUserApiKey ? (
+                      <span className="inline-flex items-center gap-1 bg-emerald-600 text-white font-black text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full border border-emerald-500 shadow-sm">
+                        <Sparkles className="w-2.5 h-2.5" /> Shaxsiy API Kalit (Cheksiz)
+                      </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 font-extrabold text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full border border-slate-200">
                         Kunlik limit: {Math.max(0, 5 - dailyCount)} / 5
@@ -1286,7 +1307,7 @@ export default function AiAssistant({ user }: { user: any }) {
 
             {/* Input Form with attachment drawer */}
             <div className="p-4 bg-slate-50 border-t border-slate-200/50">
-              {!isPaidUser && dailyCount >= 5 ? (
+              {!isPaidUser && !hasUserApiKey && dailyCount >= 5 ? (
                 <div className="p-6 bg-slate-900 text-slate-100 rounded-3xl border border-slate-800 shadow-2xl relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full filter blur-2xl translate-x-8 -translate-y-8 animate-pulse" />
                   <div className="flex flex-col lg:flex-row items-center gap-5 relative z-10">

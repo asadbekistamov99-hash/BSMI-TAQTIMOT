@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { dbService, isSupabaseEnabled } from '../lib/dbService';
+import { getActiveUserAiKey } from '../lib/userAiKey';
 import { Quiz, Topic } from '../types';
 import { getCuratedQuizzesForTopic } from '../data/topicQuizzesData';
 import { motion, AnimatePresence } from 'motion/react';
@@ -124,6 +125,7 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
       setIsTranslating(true);
       setTransError(null);
       try {
+        const userKey = await getActiveUserAiKey(auth.currentUser?.uid);
         const response = await fetch('/api/translate-quizzes', {
           method: 'POST',
           headers: {
@@ -131,7 +133,8 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
           },
           body: JSON.stringify({
             quizzes,
-            language
+            language,
+            userKey: userKey || undefined
           }),
         });
 
