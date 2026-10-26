@@ -1,12 +1,17 @@
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from './firebase';
+import { sanitizeGeminiKey, isValidGeminiKeyShape } from './aiKeyFormat';
 
 // Foydalanuvchining shaxsiy AI kaliti: users/{uid}/private/aiSettings (faqat egasi o'qiy oladi)
 const keyRef = (uid: string) => doc(db, 'users', uid, 'private', 'aiSettings');
 
 let cached: { uid: string; key: string | null } | null = null;
 
-export async function getUserAiKey(uid: string): Promise<string | null> {
+export async function getUserAiKey(uid?: string | null): Promise<string | null> {
+  if (!uid) {
+    return getActiveAiKeySync();
+  }
+
   if (cached && cached.uid === uid && cached.key) return cached.key;
   
   // 1. LocalStorage fast check
@@ -19,40 +24,47 @@ export async function getUserAiKey(uid: string): Promise<string | null> {
   try {
     const snap = await getDoc(keyRef(uid));
     if (snap.exists() && snap.data()?.geminiKey) {
-      const remoteKey = String(snap.data().geminiKey).trim();
-      cached = { uid, key: remoteKey };
-      try {
-        localStorage.setItem(`bsmi_ai_key_${uid}`, remoteKey);
-        localStorage.setItem('bsmi_ai_key_active', remoteKey);
-      } catch {}
-      return remoteKey;
+      const remoteKey = sanitizeGeminiKey(snap.data().geminiKey);
+      if (remoteKey) {
+        cached = { uid, key: remoteKey };
+        try {
+          localStorage.setItem(`bsmi_ai_key_${uid}`, remoteKey);
+          localStorage.setItem('bsmi_ai_key_active', remoteKey);
+        } catch {}
+        return remoteKey;
+      }
     }
   } catch (err) {
     console.warn("Firestore getUserAiKey error, using local fallback:", err);
   }
 
   if (localKey) {
-    cached = { uid, key: localKey };
-    return localKey;
+    const clean = sanitizeGeminiKey(localKey);
+    cached = { uid, key: clean };
+    return clean;
   }
 
   cached = { uid, key: null };
   return null;
 }
 
-export async function saveUserAiKey(uid: string, key: string): Promise<void> {
-  const cleanKey = key.trim().replace(/^["'`]|["'`]$/g, '').trim();
+export async function saveUserAiKey(uid: string | null | undefined, key: string): Promise<void> {
+  const cleanKey = sanitizeGeminiKey(key);
+  if (!cleanKey) return;
+
   try {
-    localStorage.setItem(`bsmi_ai_key_${uid}`, cleanKey);
+    if (uid) localStorage.setItem(`bsmi_ai_key_${uid}`, cleanKey);
     localStorage.setItem('bsmi_ai_key_active', cleanKey);
   } catch {}
   
-  cached = { uid, key: cleanKey };
+  cached = { uid: uid || 'active_guest', key: cleanKey };
   
-  try {
-    await setDoc(keyRef(uid), { geminiKey: cleanKey, updatedAt: serverTimestamp() });
-  } catch (err) {
-    console.warn("Firestore saveUserAiKey sync error:", err);
+  if (uid) {
+    try {
+      await setDoc(keyRef(uid), { geminiKey: cleanKey, updatedAt: serverTimestamp() });
+    } catch (err) {
+      console.warn("Firestore saveUserAiKey sync error:", err);
+    }
   }
 
   try {
@@ -60,18 +72,20 @@ export async function saveUserAiKey(uid: string, key: string): Promise<void> {
   } catch {}
 }
 
-export async function removeUserAiKey(uid: string): Promise<void> {
+export async function removeUserAiKey(uid?: string | null): Promise<void> {
   try {
-    localStorage.removeItem(`bsmi_ai_key_${uid}`);
+    if (uid) localStorage.removeItem(`bsmi_ai_key_${uid}`);
     localStorage.removeItem('bsmi_ai_key_active');
   } catch {}
   
-  cached = { uid, key: null };
+  cached = { uid: uid || 'active_guest', key: null };
 
-  try {
-    await deleteDoc(keyRef(uid));
-  } catch (err) {
-    console.warn("Firestore removeUserAiKey sync error:", err);
+  if (uid) {
+    try {
+      await deleteDoc(keyRef(uid));
+    } catch (err) {
+      console.warn("Firestore removeUserAiKey sync error:", err);
+    }
   }
 
   try {
@@ -87,7 +101,7 @@ export async function getIdTokenOrNull(): Promise<string | null> {
           unsubscribe();
           resolve();
         });
-        setTimeout(resolve, 2500);
+        setTimeout(resolve, 2000);
       });
     }
     return (await auth.currentUser?.getIdToken(true)) ?? null;
@@ -98,7 +112,8 @@ export async function getIdTokenOrNull(): Promise<string | null> {
 
 export function getActiveAiKeySync(): string | null {
   try {
-    return localStorage.getItem('bsmi_ai_key_active') || null;
+    const val = localStorage.getItem('bsmi_ai_key_active');
+    return val ? sanitizeGeminiKey(val) : null;
   } catch {
     return null;
   }
@@ -113,4 +128,3 @@ export async function getActiveUserAiKey(uid?: string | null): Promise<string | 
   }
   return getActiveAiKeySync();
 }
-

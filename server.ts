@@ -29,7 +29,7 @@ import {
   type ClassifiedAiError
 } from './src/lib/faceVerificationPolicy.js';
 import { isActionRequest, parsePriceCommand, containsSecretCode } from './src/lib/adminChatIntent.js';
-import { isValidGeminiKeyShape } from './src/lib/aiKeyFormat.js';
+import { isValidGeminiKeyShape, sanitizeGeminiKey } from './src/lib/aiKeyFormat.js';
 
 dotenv.config();
 
@@ -471,10 +471,19 @@ export async function createServerApp() {
 
   app.post('/api/generate-quizzes', async (req: express.Request, resValue: any) => {
     try {
-      const { topicTitle, count = 30 } = req.body;
+      const { topicTitle, count = 30, userKey } = req.body;
       
       if (!topicTitle) {
         return resValue.status(400).json({ error: 'Mavzu nomi kiritilmagan' });
+      }
+
+      let keysOverride: string[] | undefined;
+      if (typeof userKey === 'string' && userKey.trim() !== '') {
+        const clean = sanitizeGeminiKey(userKey);
+        if (isValidGeminiKeyShape(clean)) {
+          keysOverride = [clean];
+          console.log('[QUIZ GENERATION] Using student personal Gemini API key');
+        }
       }
 
       console.log(`Generating ${count} quizzes for: ${topicTitle}`);
@@ -499,7 +508,7 @@ Natijani FAQAT JSON formatidagi massiv (array of objects) ko'rinishida ber. Hech
             config: {
               responseMimeType: "application/json"
             }
-          });
+          }, 2, 400, keysOverride);
           if (response && response.text) {
             text = response.text;
             break;
@@ -885,9 +894,18 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
   app.post('/api/admin/generate-theory', async (req: express.Request, resValue: any) => {
     const startTime = Date.now();
     try {
-      const { topicTitle } = req.body;
+      const { topicTitle, userKey } = req.body;
       if (!topicTitle) {
         return resValue.status(400).json({ error: 'Mavzu nomi kiritilmagan' });
+      }
+
+      let keysOverride: string[] | undefined;
+      if (typeof userKey === 'string' && userKey.trim() !== '') {
+        const clean = sanitizeGeminiKey(userKey);
+        if (isValidGeminiKeyShape(clean)) {
+          keysOverride = [clean];
+          console.log('[THEORY GENERATION] Using user personal Gemini API key');
+        }
       }
 
       console.log(`Generating textbook theory for: ${topicTitle}`);
@@ -950,7 +968,7 @@ DIQQAT:
         try {
           const response = await safeGenerateContent(modelName, {
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          });
+          }, 2, 400, keysOverride);
           if (response && response.text) {
             text = response.text.trim();
             break;
@@ -977,9 +995,18 @@ DIQQAT:
   app.post('/api/generate-study-guide', async (req: express.Request, resValue: any) => {
     const startTime = Date.now();
     try {
-      const { topicTitle, theoryText, language = 'uz' } = req.body;
+      const { topicTitle, theoryText, language = 'uz', userKey } = req.body;
       if (!topicTitle) {
         return resValue.status(400).json({ error: 'Mavzu nomi kiritilmagan' });
+      }
+
+      let keysOverride: string[] | undefined;
+      if (typeof userKey === 'string' && userKey.trim() !== '') {
+        const clean = sanitizeGeminiKey(userKey);
+        if (isValidGeminiKeyShape(clean)) {
+          keysOverride = [clean];
+          console.log('[STUDY GUIDE] Using student personal Gemini API key');
+        }
       }
 
       console.log(`Generating Study Guide for: ${topicTitle} (${language})`);
@@ -1014,7 +1041,7 @@ Materialni faqat Markdown formatida va foydalanuvchi tilida qaytar.`;
         try {
           const response = await safeGenerateContent(modelName, {
             contents: [{ role: 'user', parts: [{ text: prompt + `\n\nNazariy darslik matni:\n${theoryText || ''}` }] }],
-          });
+          }, 2, 400, keysOverride);
           if (response?.text) {
             text = response.text;
             break;
@@ -1321,16 +1348,14 @@ ${inputJSON}`;
 
   // Kalitni tekshirish: kichik so'rov yuboriladi, natija haqiqiy Gemini javobi bo'lishi shart
   app.post('/api/ai-key/check', async (req: express.Request, res: any) => {
-    const uid = await verifyFirebaseUid(bearerToken(req));
-    if (!uid) return res.status(401).json({ ok: false, error: "Kalitni tekshirish uchun avval tizimga kiring." });
-
-    const key = String(req.body?.key || '').trim();
+    const rawKey = String(req.body?.key || '').trim();
+    const key = sanitizeGeminiKey(rawKey);
     if (!isValidGeminiKeyShape(key)) {
-      return res.status(400).json({ ok: false, error: "Kalit noto'g'ri formatda. Google AI Studio kaliti 'AQ.' yoki 'AIza' bilan boshlanishi kerak." });
+      return res.status(400).json({ ok: false, error: "Kalit noto'g'ri formatda. Google AI Studio kalitini to'liq nusxalab kiriting (AIza... yoki AQ...)." });
     }
 
-    // Bir nechta modelni sinaymiz: bitta model bu kalitga ruxsat bermasligi mumkin
-    const checkModels = ['gemini-flash-latest', 'gemini-2.5-flash'];
+    // Bir nechta zamonaviy modellarni sinaymiz:
+    const checkModels = ['gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
     let lastDetail = '';
     for (const model of checkModels) {
       try {
@@ -1340,7 +1365,10 @@ ${inputJSON}`;
           contents: [{ role: 'user', parts: [{ text: 'Salom' }] }]
         });
         const replied = Boolean(r?.text) || (r?.candidates?.[0]?.content?.parts?.length > 0);
-        if (replied) return res.json({ ok: true, model });
+        if (replied) {
+          console.log(`[AI KEY CHECK] Student API key verified successfully with ${model}`);
+          return res.json({ ok: true, model });
+        }
         lastDetail = 'empty response';
       } catch (err: any) {
         lastDetail = String(err?.message || err || '').slice(0, 300);
@@ -1350,8 +1378,8 @@ ${inputJSON}`;
     const msg = lastDetail;
     let hint = "Kalit ishlamadi. Kalitni qayta nusxalab ko'ring.";
     if (/429|quota|RESOURCE_EXHAUSTED/i.test(msg)) hint = "Bu kalit limiti tugagan yoki juda ko'p so'rov yuborilgan. Keyinroq urinib ko'ring.";
-    else if (/API_KEY_INVALID|API key not valid|PERMISSION_DENIED|\b403\b/i.test(msg)) hint = "Kalit Gemini tomonidan rad etildi. Google AI Studio'da shu kalit uchun Generative Language API ruxsatini va API cheklovlarini tekshiring.";
-    else if (/\b400\b|INVALID_ARGUMENT/i.test(msg)) hint = "Google bu so'rovni qabul qilmadi (400). Kalitni qayta nusxalab ko'ring yoki yangi kalit yarating.";
+    else if (/API_KEY_INVALID|API key not valid|PERMISSION_DENIED|\b403\b/i.test(msg)) hint = "Kalit Gemini tomonidan rad etildi (API_KEY_INVALID). Google AI Studio'da yangi kalit yarating yoki API ruxsatini tekshiring.";
+    else if (/\b400\b|INVALID_ARGUMENT/i.test(msg)) hint = "Google bu so'rovni qabul qilmadi (400). Kalitni qayta nusxalab ko'ring.";
     return res.status(400).json({ ok: false, error: hint, detail: msg.replace(/AQ\.[0-9A-Za-z_.\-]+|AIza[0-9A-Za-z_\-]+/g, '[kalit]') });
   });
 
@@ -1360,17 +1388,14 @@ ${inputJSON}`;
     const startTime = Date.now();
     const { message, history, images, userKey } = req.body;
 
-    // Shaxsiy kalit kelgan bo'lsa: faqat tizimga kirgan egasi uchun, faqat o'z kaliti bilan ishlaydi
+    // Shaxsiy kalit kelgan bo'lsa: tozalab tekshiramiz va to'g'ridan-to'g'ri ishlatamiz
     let keysOverride: string[] | undefined;
     if (typeof userKey === 'string' && userKey.trim() !== '') {
-      const uid = await verifyFirebaseUid(bearerToken(req));
-      if (!uid) {
-        return resValue.status(401).json({ error: "Shaxsiy API kalitdan foydalanish uchun tizimga kiring." });
+      const cleanKey = sanitizeGeminiKey(userKey);
+      if (isValidGeminiKeyShape(cleanKey)) {
+        keysOverride = [cleanKey];
+        console.log('[USER AI CHAT] Using student verified personal Gemini API key');
       }
-      if (!isValidGeminiKeyShape(userKey)) {
-        return resValue.status(400).json({ error: "Shaxsiy API kalit noto'g'ri formatda." });
-      }
-      keysOverride = [userKey.trim()];
     }
 
     try {

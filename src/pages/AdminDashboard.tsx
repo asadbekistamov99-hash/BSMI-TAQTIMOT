@@ -23,6 +23,7 @@ import TopicDiagramsEditor from '../components/TopicDiagramsEditor';
 import AdminPresentationsManager from '../components/AdminPresentationsManager';
 import DiagnosticsPanel from '../components/DiagnosticsPanel';
 import { uploadVideoFile, isDirectVideoUrl } from '../lib/uploadHelper';
+import { getActiveAiKeySync } from '../lib/userAiKey';
 import { 
   Megaphone,
   LayoutDashboard, 
@@ -6873,7 +6874,6 @@ function SupportManager() {
 }
 
 import ReactMarkdown from 'react-markdown';
-import { getActiveAiKeySync } from '../lib/userAiKey';
 
 function AIChatAssistant({ settings }: { settings: any }) {
   const [messages, setMessages] = useState<{ role: 'user' | 'model', content: string, images?: string[] }[]>([
@@ -9092,7 +9092,7 @@ function TopicManager({ searchQuery, authUser, requestConfirm }: { searchQuery: 
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ topicTitle: topicTitle.trim() }),
+        body: JSON.stringify({ topicTitle: topicTitle.trim(), userKey: getActiveAiKeySync() || undefined }),
       });
 
       if (!response.ok) {
@@ -9888,7 +9888,7 @@ function QuizManager({ searchQuery, requestConfirm }: { searchQuery: string, req
         const res = await fetch('/api/generate-quizzes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ topicTitle, count: needed })
+          body: JSON.stringify({ topicTitle, count: needed, userKey: getActiveAiKeySync() || undefined })
         });
 
         if (res.ok) {

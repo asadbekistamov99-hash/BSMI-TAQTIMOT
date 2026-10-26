@@ -6,7 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { dbService } from '../lib/dbService';
-import { getUserAiKey, getIdTokenOrNull } from '../lib/userAiKey';
+import { getActiveUserAiKey, getIdTokenOrNull } from '../lib/userAiKey';
 import AiApiKeyPanel from '../components/AiApiKeyPanel';
 import SEO from '../components/SEO';
 
@@ -139,11 +139,7 @@ export default function AiAssistant({ user }: { user: any }) {
 
   // Check user subscription / paid status and personal AI API key
   useEffect(() => {
-    if (!user?.uid) {
-      setHasUserApiKey(false);
-      return;
-    }
-    getUserAiKey(user.uid).then(k => setHasUserApiKey(!!k));
+    getActiveUserAiKey(user?.uid).then(k => setHasUserApiKey(!!k));
 
     const handleKeyChange = (e: any) => {
       setHasUserApiKey(!!e.detail?.key);
@@ -672,12 +668,9 @@ export default function AiAssistant({ user }: { user: any }) {
         images: base64Image ? [{ data: base64Image.data, mimeType: base64Image.mimeType }] : []
       };
 
-      // Foydalanuvchining o'z kaliti bo'lsa, u tizimga kirgan egasi tokeni bilan yuboriladi
-      const userKey = user?.uid ? await getUserAiKey(user.uid) : null;
-      const idToken = userKey ? await getIdTokenOrNull() : null;
-      if (userKey && !idToken) {
-        throw new Error(language === 'uz' ? "Shaxsiy kalit bilan ishlash uchun qayta tizimga kiring" : "Войдите снова, чтобы использовать личный ключ");
-      }
+      // Foydalanuvchining o'z kaliti bo'lsa, to'g'ridan-to'g'ri uning kaliti bilan yuboriladi
+      const userKey = await getActiveUserAiKey(user?.uid);
+      const idToken = await getIdTokenOrNull().catch(() => null);
 
       const response = await fetch('/api/ai-chat', {
         method: 'POST',
@@ -1320,16 +1313,27 @@ export default function AiAssistant({ user }: { user: any }) {
                       </h3>
                       <p className="text-slate-400 text-xs font-semibold mt-1 leading-relaxed">
                         {language === 'uz' 
-                          ? "Siz bugungi 5 ta bepul savol limitidan foydalandingiz. Anatomiya AI yordamchisidan doimiy va cheksiz foydalanish uchun semestrlardan birini sotib oling!" 
-                          : "Вы использовали 5 бесплатных вопросов на сегодня. Для пожизненного неограниченного доступа к ИИ приобретите любой из семестров!"}
+                          ? "Siz bugungi 5 ta bepul savol limitidan foydalandingiz. Cheksiz muloqot uchun pastdagi 'Shaxsiy AI API kalit' bo'limiga o'z Gemini kalitingizni kiriting (mutlaqo bepul va 100% ishlaydi) yoki semestrlarga obuna bo'ling!" 
+                          : "Вы использовали 5 бесплатных вопросов на сегодня. Введите личный Gemini API ключ ниже для 100% безлимитного доступа или оформите подписку!"}
                       </p>
                     </div>
-                    <button
-                      onClick={() => navigate('/')}
-                      className="w-full lg:w-auto px-5 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 text-xs font-black uppercase tracking-wider rounded-2xl shadow-lg transition-all active:scale-95 duration-150 shrink-0 cursor-pointer"
-                    >
-                      {language === 'uz' ? "Semestrlarni ko'rish" : "Посмотреть семестры"}
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto shrink-0">
+                      <button
+                        onClick={() => {
+                          const el = document.getElementById('ai-api-key-panel-section');
+                          if (el) el.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        className="px-4 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black uppercase tracking-wider rounded-2xl shadow-lg transition-all active:scale-95 duration-150 cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" /> API Kalit kiritish
+                      </button>
+                      <button
+                        onClick={() => navigate('/')}
+                        className="px-4 py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 text-xs font-black uppercase tracking-wider rounded-2xl shadow-lg transition-all active:scale-95 duration-150 cursor-pointer"
+                      >
+                        {language === 'uz' ? "Semestrlarni ko'rish" : "Посмотреть семестры"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1501,7 +1505,9 @@ export default function AiAssistant({ user }: { user: any }) {
           </div>
 
           {/* Shaxsiy AI kaliti: chat tagidagi bo'sh joyga joylashadi */}
-          <AiApiKeyPanel user={user} />
+          <div id="ai-api-key-panel-section">
+            <AiApiKeyPanel user={user} />
+          </div>
         </div>
       </div>
 

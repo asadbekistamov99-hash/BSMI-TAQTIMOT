@@ -185,6 +185,7 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
         : (typeof theoryObj === 'object' && theoryObj !== null ? (theoryObj[language] || theoryObj['uz'] || '') : '');
       const theoryText: string = rawTheory ? rawTheory.slice(0, 2500) : '';
       
+      const userKey = await getActiveUserAiKey(auth.currentUser?.uid);
       const res = await fetch('/api/generate-quizzes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -192,7 +193,8 @@ export default function QuizPage({ isAdmin: isAdminProp, user }: { isAdmin?: boo
           topicTitle: topicName,
           topicDescription: theoryText || topicName,
           count: 5,
-          language
+          language,
+          userKey: userKey || undefined
         })
       });
 
