@@ -8,6 +8,11 @@ import { useNavigate } from 'react-router-dom';
 import { dbService } from '../lib/dbService';
 import { getUserAiKey, getIdTokenOrNull } from '../lib/userAiKey';
 import AiApiKeyPanel from '../components/AiApiKeyPanel';
+import AiChatHistory from '../components/AiChatHistory';
+import {
+  ChatSession, makeSession, makeTitle, loadLocalSessions, saveLocalSessions, readLegacyChat,
+  fetchRemoteSessions, pushRemoteSession, dropRemoteSession,
+} from '../lib/aiChatSessions';
 import SEO from '../components/SEO';
 
 import skeletalDiag from '../assets/images/skeletal_system_backdrop_1783853676839.jpg';
@@ -82,11 +87,28 @@ interface ChatMessage {
   groundingSources?: { title: string; uri: string }[];
 }
 
+// Salomlashuv matni (til bo'yicha)
+const getGreeting = (lang: string): string => lang === 'uz'
+  ? "Assalomu alaykum! Men BSMI Anatomiya va Lotin tili sun'iy intellekt akademik yordamchisiman. Odam anatomiyasi darsliklari (osteologiya, miologiya, splanxnologiya va b.), tibbiy lotin terminologiyasi yoki saytimiz imkoniyatlari bo'yicha har qanday savolingiz bo'lsa yo'llang. Agar anatomik diagramma yoki rasm bo'lsa, uni ham tahlil qildirishingiz mumkin! 🧠✨"
+  : lang === 'ru'
+  ? "Здравствуйте! Я академический ИИ-помощник по анатомии и медицинской латыни БГМИ. Задавайте любые вопросы по учебникам анатомии человека, анатомической латыни или возможностям нашей платформы. Вы также можете прикрепить анатомический рисунок для анализа! 🧠✨"
+  : "Hello! I am the BSMI Anatomy and Medical Latin academic AI Assistant. Ask any questions about human anatomy textbooks, medical Latin terminology, or our platform features. You can also attach anatomical diagrams for visual analysis! 🧠✨";
+
+const greetingMessage = (lang: string) => ({
+  role: 'model' as const,
+  parts: [{ text: getGreeting(lang) }],
+  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+});
+
 export default function AiAssistant({ user }: { user: any }) {
   const { language, t } = useLanguage();
   const { settings } = useSettings();
   const navigate = useNavigate();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const sessionsRef = useRef<ChatSession[]>([]);
+  const activeIdRef = useRef<string | null>(null);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [image, setImage] = useState<{ data: string; mimeType: string } | null>(null);
@@ -501,75 +523,67 @@ export default function AiAssistant({ user }: { user: any }) {
     }
   };
 
-  // Load persistent chat session on mount or when user changes
+  // Suhbatlarni yuklash: lokal + (kirgan foydalanuvchi uchun) bulutdagi suhbatlar
+  const commitSessions = (list: ChatSession[]) => {
+    sessionsRef.current = list;
+    setSessions(list);
+    saveLocalSessions(user?.uid, list);
+  };
+
   useEffect(() => {
-    const loadChatHistory = async () => {
-      // 1. Try local permanent storage first for instant render
-      const localKey = user?.uid ? `bsmi_anatomy_chat_${user.uid}` : 'bsmi_anatomy_chat_guest';
-      const localSaved = localStorage.getItem(localKey) || sessionStorage.getItem('bsmi_anatomy_chat_history');
-      
-      let initialLoaded = false;
-      if (localSaved) {
+    let cancelled = false;
+    const uid: string | null = user?.uid || null;
+    const loadSessions = async () => {
+      const local = loadLocalSessions(uid);
+      let remote: ChatSession[] = [];
+      if (uid) {
         try {
-          const parsed = JSON.parse(localSaved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setMessages(parsed);
-            initialLoaded = true;
-          }
+          remote = await fetchRemoteSessions(uid);
         } catch (e) {
-          console.error("Error parsing local chat history:", e);
+          console.warn("Bulutdagi suhbatlarni yuklab bo'lmadi:", e);
         }
       }
+      if (cancelled) return;
 
-      // 2. If authenticated user, fetch synced remote chat history from Firestore
-      if (user?.uid) {
-        try {
-          const remoteHistory = await dbService.getSavedAiChat(user.uid);
-          if (remoteHistory && Array.isArray(remoteHistory) && remoteHistory.length > 0) {
-            setMessages(remoteHistory);
-            localStorage.setItem(localKey, JSON.stringify(remoteHistory));
-            initialLoaded = true;
-          }
-        } catch (e) {
-          console.warn("Could not sync remote chat history:", e);
-        }
+      // Ikki manba birlashtiriladi: yangiroq suhbat g'olib chiqadi
+      const map = new Map<string, ChatSession>();
+      [...local, ...remote].forEach((s) => {
+        const prev = map.get(s.id);
+        if (!prev || (s.updatedAt || '') > (prev.updatedAt || '')) map.set(s.id, s);
+      });
+      let list = Array.from(map.values()).sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+
+      if (list.length === 0) {
+        // Eski yagona suhbat bo'lsa, uni birinchi suhbat sifatida olamiz
+        const legacy = readLegacyChat(uid);
+        list = [makeSession(legacy.length > 0 ? legacy : [greetingMessage(language)])];
       }
 
-      // 3. If no prior chat exists, initialize localized welcome message
-      if (!initialLoaded) {
-        const greetText = language === 'uz'
-          ? "Assalomu alaykum! Men BSMI Anatomiya va Lotin tili sun'iy intellekt akademik yordamchisiman. Odam anatomiyasi darsliklari (osteologiya, miologiya, splanxnologiya va b.), tibbiy lotin terminologiyasi yoki saytimiz imkoniyatlari bo'yicha har qanday savolingiz bo'lsa yo'llang. Agar anatomik diagramma yoki rasm bo'lsa, uni ham tahlil qildirishingiz mumkin! 🧠✨"
-          : language === 'ru'
-          ? "Здравствуйте! Я академический ИИ-помощник по анатомии и медицинской латыни БГМИ. Задавайте любые вопросы по учебникам анатомии человека, анатомической латыни или возможностям нашей платформы. Вы также можете прикрепить анатомический рисунок для анализа! 🧠✨"
-          : "Hello! I am the BSMI Anatomy and Medical Latin academic AI Assistant. Ask any questions about human anatomy textbooks, medical Latin terminology, or our platform features. You can also attach anatomical diagrams for visual analysis! 🧠✨";
-
-        setMessages([{
-          role: 'model',
-          parts: [{ text: greetText }],
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }]);
-      }
+      commitSessions(list);
+      activeIdRef.current = list[0].id;
+      setActiveId(list[0].id);
+      setMessages(list[0].messages);
     };
+    loadSessions();
+    return () => { cancelled = true; };
+    // Til o'zgarganda aktiv suhbat almashtirilmasligi uchun faqat foydalanuvchi o'zgarganda qayta yuklanadi
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid]);
 
-    loadChatHistory();
-  }, [user?.uid, language]);
-
-  // Persist chat session permanently (localStorage + cloud sync)
+  // Joriy suhbatni saqlash: lokal va (kirgan foydalanuvchi uchun) bulutga
   const saveAndSetMessages = (newMsgs: ChatMessage[]) => {
     setMessages(newMsgs);
-    const localKey = user?.uid ? `bsmi_anatomy_chat_${user.uid}` : 'bsmi_anatomy_chat_guest';
-    try {
-      localStorage.setItem(localKey, JSON.stringify(newMsgs));
-      sessionStorage.setItem('bsmi_anatomy_chat_history', JSON.stringify(newMsgs));
-    } catch (e) {
-      console.warn("Local storage write warning:", e);
-    }
-
-    // Background sync to Firestore for signed in student
+    const id = activeIdRef.current;
+    if (!id) return;
+    const updated: ChatSession = {
+      id,
+      title: makeTitle(newMsgs),
+      updatedAt: new Date().toISOString(),
+      messages: newMsgs.slice(-100),
+    };
+    commitSessions([updated, ...sessionsRef.current.filter((x) => x.id !== id)]);
     if (user?.uid) {
-      dbService.saveAiChat(user.uid, newMsgs).catch(err => {
-        console.warn("Background chat cloud sync warning:", err);
-      });
+      pushRemoteSession(user.uid, updated).catch((err) => console.warn('Chat cloud sync warning:', err));
     }
   };
 
@@ -742,26 +756,53 @@ export default function AiAssistant({ user }: { user: any }) {
     }
   };
 
-  const handleClearChat = async () => {
-    if (window.confirm(language === 'uz' ? "Haqiqatan ham barcha suhbatlar tarixini tozalashni xohlaysizmi?" : "Вы действительно хотите очистить всю историю чата?")) {
-      const localKey = user?.uid ? `bsmi_anatomy_chat_${user.uid}` : 'bsmi_anatomy_chat_guest';
-      localStorage.removeItem(localKey);
-      sessionStorage.removeItem('bsmi_anatomy_chat_history');
-      if (user?.uid) {
-        dbService.clearSavedAiChat(user.uid).catch(e => console.warn(e));
-      }
-
+  const handleClearChat = () => {
+    if (window.confirm(language === 'uz' ? "Haqiqatan ham bu suhbat tarixini tozalashni xohlaysizmi?" : "Вы действительно хотите очистить этот диалог?")) {
       const greetText = language === 'uz'
         ? "Suhbat tozalandi! Odam anatomiyasi va lotin tili bo'yicha savollaringizni bemalol yo'llashingiz mumkin. 🧠✨"
         : language === 'ru'
         ? "Чат очищен! Вы можете свободно задавать свои новые вопросы по анатомии и медицинской латыни. 🧠✨"
         : "Conversation cleared! Feel free to ask your questions on anatomy and medical Latin. 🧠✨";
-
-      setMessages([{
+      saveAndSetMessages([{
         role: 'model',
         parts: [{ text: greetText }],
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }]);
+    }
+  };
+
+  const openSession = (session: ChatSession) => {
+    activeIdRef.current = session.id;
+    setActiveId(session.id);
+    setMessages(session.messages);
+  };
+
+  const handleNewChat = () => {
+    // Foydalanuvchi hali yozmagan bo'sh suhbat bo'lsa, yangisini ochmaymiz
+    const current = sessionsRef.current.find((x) => x.id === activeIdRef.current);
+    if (current && !current.messages.some((m) => m.role === 'user')) return;
+    const created = makeSession([greetingMessage(language)]);
+    commitSessions([created, ...sessionsRef.current]);
+    openSession(created);
+    if (user?.uid) {
+      pushRemoteSession(user.uid, created).catch((err) => console.warn('Chat cloud sync warning:', err));
+    }
+  };
+
+  const handleSelectSession = (id: string) => {
+    if (id === activeIdRef.current) return;
+    const found = sessionsRef.current.find((x) => x.id === id);
+    if (found) openSession(found);
+  };
+
+  const handleDeleteSession = (id: string) => {
+    if (!window.confirm(language === 'uz' ? "Bu suhbatni o'chirasizmi?" : "Удалить этот диалог?")) return;
+    let list = sessionsRef.current.filter((x) => x.id !== id);
+    if (list.length === 0) list = [makeSession([greetingMessage(language)])];
+    commitSessions(list);
+    if (activeIdRef.current === id) openSession(list[0]);
+    if (user?.uid) {
+      dropRemoteSession(user.uid, id).catch((err) => console.warn('Chat delete warning:', err));
     }
   };
 
@@ -1106,6 +1147,8 @@ export default function AiAssistant({ user }: { user: any }) {
 
         {/* Right Column: Chat Section */}
         <div className="lg:col-span-8">
+          <div className="flex gap-4 items-start">
+          <div className="flex-1 min-w-0">
           <div className="bg-white border border-slate-200/60 rounded-3xl shadow-sm flex flex-col h-[650px] overflow-hidden">
             {/* Thread Header */}
             <div className="px-6 py-4 bg-slate-50 border-b border-slate-200/50 flex items-center justify-between gap-4">
@@ -1477,6 +1520,17 @@ export default function AiAssistant({ user }: { user: any }) {
                 </>
               )}
             </div>
+          </div>
+          </div>
+
+          <AiChatHistory
+            sessions={sessions}
+            activeId={activeId}
+            language={language}
+            onSelect={handleSelectSession}
+            onNew={handleNewChat}
+            onDelete={handleDeleteSession}
+          />
           </div>
 
           {/* Shaxsiy AI kaliti: chat tagidagi bo'sh joyga joylashadi */}
