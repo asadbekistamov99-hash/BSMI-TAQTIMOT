@@ -761,7 +761,7 @@ export default function Presentation({ user, isAdmin = false }: PresentationProp
                   }
                 } : undefined}
                 hasNextTopic={currentIdx >= 0 && currentIdx < filteredTopics.length - 1}
-                canAnnotate={isAdmin}
+                canAnnotate={true}
               />
             );
           })()}

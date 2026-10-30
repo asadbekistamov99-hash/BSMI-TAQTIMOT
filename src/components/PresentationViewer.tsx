@@ -85,7 +85,7 @@ export const PresentationViewer: React.FC<PresentationViewerProps> = ({
   hasPrevTopic = false,
   onNextTopic,
   hasNextTopic = false,
-  canAnnotate = false
+  canAnnotate = true
 }) => {
   // Common states
   const [loading, setLoading] = useState(true);
@@ -1030,141 +1030,178 @@ export const PresentationViewer: React.FC<PresentationViewerProps> = ({
           </div>
         )}
 
-        {/* Floating Annotation & Drawing Dock */}
-        {canAnnotate && activeTool !== 'pointer' && (
-          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl p-2 flex items-center gap-2 max-w-[95vw] flex-wrap justify-center animate-in fade-in slide-in-from-bottom-3 duration-200">
-            {/* Tool Mode selector */}
-            <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10">
-              <button
-                onClick={() => setActiveTool('pointer')}
-                className="p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer text-slate-400 hover:text-white hover:bg-white/10"
-                title="Sichqoncha ko'rsatkichi (V yoki Esc)"
-              >
-                <MousePointer size={15} />
-                <span className="hidden sm:inline">Ko'rsatkich</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTool('pen')}
-                className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                  activeTool === 'pen' ? 'bg-amber-400 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-white'
-                }`}
-                title="Qalam bilan chizish (P)"
-              >
-                <Pen size={15} />
-                <span className="hidden sm:inline">Chizish</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTool('highlighter')}
-                className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                  activeTool === 'highlighter' ? 'bg-yellow-400 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-white'
-                }`}
-                title="Marker bilan belgilash (H)"
-              >
-                <Highlighter size={15} />
-                <span className="hidden sm:inline">Belgilash</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTool('laser')}
-                className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                  activeTool === 'laser' ? 'bg-rose-500 text-white font-bold shadow' : 'text-slate-400 hover:text-white'
-                }`}
-                title="Lazer ko'rsatkich (L)"
-              >
-                <Sparkles size={15} />
-                <span className="hidden sm:inline">Lazer</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTool('eraser')}
-                className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                  activeTool === 'eraser' ? 'bg-white/25 text-rose-400 font-bold shadow' : 'text-slate-400 hover:text-white'
-                }`}
-                title="O'chirg'ich (E)"
-              >
-                <Eraser size={15} />
-                <span className="hidden sm:inline">O'chirish</span>
-              </button>
-            </div>
-
-            {/* Colors picker for pen & highlighter */}
-            {(activeTool === 'pen' || activeTool === 'highlighter') && (
-              <div className="flex items-center gap-1.5 px-2 border-l border-white/10">
-                {ANNOTATION_COLORS.map(c => (
-                  <button
-                    key={c.value}
-                    onClick={() => setStrokeColor(c.value)}
-                    className="w-6 h-6 rounded-full border-2 transition-transform hover:scale-115 flex items-center justify-center cursor-pointer shadow-sm"
-                    style={{
-                      backgroundColor: c.value,
-                      borderColor: strokeColor === c.value ? '#38bdf8' : 'rgba(255,255,255,0.25)'
-                    }}
-                    title={c.label}
-                  >
-                    {strokeColor === c.value && (
-                      <Check size={12} className={c.value === '#ffffff' || c.value === '#facc15' ? 'text-black font-black' : 'text-white font-black'} />
-                    )}
-                  </button>
-                ))}
+        {/* Floating Annotation & Drawing Dock - 100% mouse-operated */}
+        {canAnnotate && (
+          activeTool === 'pointer' ? (
+            <button
+              type="button"
+              onClick={() => setActiveTool('pen')}
+              className="absolute bottom-5 left-1/2 -translate-x-1/2 z-40 bg-slate-900/90 hover:bg-slate-900 backdrop-blur-xl border border-amber-400/40 hover:border-amber-400 text-white rounded-2xl shadow-2xl px-4 py-2.5 flex items-center gap-2.5 text-xs font-black uppercase tracking-wider hover:scale-105 active:scale-95 transition-all cursor-pointer ring-2 ring-amber-400/20 group"
+              title="Sichqoncha bilan bosib chizish va belgilash panelini ochish"
+            >
+              <div className="w-7 h-7 rounded-xl bg-amber-400/20 text-amber-400 flex items-center justify-center group-hover:bg-amber-400 group-hover:text-slate-950 transition-colors">
+                <Pen size={14} />
               </div>
-            )}
+              <span>Slaydda Chizish & Belgilash (Qalam, O'chirg'ich)</span>
+            </button>
+          ) : (
+            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl p-2.5 flex flex-col items-center gap-2 max-w-[95vw] animate-in fade-in slide-in-from-bottom-3 duration-200">
+              {/* Status Hint */}
+              <div className="text-[10px] font-bold px-3 py-0.5 rounded-full bg-white/10 text-slate-300 flex items-center gap-1.5">
+                {activeTool === 'pen' && <span className="text-amber-300">✏️ Qalam faol — sichqoncha bilan bosing va suring</span>}
+                {activeTool === 'highlighter' && <span className="text-yellow-300">🖍️ Marker faol — belgilash uchun sichqoncha bilan torting</span>}
+                {activeTool === 'eraser' && <span className="text-rose-300">🧹 O'chirg'ich faol — o'chirish uchun chiziq ustiga bosing</span>}
+                {activeTool === 'laser' && <span className="text-red-400">✨ Lazer ko'rsatkich faol — slayd ustida harakatlantiring</span>}
+              </div>
 
-            {/* Thickness presets for pen & highlighter */}
-            {(activeTool === 'pen' || activeTool === 'highlighter') && (
-              <div className="flex items-center gap-1 px-2 border-l border-white/10">
-                {[
-                  { label: 'Yupqa', size: 2, dot: 4 },
-                  { label: "O'rtacha", size: 4, dot: 7 },
-                  { label: 'Qalin', size: 8, dot: 11 }
-                ].map(s => (
+              <div className="flex items-center gap-2 flex-wrap justify-center">
+                {/* Tool Mode selector */}
+                <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10">
                   <button
-                    key={s.size}
-                    onClick={() => setStrokeWidth(s.size)}
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-                      strokeWidth === s.size ? 'bg-white/20 text-brand-accent ring-1 ring-white/30' : 'hover:bg-white/10 text-slate-400'
+                    type="button"
+                    onClick={() => setActiveTool('pointer')}
+                    className="p-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer text-slate-400 hover:text-white hover:bg-white/10"
+                    title="Ko'rsatkich rejimi (Sichqoncha bilan bosing)"
+                  >
+                    <MousePointer size={15} />
+                    <span>Ko'rsatkich</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTool('pen')}
+                    className={`p-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      activeTool === 'pen' ? 'bg-amber-400 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'
                     }`}
-                    title={s.label}
+                    title="Qalam bilan chizish (Sichqoncha bilan bosing)"
                   >
-                    <span
-                      className="rounded-full bg-current"
-                      style={{ width: `${s.dot}px`, height: `${s.dot}px` }}
-                    />
+                    <Pen size={15} />
+                    <span>Qalam</span>
                   </button>
-                ))}
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTool('highlighter')}
+                    className={`p-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      activeTool === 'highlighter' ? 'bg-yellow-400 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Marker bilan belgilash (Sichqoncha bilan bosing)"
+                  >
+                    <Highlighter size={15} />
+                    <span>Marker</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTool('eraser')}
+                    className={`p-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      activeTool === 'eraser' ? 'bg-rose-500 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="O'chirg'ich bilan o'chirish (Sichqoncha bilan bosing)"
+                  >
+                    <Eraser size={15} />
+                    <span>O'chirg'ich</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTool('laser')}
+                    className={`p-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      activeTool === 'laser' ? 'bg-red-600 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Lazer ko'rsatkich (Sichqoncha bilan bosing)"
+                  >
+                    <Sparkles size={15} />
+                    <span>Lazer</span>
+                  </button>
+                </div>
+
+                {/* Colors picker for pen & highlighter */}
+                {(activeTool === 'pen' || activeTool === 'highlighter') && (
+                  <div className="flex items-center gap-1.5 px-2 border-l border-white/10">
+                    {ANNOTATION_COLORS.map(c => (
+                      <button
+                        type="button"
+                        key={c.value}
+                        onClick={() => setStrokeColor(c.value)}
+                        className="w-6 h-6 rounded-full border-2 transition-transform hover:scale-125 flex items-center justify-center cursor-pointer shadow-sm"
+                        style={{
+                          backgroundColor: c.value,
+                          borderColor: strokeColor === c.value ? '#38bdf8' : 'rgba(255,255,255,0.35)'
+                        }}
+                        title={c.label}
+                      >
+                        {strokeColor === c.value && (
+                          <Check size={12} className={c.value === '#ffffff' || c.value === '#facc15' ? 'text-black font-black' : 'text-white font-black'} />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Thickness presets for pen & highlighter */}
+                {(activeTool === 'pen' || activeTool === 'highlighter') && (
+                  <div className="flex items-center gap-1 px-2 border-l border-white/10">
+                    {[
+                      { label: 'Yupqa', size: 2, dot: 4 },
+                      { label: "O'rtacha", size: 4, dot: 7 },
+                      { label: 'Qalin', size: 8, dot: 11 }
+                    ].map(s => (
+                      <button
+                        type="button"
+                        key={s.size}
+                        onClick={() => setStrokeWidth(s.size)}
+                        className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                          strokeWidth === s.size ? 'bg-white/25 text-amber-300 ring-1 ring-white/30' : 'hover:bg-white/10 text-slate-400'
+                        }`}
+                        title={s.label}
+                      >
+                        <span
+                          className="rounded-full bg-current"
+                          style={{ width: `${s.dot}px`, height: `${s.dot}px` }}
+                        />
+                        <span>{s.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Actions: Undo, Clear, Close */}
+                <div className="flex items-center gap-1.5 pl-2 border-l border-white/10">
+                  <button
+                    type="button"
+                    onClick={handleUndo}
+                    disabled={!annotations[currentPage] || annotations[currentPage].length === 0}
+                    className="p-2 rounded-lg text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-all cursor-pointer flex items-center gap-1 text-xs font-bold"
+                    title="Oxirgi chiziqni bekor qilish"
+                  >
+                    <Undo2 size={15} />
+                    <span className="hidden sm:inline">Orqaga</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleClearSlide}
+                    disabled={!annotations[currentPage] || annotations[currentPage].length === 0}
+                    className="p-2 rounded-lg text-rose-400 hover:text-rose-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-rose-500/20 transition-all cursor-pointer flex items-center gap-1 text-xs font-bold"
+                    title="Ushbu slayddagi barcha chizmalarni tozalash"
+                  >
+                    <Trash2 size={15} />
+                    <span className="hidden sm:inline">Tozalash</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTool('pointer')}
+                    className="p-2 ml-1 rounded-lg bg-white/10 text-slate-300 hover:text-white hover:bg-white/20 transition-all cursor-pointer"
+                    title="Chizish panelini yopish"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
               </div>
-            )}
-
-            {/* Actions: Undo, Clear, Close */}
-            <div className="flex items-center gap-1 pl-2 border-l border-white/10">
-              <button
-                onClick={handleUndo}
-                disabled={!annotations[currentPage] || annotations[currentPage].length === 0}
-                className="p-2 rounded-lg text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-all cursor-pointer"
-                title="Oxirgisini bekor qilish (Ctrl+Z)"
-              >
-                <Undo2 size={15} />
-              </button>
-
-              <button
-                onClick={handleClearSlide}
-                disabled={!annotations[currentPage] || annotations[currentPage].length === 0}
-                className="p-2 rounded-lg text-rose-400 hover:text-rose-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-rose-500/20 transition-all cursor-pointer"
-                title="Ushbu slayddagi barcha chizmalarni tozalash"
-              >
-                <Trash2 size={15} />
-              </button>
-
-              <button
-                onClick={() => setActiveTool('pointer')}
-                className="p-2 ml-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
-                title="Chizish panelini yopish (Esc)"
-              >
-                <X size={15} />
-              </button>
             </div>
-          </div>
+          )
         )}
 
         {/* Desktop Quick Nav Arrows on Stage hover */}

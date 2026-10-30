@@ -11,7 +11,7 @@ import { SEMESTER_2_DETAILED_TOPICS } from '../data/semester2TopicsData';
 import { SEMESTER_3_DETAILED_TOPICS } from '../data/semester3TopicsData';
 import { getGlossaryTermsByTopic } from '../data/topicGlossaryData';
 import { motion } from 'motion/react';
-import { Book, Play, Image as ImageIcon, Languages, ChevronRight, ClipboardCheck, Lock, Sparkles, Clock, Maximize2, Minimize2, ZoomIn, ZoomOut, X, Type, BookOpen, Search, CheckCircle, Edit3, Trash2, History, Download, Bold, Italic, List, Heading, Code, Check, Stethoscope, Printer, BookA, Bookmark, Presentation, FileText, RefreshCw, Box } from 'lucide-react';
+import { Book, Play, Image as ImageIcon, Languages, ChevronRight, ClipboardCheck, Lock, Sparkles, Clock, Maximize2, Minimize2, ZoomIn, ZoomOut, X, Type, BookOpen, Search, CheckCircle, Edit3, Trash2, History, Download, Bold, Italic, List, Heading, Code, Check, Stethoscope, Printer, BookA, Bookmark, Presentation, FileText, RefreshCw, Box, HelpCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import PaymentModal from '../components/PaymentModal';
 import CreativeAnatomyDiagram from '../components/CreativeAnatomyDiagram';
@@ -22,6 +22,11 @@ import TopicGlossaryViewer from '../components/TopicGlossaryViewer';
 import TopicReferencesViewer from '../components/TopicReferencesViewer';
 import TopicTheoryReader from '../components/TopicTheoryReader';
 import TopicModelViewerModal from '../components/TopicModelViewerModal';
+import TopicTheoryQuestionsViewer from '../components/TopicTheoryQuestionsViewer';
+import TopicInteractiveQuizzesViewer from '../components/TopicInteractiveQuizzesViewer';
+import TopicPresentationSection from '../components/TopicPresentationSection';
+import { getTheoryQuestionsForTopic } from '../data/topicTheoryQuestionsData';
+import { getCuratedQuizzesForTopic } from '../data/topicQuizzesData';
 import { ANATOMY_MODELS, SEED_MODELS, type AnatomyModel } from '../data/anatomyModels';
 import { getActiveUserAiKey } from '../lib/userAiKey';
 import { useSettings } from '../hooks/useSettings';
@@ -127,6 +132,19 @@ function HighlightedText({ text, highlight }: { text: string; highlight: string 
   );
 }
 
+// Navigation Tab State (8 distinct sections in exact sequence):
+// 1. nazariy darslik, 2. Taqdimot, 3. video darslik, 4. 3d modellar,
+// 5. nazariy savollar, 6. interaktiv testlar, 7. lug'atlar, 8. foydalanilgan adabiyotlar
+export type TopicTabKey = 
+  | 'theory' 
+  | 'presentation' 
+  | 'video_lessons' 
+  | 'models_3d' 
+  | 'theory_questions' 
+  | 'interactive_quizzes' 
+  | 'glossary' 
+  | 'references';
+
 export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: boolean, user?: any }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -148,7 +166,7 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
   const [fontFamily, setFontFamily] = useState<'sans' | 'serif'>('sans');
 
   // Navigation Tab State
-  const [activeTab, setActiveTab] = useState<'theory' | 'video_lessons' | 'glossary' | 'references' | 'models_3d'>('theory');
+  const [activeTab, setActiveTab] = useState<TopicTabKey>('theory');
   const [selected3DModel, setSelected3DModel] = useState<AnatomyModel | null>(null);
   const [inlineModelIndex, setInlineModelIndex] = useState(0);
 
@@ -182,19 +200,38 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
   const requestedModelId = searchParams.get('model');
   const requestedTab = searchParams.get('tab');
 
-  // Ushbu mavzuga maxsus biriktirilgan 3D Anatomiya Modellari (src/data/anatomyModels.ts dagi topicIds orqali)
+  // Ushbu mavzuga maxsus biriktirilgan 3D Anatomiya Modellari
   const relatedModels: AnatomyModel[] = (() => {
-    if (!topic || !topic.semester || !topic.order) return [];
+    if (!topic || !topic.semester || !topic.order) return ANATOMY_MODELS.slice(0, 4);
     const curriculumTopicId = `sem_${topic.semester}_top_${topic.order}`;
-    return [...ANATOMY_MODELS, ...SEED_MODELS].filter((m) => 
+    const matched = [...ANATOMY_MODELS, ...SEED_MODELS].filter((m) => 
       m.topicIds?.includes(curriculumTopicId) || (topic.defaultModelId && m.id === topic.defaultModelId)
     );
+    if (matched.length > 0) return matched;
+    // Fallback: Agar mavzuga bevosita bog'lanmagan bo'lsa ham talabaga to'liq 3D modellar mavjud bo'lsin
+    return ANATOMY_MODELS.slice(0, 4);
   })();
 
-  // Deep-link: agar URL da ?model=... yoki ?tab=models_3d bo'lsa, avtomatik 3D modelni ochish
+  // Ushbu mavzuga tegishli eng muhim nazariy savollar va javoblar
+  const theoryQuestions = React.useMemo(() => topic ? getTheoryQuestionsForTopic(topic) : [], [topic]);
+
+  // Ushbu mavzuga tegishli interaktiv testlar
+  const topicQuizzes = React.useMemo(() => topic ? getCuratedQuizzesForTopic(topic) : [], [topic]);
+
+  // Deep-link: agar URL da ?tab=... yoki ?model=... bo'lsa
   useEffect(() => {
     if (requestedTab === 'models_3d' || requestedModelId) {
       setActiveTab('models_3d');
+    } else if (
+      requestedTab === 'theory' || 
+      requestedTab === 'presentation' || 
+      requestedTab === 'video_lessons' || 
+      requestedTab === 'theory_questions' || 
+      requestedTab === 'interactive_quizzes' || 
+      requestedTab === 'glossary' || 
+      requestedTab === 'references'
+    ) {
+      setActiveTab(requestedTab as TopicTabKey);
     }
     if (requestedModelId) {
       const allModels = [...ANATOMY_MODELS, ...SEED_MODELS];
@@ -1117,135 +1154,186 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 -mt-12">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 sm:gap-10">
           {/* Main Content Area */}
-          <div className="lg:col-span-2 space-y-10">
+          <div className="lg:col-span-2 space-y-8 sm:space-y-10">
             {/* Theory Card */}
-            <div id="theory-card-top" className="bg-white p-10 md:p-14 rounded-[32px] border border-brand-border shadow-xl shadow-slate-200/50">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10 pb-6 border-b border-brand-border">
-                <div className="flex flex-wrap items-center gap-2 p-1 bg-slate-100/80 rounded-2xl select-none max-w-full">
+            <div id="theory-card-top" className="bg-white p-5 sm:p-7 md:p-9 rounded-[32px] border border-brand-border shadow-xl shadow-slate-200/50">
+              {/* TOP NAVIGATION BAR: 1, 2, 3, 4, 5 on the LEFT; 6, 7, 8 + PDF + Kengaytirish on the RIGHT */}
+              <div className="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-3 mb-8 pb-5 border-b border-brand-border">
+                {/* CHAP GURUH: 1, 2, 3, 4, 5 */}
+                <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100/90 rounded-2xl select-none">
+                  {/* 1. Nazariy darslik */}
                   <button
+                    type="button"
                     onClick={() => setActiveTab('theory')}
-                    className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                    className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
                       activeTab === 'theory'
-                        ? 'bg-white text-brand-primary shadow-md'
-                        : 'text-brand-muted hover:text-brand-primary'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-500/20'
+                        : 'bg-white/80 text-slate-700 hover:bg-blue-50 hover:text-blue-700 border border-slate-200/70'
                     }`}
                   >
-                    <Book className="w-4 h-4" />
-                    <span>{t('topic.theory')}</span>
+                    <BookOpen className={`w-3.5 h-3.5 ${activeTab === 'theory' ? 'text-white' : 'text-blue-600'}`} />
+                    <span>1. {language === 'uz' ? "Nazariy darslik" : language === 'ru' ? "Теория" : "Theory"}</span>
                   </button>
+
+                  {/* 2. Taqdimot */}
                   <button
+                    type="button"
+                    onClick={() => setActiveTab('presentation')}
+                    className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                      activeTab === 'presentation'
+                        ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 ring-2 ring-amber-500/20'
+                        : 'bg-white/80 text-slate-700 hover:bg-amber-50 hover:text-amber-700 border border-slate-200/70'
+                    }`}
+                  >
+                    <Presentation className={`w-3.5 h-3.5 ${activeTab === 'presentation' ? 'text-white' : 'text-amber-600'}`} />
+                    <span>2. {language === 'uz' ? "Taqdimot" : language === 'ru' ? "Презентация" : "Presentation"}</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-black ${
+                      activeTab === 'presentation' ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      PPTX
+                    </span>
+                  </button>
+
+                  {/* 3. Video darslik */}
+                  <button
+                    type="button"
                     onClick={() => setActiveTab('video_lessons')}
-                    className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                    className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
                       activeTab === 'video_lessons'
-                        ? 'bg-white text-indigo-600 shadow-md border-b-2 border-indigo-500'
-                        : 'text-brand-muted hover:text-indigo-600'
+                        ? 'bg-violet-600 text-white shadow-md shadow-violet-600/30 ring-2 ring-violet-500/20'
+                        : 'bg-white/80 text-slate-700 hover:bg-violet-50 hover:text-violet-700 border border-slate-200/70'
                     }`}
                   >
-                    <Play className="w-4 h-4 text-indigo-500" />
-                    <span>
-                      {language === 'uz' ? "Video darslik" : language === 'ru' ? 'Видеолекция' : 'Video Lesson'}
+                    <Play className={`w-3.5 h-3.5 ${activeTab === 'video_lessons' ? 'text-white fill-white' : 'text-violet-600'}`} />
+                    <span>3. {language === 'uz' ? "Video darslik" : language === 'ru' ? "Видеолекция" : "Video"}</span>
+                    {localizedVideos.length > 0 && (
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${
+                        activeTab === 'video_lessons' ? 'bg-violet-500 text-white' : 'bg-violet-100 text-violet-800'
+                      }`}>
+                        {localizedVideos.length}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* 4. 3D Modellar */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('models_3d')}
+                    className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                      activeTab === 'models_3d'
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-2 ring-emerald-500/20'
+                        : 'bg-white/80 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 border border-slate-200/70'
+                    }`}
+                  >
+                    <Box className={`w-3.5 h-3.5 ${activeTab === 'models_3d' ? 'text-white' : 'text-emerald-600'}`} />
+                    <span>4. {language === 'uz' ? "3D Modellar" : language === 'ru' ? "3D Модели" : "3D Models"}</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${
+                      activeTab === 'models_3d' ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {relatedModels.length}
                     </span>
                   </button>
+
+                  {/* 5. Nazorat savollari */}
                   <button
-                    onClick={() => setActiveTab('glossary')}
-                    className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-                      activeTab === 'glossary'
-                        ? 'bg-white text-indigo-700 shadow-md border-b-2 border-indigo-600'
-                        : 'text-brand-muted hover:text-indigo-700'
+                    type="button"
+                    onClick={() => setActiveTab('theory_questions')}
+                    className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                      activeTab === 'theory_questions'
+                        ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30 ring-2 ring-rose-500/20'
+                        : 'bg-white/80 text-slate-700 hover:bg-rose-50 hover:text-rose-700 border border-slate-200/70'
                     }`}
                   >
-                    <BookA className="w-4 h-4 text-indigo-600" />
-                    <span>
-                      {language === 'uz' ? "Lug'atlar" : language === 'ru' ? 'Глоссарий' : 'Glossary'}
+                    <HelpCircle className={`w-3.5 h-3.5 ${activeTab === 'theory_questions' ? 'text-white' : 'text-rose-600'}`} />
+                    <span>5. {language === 'uz' ? "Nazorat savollari" : language === 'ru' ? "Контрольные вопросы" : "Control Questions"}</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${
+                      activeTab === 'theory_questions' ? 'bg-rose-500 text-white' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {theoryQuestions.length}
                     </span>
+                  </button>
+                </div>
+
+                {/* O'NG GURUH: 6, 7, 8 + PDF KONSPEKT + KENGAYTIRISH */}
+                <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100/90 rounded-2xl select-none self-start 2xl:self-auto">
+                  {/* 6. Interaktiv testlar */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('interactive_quizzes')}
+                    className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                      activeTab === 'interactive_quizzes'
+                        ? 'bg-red-600 text-white shadow-md shadow-red-600/30 ring-2 ring-red-500/20'
+                        : 'bg-white/80 text-slate-700 hover:bg-red-50 hover:text-red-700 border border-slate-200/70'
+                    }`}
+                  >
+                    <ClipboardCheck className={`w-3.5 h-3.5 ${activeTab === 'interactive_quizzes' ? 'text-white' : 'text-red-600'}`} />
+                    <span>6. {language === 'uz' ? "Interaktiv testlar" : language === 'ru' ? "Тесты" : "Quizzes"}</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${
+                      activeTab === 'interactive_quizzes' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-800'
+                    }`}>
+                      {topicQuizzes.length}
+                    </span>
+                  </button>
+
+                  {/* 7. Lug'atlar */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('glossary')}
+                    className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                      activeTab === 'glossary'
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-500/20'
+                        : 'bg-white/80 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-200/70'
+                    }`}
+                  >
+                    <BookA className={`w-3.5 h-3.5 ${activeTab === 'glossary' ? 'text-white' : 'text-indigo-600'}`} />
+                    <span>7. {language === 'uz' ? "Lug'atlar" : language === 'ru' ? "Глоссарий" : "Glossary"}</span>
                     {getTopicTermCount(topic) > 0 && (
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                        activeTab === 'glossary' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200/80 text-slate-600'
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${
+                        activeTab === 'glossary' ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-800'
                       }`}>
                         {getTopicTermCount(topic)}
                       </span>
                     )}
                   </button>
+
+                  {/* 8. Foydalanilgan adabiyotlar */}
                   <button
+                    type="button"
                     onClick={() => setActiveTab('references')}
-                    className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                    className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
                       activeTab === 'references'
-                        ? 'bg-white text-brand-primary shadow-md border-b-2 border-brand-accent'
-                        : 'text-brand-muted hover:text-brand-primary'
+                        ? 'bg-slate-800 text-white shadow-md shadow-slate-800/30 ring-2 ring-slate-700/20'
+                        : 'bg-white/80 text-slate-700 hover:bg-slate-200 hover:text-slate-900 border border-slate-200/70'
                     }`}
                   >
-                    <Bookmark className="w-4 h-4 text-amber-600" />
-                    <span>
-                      {language === 'uz' ? "Foydalanilgan adabiyotlar" : language === 'ru' ? 'Использованная литература' : 'References'}
-                    </span>
+                    <Bookmark className={`w-3.5 h-3.5 ${activeTab === 'references' ? 'text-white' : 'text-amber-600'}`} />
+                    <span>8. {language === 'uz' ? "Adabiyotlar" : language === 'ru' ? "Литература" : "References"}</span>
                   </button>
-                  {relatedModels.length > 0 && (
-                    <button
-                      onClick={() => setActiveTab('models_3d')}
-                      className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-                        activeTab === 'models_3d'
-                          ? 'bg-white text-emerald-700 shadow-md border-b-2 border-emerald-500'
-                          : 'text-brand-muted hover:text-emerald-700'
-                      }`}
-                    >
-                      <Box className="w-4 h-4 text-emerald-600" />
-                      <span>{language === 'uz' ? "3D Modellar" : language === 'ru' ? "3D Модели" : "3D Models"}</span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                        activeTab === 'models_3d' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200/80 text-slate-600'
-                      }`}>
-                        {relatedModels.length}
-                      </span>
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+
+                  <div className="h-5 w-[1px] bg-slate-300 mx-0.5 hidden sm:block" />
+
+                  {/* PDF KONSPEKT */}
                   <button
                     type="button"
                     onClick={() => setShowExportModal(true)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-black uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-95 shadow-xs cursor-pointer"
-                    title="Mavzuni PDF konspekt qilib yuklab olish yoki taqdimotiga o'tish"
+                    className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-95 shadow-xs cursor-pointer"
+                    title="Mavzuni PDF konspekt qilib yuklab olish"
                   >
-                    <FileText className="w-4 h-4 text-blue-600" />
+                    <FileText className="w-3.5 h-3.5 text-blue-600" />
                     <span>PDF Konspekt</span>
                   </button>
-                  {relatedModels.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelected3DModel(relatedModels[0]);
-                      }}
-                      className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-95 shadow-md shadow-emerald-600/25 border border-emerald-500/40 cursor-pointer"
-                      title={language === 'uz' ? "Ushbu mavzuga tegishli interaktiv 3D modelni ochish" : "Открыть 3D модель темы"}
-                    >
-                      <Box className="w-4 h-4 text-emerald-200" />
-                      <span>3D Model</span>
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (topic) {
-                        navigate(`/presentation?topicId=${topic.id}&semester=${topic.semester}&order=${topic.order}`);
-                      } else {
-                        navigate('/presentation');
-                      }
-                    }}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-95 shadow-md shadow-amber-600/25 border border-amber-500/40 cursor-pointer"
-                    title="Ushbu mavzuning PowerPoint (.pptx) taqdimotiga o'tish"
-                  >
-                    <Presentation className="w-4 h-4 text-amber-200" />
-                    <span>Taqdimot</span>
-                  </button>
+
+                  {/* KENGAYTIRISH */}
                   <button
                     type="button"
                     onClick={() => setIsFullscreen(true)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-brand-accent hover:bg-brand-accent/90 border border-brand-accent/30 text-brand-primary rounded-xl text-xs font-black uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-95 shadow-lg shadow-brand-accent/10 cursor-pointer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-brand-accent hover:bg-brand-accent/90 border border-brand-accent/30 text-brand-primary rounded-xl text-[11px] font-black uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-95 shadow-sm cursor-pointer"
                     title="To'liq ekranda o'qish"
                   >
-                    <Maximize2 className="w-4 h-4" />
+                    <Maximize2 className="w-3.5 h-3.5" />
                     <span>Kengaytirish</span>
                   </button>
                 </div>
@@ -1714,6 +1802,8 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     </div>
                   )}
                 </>
+              ) : activeTab === 'presentation' ? (
+                <TopicPresentationSection topic={topic} />
               ) : activeTab === 'video_lessons' ? (
                 <div className="space-y-8">
                   {(!localizedVideos || localizedVideos.length === 0) ? (
@@ -1895,16 +1985,6 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     </div>
                   )}
                 </div>
-              ) : activeTab === 'glossary' ? (
-                <TopicGlossaryViewer
-                  topicTitle={getLocalized(topic.title)}
-                  topicId={topic.id}
-                  terms={topic.terms}
-                  latinTerms={topic.latinTerms}
-                  semester={topic.semester}
-                  topicOrder={topic.order}
-                  theory={getLocalized(topic.theory) || (typeof topic.theory === 'string' ? topic.theory : '')}
-                />
               ) : activeTab === 'models_3d' ? (
                 <div className="space-y-6 animate-fadeIn">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
@@ -2044,6 +2124,20 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                     ))}
                   </div>
                 </div>
+              ) : activeTab === 'theory_questions' ? (
+                <TopicTheoryQuestionsViewer topic={topic} questions={theoryQuestions} />
+              ) : activeTab === 'interactive_quizzes' ? (
+                <TopicInteractiveQuizzesViewer topic={topic} quizzes={topicQuizzes} />
+              ) : activeTab === 'glossary' ? (
+                <TopicGlossaryViewer
+                  topicTitle={getLocalized(topic.title)}
+                  topicId={topic.id}
+                  terms={topic.terms}
+                  latinTerms={topic.latinTerms}
+                  semester={topic.semester}
+                  topicOrder={topic.order}
+                  theory={getLocalized(topic.theory) || (typeof topic.theory === 'string' ? topic.theory : '')}
+                />
               ) : (
                 <TopicReferencesViewer
                   topicTitle={getLocalized(topic.title)}
@@ -2325,21 +2419,6 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
               </div>
             )}
 
-            {/* Quiz Link */}
-            <Link 
-              to={`/quiz/${topic.id}`}
-              className="block p-10 bg-brand-accent rounded-[32px] text-brand-primary shadow-2xl shadow-brand-accent/20 hover:scale-[1.02] transition-all group relative overflow-hidden"
-            >
-              <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-bl-full -mr-12 -mt-12"></div>
-              <ClipboardCheck className="w-12 h-12 mb-6 group-hover:rotate-12 transition-transform" />
-              <h3 className="text-2xl font-black mb-3 leading-tight uppercase tracking-tight">{t('home.feat_quizzes')}</h3>
-              <p className="text-brand-primary/70 text-sm font-medium leading-relaxed mb-10">
-                {t('home.feat_quizzes_desc')}
-              </p>
-              <div className="flex items-center justify-between font-black text-xs tracking-widest uppercase">
-                {t('study.unlocked').toUpperCase()} <ChevronRight className="w-5 h-5" />
-              </div>
-            </Link>
 
             {/* Help/Support Section */}
             <div className="p-8 bg-white rounded-[32px] border border-brand-border text-center">
@@ -2597,66 +2676,97 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
 
                   {/* Inline Tab Navigation for Immersive Reader */}
                   <div className="flex justify-center mb-8">
-                    <div className={`flex items-center gap-1.5 p-1 rounded-2xl select-none ${
+                    <div className={`flex flex-wrap items-center gap-1.5 p-1 rounded-2xl select-none ${
                       readTheme === 'dark' ? 'bg-slate-900 border border-slate-800' : 'bg-slate-100/80 border border-slate-200/50'
                     }`}>
                       <button
                         onClick={() => setActiveTab('theory')}
-                        className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                        className={`px-3 sm:px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
                           activeTab === 'theory'
-                            ? readTheme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'bg-white text-brand-primary shadow-md'
-                            : 'text-brand-muted hover:text-brand-primary'
+                            ? readTheme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'bg-blue-600 text-white shadow-md'
+                            : 'text-brand-muted hover:text-blue-600'
                         }`}
                       >
-                        <Book className="w-4 h-4" />
-                        <span>{t('topic.theory')}</span>
+                        <BookOpen className="w-3.5 h-3.5" />
+                        <span>1. {t('topic.theory')}</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('presentation')}
+                        className={`px-3 sm:px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                          activeTab === 'presentation'
+                            ? readTheme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'bg-amber-600 text-white shadow-md'
+                            : 'text-brand-muted hover:text-amber-600'
+                        }`}
+                      >
+                        <Presentation className="w-3.5 h-3.5" />
+                        <span>2. Taqdimot</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('video_lessons')}
+                        className={`px-3 sm:px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                          activeTab === 'video_lessons'
+                            ? readTheme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'bg-violet-600 text-white shadow-md'
+                            : 'text-brand-muted hover:text-violet-600'
+                        }`}
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                        <span>3. Video</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('models_3d')}
+                        className={`px-3 sm:px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                          activeTab === 'models_3d'
+                            ? 'bg-emerald-600 text-white shadow-md'
+                            : 'text-brand-muted hover:text-emerald-600'
+                        }`}
+                      >
+                        <Box className="w-3.5 h-3.5" />
+                        <span>4. 3D ({relatedModels.length})</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('theory_questions')}
+                        className={`px-3 sm:px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                          activeTab === 'theory_questions'
+                            ? readTheme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'bg-rose-600 text-white shadow-md'
+                            : 'text-brand-muted hover:text-rose-600'
+                        }`}
+                      >
+                        <HelpCircle className="w-3.5 h-3.5" />
+                        <span>5. Nazorat savollari ({theoryQuestions.length})</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('interactive_quizzes')}
+                        className={`px-3 sm:px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                          activeTab === 'interactive_quizzes'
+                            ? readTheme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'bg-red-600 text-white shadow-md'
+                            : 'text-brand-muted hover:text-red-600'
+                        }`}
+                      >
+                        <ClipboardCheck className="w-3.5 h-3.5" />
+                        <span>6. Testlar ({topicQuizzes.length})</span>
                       </button>
                       <button
                         onClick={() => setActiveTab('glossary')}
-                        className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                        className={`px-3 sm:px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
                           activeTab === 'glossary'
-                            ? readTheme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'bg-white text-indigo-700 shadow-md'
-                            : 'text-brand-muted hover:text-indigo-700'
+                            ? readTheme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'bg-indigo-600 text-white shadow-md'
+                            : 'text-brand-muted hover:text-indigo-600'
                         }`}
                       >
-                        <BookA className="w-4 h-4 text-indigo-500" />
-                        <span>
-                          {language === 'uz' ? "Lug'atlar" : language === 'ru' ? 'Глоссарий' : 'Glossary'}
-                        </span>
-                        {getTopicTermCount(topic) > 0 && (
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                            activeTab === 'glossary' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200/80 text-slate-600'
-                          }`}>
-                            {getTopicTermCount(topic)}
-                          </span>
-                        )}
+                        <BookA className="w-3.5 h-3.5" />
+                        <span>7. Lug'at ({getTopicTermCount(topic)})</span>
                       </button>
                       <button
                         onClick={() => setActiveTab('references')}
-                        className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                        className={`px-3 sm:px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
                           activeTab === 'references'
-                            ? readTheme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'bg-white text-brand-primary shadow-md'
-                            : 'text-brand-muted hover:text-brand-primary'
+                            ? readTheme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-800 text-white shadow-md'
+                            : 'text-brand-muted hover:text-slate-800'
                         }`}
                       >
-                        <Bookmark className="w-4 h-4 text-amber-500" />
-                        <span>
-                          {language === 'uz' ? "Adabiyotlar" : language === 'ru' ? 'Литература' : 'References'}
-                        </span>
+                        <Bookmark className="w-3.5 h-3.5" />
+                        <span>8. Adabiyotlar</span>
                       </button>
-                      {relatedModels.length > 0 && (
-                        <button
-                          onClick={() => setActiveTab('models_3d')}
-                          className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-                            activeTab === 'models_3d'
-                              ? 'bg-emerald-600 text-white shadow-md'
-                              : 'text-brand-muted hover:text-emerald-600'
-                          }`}
-                        >
-                          <Box className="w-4 h-4" />
-                          <span>3D ({relatedModels.length})</span>
-                        </button>
-                      )}
                     </div>
                   </div>
 
@@ -2945,17 +3055,29 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                             </>
                           )}
                         </div>
-                      ) : activeTab === 'glossary' ? (
+                      ) : activeTab === 'presentation' ? (
                         <div className="text-left">
-                          <TopicGlossaryViewer
-                            topicTitle={getLocalized(topic.title)}
-                            topicId={topic.id}
-                            terms={topic.terms}
-                            latinTerms={topic.latinTerms}
-                            semester={topic.semester}
-                            topicOrder={topic.order}
-                            theory={getLocalized(topic.theory) || (typeof topic.theory === 'string' ? topic.theory : '')}
-                          />
+                          <TopicPresentationSection topic={topic} />
+                        </div>
+                      ) : activeTab === 'video_lessons' ? (
+                        <div className="text-left space-y-6">
+                          {(!localizedVideos || localizedVideos.length === 0) ? (
+                            <div className="py-16 text-center text-slate-400">
+                              <Play className="w-12 h-12 mx-auto mb-3 opacity-40" />
+                              <p className="text-sm font-bold">Video darsliklar kiritilmagan</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              <div className="relative aspect-video rounded-3xl overflow-hidden bg-black shadow-2xl border border-slate-800">
+                                <iframe
+                                  src={localizedVideos[selectedVidIndex]}
+                                  title="Video lecture"
+                                  className="w-full h-full border-0"
+                                  allowFullScreen
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ) : activeTab === 'models_3d' ? (
                         <div className="text-left space-y-6">
@@ -3006,6 +3128,26 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                               </div>
                             </div>
                           )}
+                        </div>
+                      ) : activeTab === 'theory_questions' ? (
+                        <div className="text-left">
+                          <TopicTheoryQuestionsViewer topic={topic} questions={theoryQuestions} />
+                        </div>
+                      ) : activeTab === 'interactive_quizzes' ? (
+                        <div className="text-left">
+                          <TopicInteractiveQuizzesViewer topic={topic} quizzes={topicQuizzes} />
+                        </div>
+                      ) : activeTab === 'glossary' ? (
+                        <div className="text-left">
+                          <TopicGlossaryViewer
+                            topicTitle={getLocalized(topic.title)}
+                            topicId={topic.id}
+                            terms={topic.terms}
+                            latinTerms={topic.latinTerms}
+                            semester={topic.semester}
+                            topicOrder={topic.order}
+                            theory={getLocalized(topic.theory) || (typeof topic.theory === 'string' ? topic.theory : '')}
+                          />
                         </div>
                       ) : (
                         <div className="text-left">

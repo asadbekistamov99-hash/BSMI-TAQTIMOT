@@ -62,6 +62,7 @@ export interface Topic {
   diagramReplacements?: Record<string, any>;
   modelUrl?: string;
   defaultModelId?: string;
+  controlQuestions?: any[];
 }
 
 export interface Semester {

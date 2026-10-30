@@ -21,6 +21,7 @@ import TopicTermsEditor from '../components/TopicTermsEditor';
 import TopicReferencesEditor from '../components/TopicReferencesEditor';
 import TopicDiagramsEditor from '../components/TopicDiagramsEditor';
 import AdminPresentationsManager from '../components/AdminPresentationsManager';
+import AdminControlQuestionsManager from '../components/AdminControlQuestionsManager';
 import DiagnosticsPanel from '../components/DiagnosticsPanel';
 import { uploadVideoFile, isDirectVideoUrl } from '../lib/uploadHelper';
 import { getActiveAiKeySync } from '../lib/userAiKey';
@@ -208,7 +209,7 @@ const getSafeAdminTitle = (title: any): string => {
   return String(title);
 };
 
-type Tab = 'dashboard' | 'users' | 'payments' | 'topics' | 'presentations' | 'semesters' | 'content' | 'latin' | 'atlas' | 'models' | 'videos' | 'quizzes' | 'midterm' | 'ai' | 'languages' | 'notifications' | 'settings' | 'design' | 'logs' | 'backup' | 'analytics' | 'support' | 'help' | 'biometric_audit';
+type Tab = 'dashboard' | 'users' | 'payments' | 'topics' | 'presentations' | 'control_questions' | 'semesters' | 'content' | 'latin' | 'atlas' | 'models' | 'videos' | 'quizzes' | 'midterm' | 'ai' | 'languages' | 'notifications' | 'settings' | 'design' | 'logs' | 'backup' | 'analytics' | 'support' | 'help' | 'biometric_audit';
 
 function ConnectionStatus() {
   const [status, setStatus] = useState({ 
@@ -819,6 +820,7 @@ export default function AdminDashboard({ onLogout }: { onLogout?: () => void }) 
     { id: 'semesters', label: 'Semestrlar', icon: <Layers size={20} /> },
     { id: 'topics', label: 'Mavzular ro\'yxati', icon: <BookOpen size={20} /> },
     { id: 'presentations', label: 'Taqdimotlar (PPTX / PDF)', icon: <PresentationIcon size={20} /> },
+    { id: 'control_questions', label: 'Nazorat Savollari (30+)', icon: <HelpCircle size={20} /> },
     { id: 'content', label: 'Darslik (Theory)', icon: <Layers size={20} /> },
     { id: 'latin', label: 'Lotincha Lug\'at (Terminlar)', icon: <Globe size={20} /> },
     { id: 'models', label: '3D Modellar & Atlas', icon: <Box size={20} /> },
@@ -1140,6 +1142,7 @@ export default function AdminDashboard({ onLogout }: { onLogout?: () => void }) 
               {activeTab === 'semesters' && <SemesterManager requestConfirm={requestConfirm} />}
               {activeTab === 'topics' && <TopicManager searchQuery={searchQuery} authUser={authUser} requestConfirm={requestConfirm} />}
               {activeTab === 'presentations' && <AdminPresentationsManager searchQuery={searchQuery} authUser={authUser} requestConfirm={requestConfirm} />}
+              {activeTab === 'control_questions' && <AdminControlQuestionsManager searchQuery={searchQuery} authUser={authUser} requestConfirm={requestConfirm} />}
               {activeTab === 'content' && <ContentManager searchQuery={searchQuery} />}
               {activeTab === 'quizzes' && <QuizManager searchQuery={searchQuery} requestConfirm={requestConfirm} />}
               {activeTab === 'models' && <ThreeDModelsManager searchQuery={searchQuery} requestConfirm={requestConfirm} />}
