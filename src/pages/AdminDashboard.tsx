@@ -3681,7 +3681,7 @@ function SettingsManager() {
     siteName: 'BSMI ANATOMY',
     logoUrl: bsmiLogo,
     tagline: 'ANATOMY SYSTEM',
-    priceUZS: 30000,
+    priceUZS: 50000,
     priceUSD: 4,
     durationMonths: 6,
     telegramBotUsername: '@MEDAI_SUPPORT_BOT',
