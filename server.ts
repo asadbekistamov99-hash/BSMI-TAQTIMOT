@@ -35,16 +35,28 @@ dotenv.config();
 
 export async function createServerApp() {
   const app = express();
-  const adminSessions = new Set<string>();
+  const sessionSecret = process.env.ADMIN_SESSION_SECRET;
+  const signSession = (issuedAt: number) => {
+    if (!sessionSecret) return '';
+    const payload = String(issuedAt);
+    return `${payload}.${crypto.createHmac('sha256', sessionSecret).update(payload).digest('hex')}`;
+  };
+  const verifySession = (token: string) => {
+    if (!sessionSecret) return false;
+    const [issuedAt, signature] = token.split('.');
+    if (!issuedAt || !signature || Date.now() - Number(issuedAt) > 8 * 60 * 60 * 1000) return false;
+    const expected = signSession(Number(issuedAt)).split('.')[1];
+    return !!expected && signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  };
   const requireAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const cookie = req.headers.cookie?.match(/(?:^|;)\s*bsmi_admin=([^;]+)/)?.[1];
-    if (!cookie || !adminSessions.has(cookie)) return res.status(401).json({ error: 'Admin autentifikatsiyasi talab qilinadi' });
+    if (!cookie || !verifySession(cookie)) return res.status(401).json({ error: 'Admin autentifikatsiyasi talab qilinadi' });
     next();
   };
   const PORT = 3000;
 
-  app.use(express.json({ limit: '150mb' }));
-  app.use(express.urlencoded({ limit: '150mb', extended: true }));
+  app.use(express.json({ limit: '25mb' }));
+  app.use(express.urlencoded({ limit: '25mb', extended: true }));
 
   interface PerformanceLog {
     id: string;
@@ -296,6 +308,11 @@ export async function createServerApp() {
         return res.status(400).json({ error: 'fileName va fileData parametri talab qilinadi' });
       }
 
+      const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']);
+      if (mimeType && !allowedTypes.has(String(mimeType).toLowerCase())) {
+        return res.status(415).json({ error: 'Bu fayl turi qo‘llab-quvvatlanmaydi' });
+      }
+
       if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true });
       }
@@ -304,7 +321,13 @@ export async function createServerApp() {
       const targetFilePath = path.join(uploadsDir, safeName);
 
       const base64Data = fileData.includes(',') ? fileData.split(',')[1] : fileData;
+      if (!/^[A-Za-z0-9+/=\s]+$/.test(base64Data)) {
+        return res.status(400).json({ error: 'Fayl ma’lumotlari noto‘g‘ri formatda' });
+      }
       const buffer = Buffer.from(base64Data, 'base64');
+      if (buffer.length === 0 || buffer.length > 20 * 1024 * 1024) {
+        return res.status(413).json({ error: 'Fayl hajmi 20 MB dan oshmasligi kerak' });
+      }
       fs.writeFileSync(targetFilePath, buffer);
 
       console.log(`[STORAGE-SERVER] Successfully saved file: ${safeName} (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
@@ -462,12 +485,14 @@ export async function createServerApp() {
 
   app.post('/api/admin/login', (req, res) => {
     const { username, password } = req.body;
-    const adminUsername = process.env.ADMIN_USERNAME || 'BSMI123ANATOMY';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'anatomy123bsmi';
+    const adminUsername = process.env.ADMIN_USERNAME;
+    const adminPassword = process.env.ADMIN_PASSWORD;
 
+    if (!adminUsername || !adminPassword || !sessionSecret) {
+      return res.status(503).json({ success: false, message: 'Admin autentifikatsiyasi serverda sozlanmagan' });
+    }
     if (username && password && username.trim() === adminUsername && password.trim() === adminPassword) {
-      const token = crypto.randomBytes(32).toString('hex');
-      adminSessions.add(token);
+      const token = signSession(Date.now());
       res.setHeader('Set-Cookie', `bsmi_admin=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800`);
       res.json({ success: true, token: 'admin-authenticated' });
     } else {
