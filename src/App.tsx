@@ -1,20 +1,20 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { HelmetProvider } from 'react-helmet-async';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, getDocFromServer, setDoc, updateDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
-import Home from './pages/Home';
-import Semester from './pages/Semester';
-import TopicDetail from './pages/TopicDetail';
-import QuizPage from './pages/QuizPage';
-import AnatomyModels from './pages/AnatomyModels';
-import AdminLogin from './pages/AdminLogin';
-import AdminDashboard from './pages/AdminDashboard';
-import LatinGlossary from './pages/LatinGlossary';
-import AiAssistant from './pages/AiAssistant';
-import Presentation from './pages/Presentation';
-import LeaderboardPage from './pages/LeaderboardPage';
+const Home = lazy(() => import('./pages/Home'));
+const Semester = lazy(() => import('./pages/Semester'));
+const TopicDetail = lazy(() => import('./pages/TopicDetail'));
+const QuizPage = lazy(() => import('./pages/QuizPage'));
+const AnatomyModels = lazy(() => import('./pages/AnatomyModels'));
+const AdminLogin = lazy(() => import('./pages/AdminLogin'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const LatinGlossary = lazy(() => import('./pages/LatinGlossary'));
+const AiAssistant = lazy(() => import('./pages/AiAssistant'));
+const Presentation = lazy(() => import('./pages/Presentation'));
+const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'));
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import AnnouncementBar from './components/AnnouncementBar';
@@ -410,6 +410,7 @@ export default function App() {
         )}
         <LayoutWrapper isAdmin={isAdmin} user={user} handleAdminLogout={handleAdminLogout}>
           <ErrorBoundary>
+            <Suspense fallback={<div className="min-h-[40vh] flex items-center justify-center text-slate-500">Yuklanmoqda...</div>}>
             <Routes>
               <Route path="/" element={<Home isAdmin={isAdmin} user={user} />} />
               <Route path="/semester/:id" element={<Semester isAdmin={isAdmin} user={user} />} />
@@ -425,6 +426,7 @@ export default function App() {
               <Route path="/admin/login" element={!isAdmin ? <AdminLogin onLogin={handleAdminLogin} /> : <Navigate to="/admin" />} />
               <Route path="/admin/*" element={isAdmin ? <AdminDashboard onLogout={handleAdminLogout} /> : <Navigate to="/admin/login" />} />
             </Routes>
+            </Suspense>
           </ErrorBoundary>
         </LayoutWrapper>
       </BrowserRouter>
