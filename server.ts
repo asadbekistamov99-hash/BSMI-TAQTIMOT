@@ -1717,7 +1717,7 @@ ANATOMIYA VA LOTIN TILI BO'YICHA ISHLASH USLUBI:
                       contactEmail: { type: "string", description: "Yangi bog'lanish emaili" },
                       contactPhone: { type: "string", description: "Yangi bog'lanish telefon raqami" },
                       logoUrl: { type: "string", description: "Yangi logo rasm URL manzili" },
-                      priceUZS: { type: "number", description: "Semestr narxi somda (FAQAT RAQAM kiritiladi, masalan: 30000)" },
+                      priceUZS: { type: "number", description: "Semestr narxi somda (FAQAT RAQAM kiritiladi, masalan: 50000)" },
                       priceUSD: { type: "number", description: "Semestr narxi dollarda (FAQAT RAQAM, masalan: 5)" },
                       durationMonths: { type: "number", description: "Premium ruxsat muddati (oyda, masalan: 6)" },
                       telegramBotUsername: { type: "string", description: "Telegram qo'llab-quvvatlash boti manzili (masalan: '@MEDAI_SUPPORT_BOT')" },
