@@ -50,12 +50,7 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
         console.warn("Backend admin login API offline or unreachable, checking local fallback:", apiErr);
       }
 
-      // 2. Client fallback verification
-      if (username.trim() === "BSMI123ANATOMY" && password.trim() === "anatomy123bsmi") {
-        onLogin("mock-admin-token-" + Date.now());
-      } else {
-        setError("Noto‘g‘ri login yoki parol!");
-      }
+      setError("Admin serveri bilan bog‘lanib bo‘lmadi. Keyinroq qayta urinib ko‘ring.");
     } catch (err: any) {
       console.error("Login error:", err);
       setError("Tizimga kirishda kutilmagan xatolik yuz berdi.");

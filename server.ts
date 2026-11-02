@@ -1,6 +1,5 @@
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import dotenv from 'dotenv';
@@ -33,11 +32,15 @@ import { isValidGeminiKeyShape, sanitizeGeminiKey } from './src/lib/aiKeyFormat.
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export async function createServerApp() {
   const app = express();
+  const adminSessions = new Set<string>();
+  const requireAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const cookie = req.headers.cookie?.match(/(?:^|;)\s*bsmi_admin=([^;]+)/)?.[1];
+    if (!cookie || !adminSessions.has(cookie)) return res.status(401).json({ error: 'Admin autentifikatsiyasi talab qilinadi' });
+    next();
+  };
   const PORT = 3000;
 
   app.use(express.json({ limit: '150mb' }));
@@ -430,7 +433,7 @@ export async function createServerApp() {
     }
   });
 
-  app.post('/api/performance-metrics/clear', (req, res) => {
+  app.post('/api/performance-metrics/clear', requireAdmin, (req, res) => {
     try {
       performanceLogs.length = 0;
       console.log('[PERFORMANCE] Performance logs cleared.');
@@ -440,7 +443,7 @@ export async function createServerApp() {
     }
   });
 
-  app.post('/api/performance-metrics/add-test-log', (req, res) => {
+  app.post('/api/performance-metrics/add-test-log', requireAdmin, (req, res) => {
     try {
       const { operation, model, durationMs, inputLength, status, errorMessage } = req.body;
       addPerformanceLog(
@@ -463,7 +466,10 @@ export async function createServerApp() {
     const adminPassword = process.env.ADMIN_PASSWORD || 'anatomy123bsmi';
 
     if (username && password && username.trim() === adminUsername && password.trim() === adminPassword) {
-      res.json({ success: true, token: 'admin-auth-token-' + Date.now() });
+      const token = crypto.randomBytes(32).toString('hex');
+      adminSessions.add(token);
+      res.setHeader('Set-Cookie', `bsmi_admin=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800`);
+      res.json({ success: true, token: 'admin-authenticated' });
     } else {
       res.status(401).json({ success: false, message: 'Noto‘g‘ri login yoki parol' });
     }
@@ -891,7 +897,7 @@ Quyidagi TOZA JSON formatida, boshqa hech qanday matnsiz javob bering:
     }
   });
 
-  app.post('/api/admin/generate-theory', async (req: express.Request, resValue: any) => {
+  app.post('/api/admin/generate-theory', requireAdmin, async (req: express.Request, resValue: any) => {
     const startTime = Date.now();
     try {
       const { topicTitle, userKey } = req.body;
@@ -1535,7 +1541,7 @@ ANATOMIYA VA LOTIN TILI BO'YICHA ISHLASH USLUBI:
     }
   });
 
-  app.post('/api/admin/chat', async (req: express.Request, resValue: any) => {
+  app.post('/api/admin/chat', requireAdmin, async (req: express.Request, resValue: any) => {
     console.log('Chat request received:', req.body.message?.substring(0, 50));
     try {
       const { message, history, images, userKey } = req.body;
