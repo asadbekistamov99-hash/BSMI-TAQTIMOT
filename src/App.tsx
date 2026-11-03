@@ -111,6 +111,10 @@ export default function App() {
     try {
       localStorage.removeItem('student_mode_active');
       localStorage.removeItem('anatomy_unlocked_semesters');
+      localStorage.removeItem('virtualGuestUser');
+      localStorage.removeItem('guestModeFullAccess');
+      sessionStorage.removeItem('virtualGuestUser');
+      sessionStorage.removeItem('guestModeFullAccess');
       // Clean any stale mock payment keys from localStorage
       Object.keys(localStorage).forEach(key => {
         if (key.startsWith('payment_') || key.startsWith('profile_')) {
@@ -118,59 +122,10 @@ export default function App() {
         }
       });
     } catch (e) {}
-    // Face verification resets whenever the account changes. A check passed in
-    // THIS browser tab within the last few hours is remembered (see
-    // src/lib/faceIdSession.ts) so a page reload does not force another AI
-    // round-trip. Enrollment state is deliberately NOT a dependency here: the
-    // moment a student enrolls, the live user document flips faceIdEnrolled to
-    // true, and resetting here would have re-opened the gate right after
-    // enrollment. An admin reset (faceIdEnrolled → false) still re-opens the
-    // gate through needsFaceVerification below.
     setFaceIdVerified(readFaceIdSession(user?.uid));
   }, [user?.uid]);
 
   useEffect(() => {
-    // Check if we have a locally saved virtual guest session
-    const checkLocalGuest = () => {
-      const localGuest = sessionStorage.getItem('virtualGuestUser') || localStorage.getItem('virtualGuestUser');
-      const isGuestModeFull = sessionStorage.getItem('guestModeFullAccess') === 'true' || localStorage.getItem('guestModeFullAccess') === 'true';
-      if (localGuest || isGuestModeFull) {
-        try {
-          const parsed = localGuest ? JSON.parse(localGuest) : {};
-          const guestObj = {
-            ...parsed,
-            uid: parsed.uid || 'guest_bsmi_student',
-            displayName: parsed.displayName || 'Mehmon Foydalanuvchi',
-            email: parsed.email || 'mehmon@bsmi.uz',
-            purchasedSemesters: [1, 2, 3],
-            isGuest: true,
-            hasFullAccess: true,
-            role: 'user'
-          };
-          setUser(guestObj);
-          setIsAdmin(false);
-          setLoading(false);
-          setFaceIdVerified(true);
-          return true;
-        } catch (e) {}
-      }
-      return false;
-    };
-
-    if (checkLocalGuest()) {
-      // Set up simple listener in case of change
-      const handleLocalAuth = () => {
-        checkLocalGuest();
-      };
-      window.addEventListener('local_auth_changed', handleLocalAuth);
-      return () => window.removeEventListener('local_auth_changed', handleLocalAuth);
-    }
-
-    const handleLocalAuth = () => {
-      checkLocalGuest();
-    };
-    window.addEventListener('local_auth_changed', handleLocalAuth);
-
     let unsubscribeUserDoc: (() => void) | null = null;
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -178,12 +133,6 @@ export default function App() {
       if (unsubscribeUserDoc) {
         unsubscribeUserDoc();
         unsubscribeUserDoc = null;
-      }
-
-      // Re-verify local guest in case firebase login event comes as null
-      const isGuest = checkLocalGuest();
-      if (isGuest) {
-        return;
       }
 
       const savedAdminToken = sessionStorage.getItem('adminToken');
@@ -194,7 +143,6 @@ export default function App() {
         
         // Listen to the user's Firestore document in real-time
         unsubscribeUserDoc = onSnapshot(userRef, async (docSnap) => {
-          const isGuestModeFull = sessionStorage.getItem('guestModeFullAccess') === 'true' || localStorage.getItem('guestModeFullAccess') === 'true';
           const adminEmail = "asadbekistamov99@gmail.com";
           const isActuallyAdminEmail = firebaseUser?.email?.toLowerCase() === adminEmail;
 
@@ -206,7 +154,7 @@ export default function App() {
               createdAt: new Date(),
               isAdmin: isActuallyAdminEmail,
               updatedAt: new Date(),
-              purchasedSemesters: isGuestModeFull ? [1, 2, 3] : [],
+              purchasedSemesters: [],
               isBlocked: false,
               role: isActuallyAdminEmail ? 'admin' : 'user'
             };
@@ -215,23 +163,17 @@ export default function App() {
               setUser({
                 uid: firebaseUser.uid,
                 isAnonymous: firebaseUser.isAnonymous,
-                isGuest: isGuestModeFull,
-                ...initialProfile,
-                purchasedSemesters: isGuestModeFull ? [1, 2, 3] : initialProfile.purchasedSemesters
+                ...initialProfile
               });
             } catch (err) {
               console.error("Error setting initial profile:", err);
             }
           } else {
             const dbData = docSnap.data();
-            const existingPurchased = (dbData.purchasedSemesters || []).map(Number);
-            const finalPurchased = isGuestModeFull ? Array.from(new Set([...existingPurchased, 1, 2, 3])) : existingPurchased;
             setUser({
               uid: firebaseUser.uid,
               isAnonymous: firebaseUser.isAnonymous,
-              isGuest: isGuestModeFull,
-              ...dbData,
-              purchasedSemesters: finalPurchased
+              ...dbData
             });
           }
           setLoading(false);
@@ -251,7 +193,6 @@ export default function App() {
       if (unsubscribeUserDoc) {
         unsubscribeUserDoc();
       }
-      window.removeEventListener('local_auth_changed', handleLocalAuth);
     };
   }, []);
 
@@ -408,17 +349,11 @@ export default function App() {
   // is being fixed. Missing setting = enabled (fail-safe default).
   const faceIdFeatureEnabled = settings?.features?.enableFaceId !== false;
 
-  const isGuestActive = 
-    Boolean(user?.isGuest) ||
-    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('guestModeFullAccess') === 'true') ||
-    (typeof localStorage !== 'undefined' && localStorage.getItem('guestModeFullAccess') === 'true');
-
   const needsFaceVerification = 
     faceIdFeatureEnabled &&
     user && 
     !isAdmin &&
     !user.isAnonymous && 
-    !isGuestActive &&
     (!user.faceIdEnrolled || !faceIdVerified);
 
   return (
