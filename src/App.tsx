@@ -132,13 +132,25 @@ export default function App() {
   useEffect(() => {
     // Check if we have a locally saved virtual guest session
     const checkLocalGuest = () => {
-      const localGuest = sessionStorage.getItem('virtualGuestUser');
-      if (localGuest) {
+      const localGuest = sessionStorage.getItem('virtualGuestUser') || localStorage.getItem('virtualGuestUser');
+      const isGuestModeFull = sessionStorage.getItem('guestModeFullAccess') === 'true' || localStorage.getItem('guestModeFullAccess') === 'true';
+      if (localGuest || isGuestModeFull) {
         try {
-          const parsed = JSON.parse(localGuest);
-          setUser(parsed);
+          const parsed = localGuest ? JSON.parse(localGuest) : {};
+          const guestObj = {
+            ...parsed,
+            uid: parsed.uid || 'guest_bsmi_student',
+            displayName: parsed.displayName || 'Mehmon Foydalanuvchi',
+            email: parsed.email || 'mehmon@bsmi.uz',
+            purchasedSemesters: [1, 2, 3],
+            isGuest: true,
+            hasFullAccess: true,
+            role: 'user'
+          };
+          setUser(guestObj);
           setIsAdmin(false);
           setLoading(false);
+          setFaceIdVerified(true);
           return true;
         } catch (e) {}
       }
@@ -182,6 +194,7 @@ export default function App() {
         
         // Listen to the user's Firestore document in real-time
         unsubscribeUserDoc = onSnapshot(userRef, async (docSnap) => {
+          const isGuestModeFull = sessionStorage.getItem('guestModeFullAccess') === 'true' || localStorage.getItem('guestModeFullAccess') === 'true';
           const adminEmail = "asadbekistamov99@gmail.com";
           const isActuallyAdminEmail = firebaseUser?.email?.toLowerCase() === adminEmail;
 
@@ -193,7 +206,7 @@ export default function App() {
               createdAt: new Date(),
               isAdmin: isActuallyAdminEmail,
               updatedAt: new Date(),
-              purchasedSemesters: [],
+              purchasedSemesters: isGuestModeFull ? [1, 2, 3] : [],
               isBlocked: false,
               role: isActuallyAdminEmail ? 'admin' : 'user'
             };
@@ -202,17 +215,23 @@ export default function App() {
               setUser({
                 uid: firebaseUser.uid,
                 isAnonymous: firebaseUser.isAnonymous,
-                ...initialProfile
+                isGuest: isGuestModeFull,
+                ...initialProfile,
+                purchasedSemesters: isGuestModeFull ? [1, 2, 3] : initialProfile.purchasedSemesters
               });
             } catch (err) {
               console.error("Error setting initial profile:", err);
             }
           } else {
             const dbData = docSnap.data();
+            const existingPurchased = (dbData.purchasedSemesters || []).map(Number);
+            const finalPurchased = isGuestModeFull ? Array.from(new Set([...existingPurchased, 1, 2, 3])) : existingPurchased;
             setUser({
               uid: firebaseUser.uid,
               isAnonymous: firebaseUser.isAnonymous,
-              ...dbData
+              isGuest: isGuestModeFull,
+              ...dbData,
+              purchasedSemesters: finalPurchased
             });
           }
           setLoading(false);
@@ -247,6 +266,9 @@ export default function App() {
       await signOut(auth);
       sessionStorage.removeItem('adminToken');
       sessionStorage.removeItem('virtualGuestUser');
+      sessionStorage.removeItem('guestModeFullAccess');
+      localStorage.removeItem('virtualGuestUser');
+      localStorage.removeItem('guestModeFullAccess');
       setIsAdmin(false);
       setUser(null);
     } catch (error) {
@@ -386,11 +408,17 @@ export default function App() {
   // is being fixed. Missing setting = enabled (fail-safe default).
   const faceIdFeatureEnabled = settings?.features?.enableFaceId !== false;
 
+  const isGuestActive = 
+    Boolean(user?.isGuest) ||
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('guestModeFullAccess') === 'true') ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('guestModeFullAccess') === 'true');
+
   const needsFaceVerification = 
     faceIdFeatureEnabled &&
     user && 
     !isAdmin &&
     !user.isAnonymous && 
+    !isGuestActive &&
     (!user.faceIdEnrolled || !faceIdVerified);
 
   return (

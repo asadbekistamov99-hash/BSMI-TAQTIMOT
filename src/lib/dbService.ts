@@ -1064,6 +1064,23 @@ export const dbService = {
 
   // 7. PAYMENTS
   async getPayment(userId: string, semesterId: number): Promise<any | null> {
+    const isGuestFullAccess = 
+      (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('guestModeFullAccess') === 'true') ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('guestModeFullAccess') === 'true') ||
+      userId === 'guest_bsmi_student' ||
+      userId === 'local_virtual_guest';
+
+    if (isGuestFullAccess) {
+      return {
+        id: `guest_payment_${semesterId}`,
+        userId: userId || 'guest_bsmi_student',
+        semesterId: Number(semesterId),
+        status: 'approved',
+        amount: 0,
+        createdAt: new Date().toISOString()
+      };
+    }
+
     if (isAppwriteEnabled() && appwriteDb) {
       try {
         const paymentId = `${userId}_${semesterId}`;
@@ -1300,10 +1317,30 @@ export const dbService = {
 
   // 9. PROFILES
   async getProfile(userId: string): Promise<any | null> {
+    const isGuestFullAccess = 
+      (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('guestModeFullAccess') === 'true') ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('guestModeFullAccess') === 'true') ||
+      userId === 'guest_bsmi_student' ||
+      userId === 'local_virtual_guest';
+
+    const enrichProfile = (p: any) => {
+      if (!p) return null;
+      if (isGuestFullAccess) {
+        const existing = Array.isArray(p.purchasedSemesters) ? p.purchasedSemesters.map(Number) : [];
+        return {
+          ...p,
+          isGuest: true,
+          hasFullAccess: true,
+          purchasedSemesters: Array.from(new Set([...existing, 1, 2, 3]))
+        };
+      }
+      return p;
+    };
+
     if (isAppwriteEnabled() && appwriteDb) {
       try {
         const data = await appwriteDb.getDocument(appwriteDatabaseId, 'profiles', userId);
-        return {
+        return enrichProfile({
           uid: data.$id,
           email: data.email,
           displayName: data.displayName || data.display_name,
@@ -1312,7 +1349,7 @@ export const dbService = {
           role: data.role,
           purchasedSemesters: data.purchasedSemesters || data.purchased_semesters || [],
           isBlocked: data.isBlocked || data.is_blocked
-        };
+        });
       } catch (err) {
         console.warn("Appwrite getProfile failed, trying Supabase...", err);
       }
@@ -1326,7 +1363,7 @@ export const dbService = {
           .eq('id', userId)
           .maybeSingle();
         if (error) throw error;
-        return data ? {
+        return data ? enrichProfile({
           uid: data.id,
           email: data.email,
           displayName: data.display_name,
@@ -1335,7 +1372,7 @@ export const dbService = {
           role: data.role,
           purchasedSemesters: data.purchased_semesters || [],
           isBlocked: data.is_blocked
-        } : null;
+        }) : null;
       } catch (err) {
         console.warn("Supabase getProfile failed, fallback to Firebase:", err);
         supabaseFallbackActive = true;
@@ -1343,7 +1380,7 @@ export const dbService = {
           const userRef = doc(db, 'users', userId);
           const userSnap = await getDoc(userRef);
           if (userSnap.exists()) {
-            return { uid: userSnap.id, ...userSnap.data() };
+            return enrichProfile({ uid: userSnap.id, ...userSnap.data() });
           }
         } catch (fbErr) {
           console.warn("Firestore getProfile failed, attempting local fallback profile", fbErr);
@@ -1354,7 +1391,7 @@ export const dbService = {
         const userRef = doc(db, 'users', userId);
         const userSnap = await getDoc(userRef);
         if (userSnap.exists()) {
-          return { uid: userSnap.id, ...userSnap.data() };
+          return enrichProfile({ uid: userSnap.id, ...userSnap.data() });
         }
       } catch (fbErr) {
         console.warn("Firestore getProfile failed, attempting local fallback profile", fbErr);
@@ -1364,26 +1401,28 @@ export const dbService = {
     // Try local storage local state backup
     try {
       const localProf = localStorage.getItem(`profile_${userId}`);
-      if (localProf) return JSON.parse(localProf);
+      if (localProf) return enrichProfile(JSON.parse(localProf));
     } catch (e) {}
 
     // Auto-create fallback profile for sandbox/iframe testing
     const defaultProf = {
-      uid: userId || 'local_virtual_guest',
+      uid: userId || 'guest_bsmi_student',
       email: 'guest@bsmi-anatomy.uz',
       displayName: 'Mehmon Talaba',
       photoURL: 'https://api.iconify.design/healthicons:user-outline.svg',
       isAdmin: false,
       role: 'user',
-      purchasedSemesters: [], // Clean empty by default, no free semesters
-      isBlocked: false
+      purchasedSemesters: isGuestFullAccess ? [1, 2, 3] : [], // Unlocked if guest mode
+      isBlocked: false,
+      isGuest: isGuestFullAccess,
+      hasFullAccess: isGuestFullAccess
     };
 
     try {
       localStorage.setItem(`profile_${userId}`, JSON.stringify(defaultProf));
     } catch (e) {}
 
-    return defaultProf;
+    return enrichProfile(defaultProf);
   },
 
   // 10. STORAGE / UPLOADS

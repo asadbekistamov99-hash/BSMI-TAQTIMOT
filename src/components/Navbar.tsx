@@ -658,6 +658,10 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
   const handleGoogleLogout = async () => {
     try {
       clearFaceIdSession(auth.currentUser?.uid);
+      sessionStorage.removeItem('virtualGuestUser');
+      sessionStorage.removeItem('guestModeFullAccess');
+      localStorage.removeItem('virtualGuestUser');
+      localStorage.removeItem('guestModeFullAccess');
       await signOut(auth);
       onLogout();
     } catch (error) {
