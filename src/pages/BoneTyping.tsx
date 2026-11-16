@@ -88,24 +88,24 @@ function SkeletonViewer() {
   const [active, setActive] = useState<(typeof SKELETON_VIEWS)[number]>(SKELETON_VIEWS[0]);
   return (
     <section className="mb-8 space-y-3">
-      <div role="tablist" aria-label="3D model tanlash" className="flex gap-2">
+      <div role="tablist" aria-label="3D model tanlash" className="flex flex-wrap gap-2">
         {SKELETON_VIEWS.map((v) => (
           <button
             key={v.id}
             role="tab"
             aria-selected={active.id === v.id}
             onClick={() => setActive(v)}
-            className={`rounded-lg px-3 py-1.5 text-sm transition ${
+            className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
               active.id === v.id
-                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-                : 'border border-slate-300 dark:border-slate-700'
+                ? 'bg-brand-primary text-white'
+                : 'border border-brand-border'
             }`}
           >
             {v.label}
           </button>
         ))}
       </div>
-      <div className="aspect-video w-full overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+      <div className="aspect-video w-full overflow-hidden rounded-2xl border border-brand-border">
         <iframe
           key={active.id}
           title={`${active.label} — 3D model`}
@@ -115,7 +115,7 @@ function SkeletonViewer() {
           allow="autoplay; fullscreen; xr-spatial-tracking"
         />
       </div>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-brand-muted">
         3D model:{' '}
         <a href={active.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline">
           {active.author}
@@ -221,11 +221,11 @@ export default function BoneTyping() {
   };
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10 text-slate-900 dark:text-slate-100">
+    <main className="mx-auto max-w-2xl px-4 py-10 text-brand-text">
       <header className="mb-8">
-        <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Anatomiya mashqi</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-brand-muted">Anatomiya mashqi</p>
         <h1 className="mt-2 text-3xl font-bold">Suyaklarni yozib o‘rganing</h1>
-        <p className="mt-2 text-slate-600 dark:text-slate-400">
+        <p className="mt-2 text-brand-muted">
           Suyak nomini lotincha yozing. Har bir bosqichda yordam kamayadi, ball esa ortadi.
         </p>
       </header>
@@ -235,7 +235,7 @@ export default function BoneTyping() {
       {stage === 'setup' && (
         <section className="space-y-6">
           {topicMode ? (
-            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-100">
+            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
               <p className="font-semibold">Mavzu bo‘yicha mashq</p>
               <p className="mt-1">
                 {topicRegions === 'all'
@@ -252,8 +252,8 @@ export default function BoneTyping() {
                   key={r}
                   className={`cursor-pointer rounded-xl border px-3 py-2 text-sm transition ${
                     region === r
-                      ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900'
-                      : 'border-slate-300 hover:border-slate-500 dark:border-slate-700'
+                      ? 'border-brand-primary bg-brand-primary text-white'
+                      : 'border-brand-border hover:border-brand-muted'
                   }`}
                 >
                   <input
@@ -271,21 +271,21 @@ export default function BoneTyping() {
           </fieldset>
           )}
 
-          <div className="rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
+          <div className="rounded-xl border border-brand-border p-4 text-sm">
             <p className="font-semibold">3 bosqich, har birida {QUESTIONS_PER_ROUND} ta suyak</p>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-600 dark:text-slate-400">
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-brand-muted">
               {ROUNDS.map((r) => (
                 <li key={r}>
                   {ROUND_INFO[r].title}: {ROUND_INFO[r].description} ({ROUND_INFO[r].points} ball)
                 </li>
               ))}
             </ul>
-            {best > 0 && <p className="mt-3 text-slate-500">Eng yaxshi natija: {best} ball</p>}
+            {best > 0 && <p className="mt-3 text-brand-muted">Eng yaxshi natija: {best} ball</p>}
           </div>
 
           <button
             onClick={start}
-            className="w-full rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+            className="w-full rounded-xl bg-brand-primary px-4 py-3 font-semibold text-white hover:opacity-90"
           >
             Boshlash
           </button>
@@ -295,26 +295,26 @@ export default function BoneTyping() {
       {stage === 'play' && current && (
         <section className="space-y-5">
           <div>
-            <div className="flex items-center justify-between text-sm text-slate-500">
+            <div className="flex items-center justify-between text-sm text-brand-muted">
               <span>{ROUND_INFO[round].title}</span>
               <span>
                 {index + 1} / {roundQueueLength}
               </span>
             </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-brand-border">
               <div
-                className="h-full bg-slate-900 transition-all dark:bg-white"
+                className="h-full bg-brand-primary transition-all"
                 style={{ width: `${((index + (feedback ? 1 : 0)) / roundQueueLength) * 100}%` }}
               />
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 p-6 text-center dark:border-slate-800">
-            <p className="text-sm text-slate-500">{BONE_REGION_LABELS[current.region]} · {current.uz}</p>
+          <div className="rounded-2xl border border-brand-border p-6 text-center">
+            <p className="text-sm text-brand-muted">{BONE_REGION_LABELS[current.region]} · {current.uz}</p>
             <p className="mt-3 min-h-[2.5rem] font-mono text-2xl tracking-wide">
               {hintFor(current, round) ?? '— yordamsiz —'}
             </p>
-            <p className="mt-2 text-sm text-slate-500">{ROUND_INFO[round].description}</p>
+            <p className="mt-2 text-sm text-brand-muted">{ROUND_INFO[round].description}</p>
           </div>
 
           <div>
@@ -329,7 +329,7 @@ export default function BoneTyping() {
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
-              className="w-full rounded-xl border border-slate-300 bg-transparent px-4 py-3 text-lg outline-none focus:border-slate-900 dark:border-slate-700 dark:focus:border-white"
+              className="w-full rounded-xl border border-brand-border bg-transparent px-4 py-3 text-lg outline-none focus:border-brand-primary"
             />
             {feedback && (
               <p
@@ -346,14 +346,14 @@ export default function BoneTyping() {
               <button
                 onClick={submit}
                 disabled={!input.trim()}
-                className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:opacity-40 dark:bg-white dark:text-slate-900"
+                className="flex-1 rounded-xl bg-brand-primary px-4 py-3 font-semibold text-white disabled:opacity-40"
               >
                 Tekshirish
               </button>
             ) : (
               <button
                 onClick={next}
-                className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white dark:bg-white dark:text-slate-900"
+                className="flex-1 rounded-xl bg-brand-primary px-4 py-3 font-semibold text-white"
               >
                 {index + 1 < roundQueueLength
                   ? 'Keyingisi'
@@ -368,13 +368,13 @@ export default function BoneTyping() {
 
       {stage === 'done' && (
         <section className="space-y-6 text-center">
-          <div className="rounded-2xl border border-slate-200 p-8 dark:border-slate-800">
-            <p className="text-sm uppercase tracking-widest text-slate-500">Natija</p>
+          <div className="rounded-2xl border border-brand-border p-8">
+            <p className="text-sm uppercase tracking-widest text-brand-muted">Natija</p>
             <p className="mt-2 text-5xl font-bold">
               {summary.points}
-              <span className="text-2xl text-slate-400"> / {summary.maxPoints}</span>
+              <span className="text-2xl text-brand-muted"> / {summary.maxPoints}</span>
             </p>
-            <p className="mt-3 text-slate-600 dark:text-slate-400">
+            <p className="mt-3 text-brand-muted">
               To‘g‘ri javoblar: {summary.correctCount} / {summary.total} ({summary.accuracy}%)
             </p>
             {summary.points >= best && summary.points > 0 && (
@@ -384,13 +384,13 @@ export default function BoneTyping() {
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={start}
-              className="rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white dark:bg-white dark:text-slate-900"
+              className="rounded-xl bg-brand-primary px-4 py-3 font-semibold text-white"
             >
               Qayta o‘ynash
             </button>
             <button
               onClick={() => setStage('setup')}
-              className="rounded-xl border border-slate-300 px-4 py-3 font-semibold dark:border-slate-700"
+              className="rounded-xl border border-brand-border px-4 py-3 font-semibold"
             >
               Qism tanlash
             </button>
