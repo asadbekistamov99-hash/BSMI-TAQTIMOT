@@ -1,14 +1,61 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useLanguage } from '../hooks/useLanguage';
 import {
-  BONE_REGION_LABELS, BoneEntry, BoneRegion, ROUND_INFO, Round, Attempt,
+  BONE_REGION_LABELS, BoneEntry, BoneRegion, Round, Attempt, Lang,
   bonesForRegion, bonesForRegions, regionsForTopic, hintFor, isCorrect, pickBones, scoreAttempts,
+  boneName, regionLabel, roundInfo,
 } from '../lib/boneTypingEngine';
 
 type Stage = 'setup' | 'play' | 'done';
 type RegionChoice = BoneRegion | 'all';
 
 const ROUNDS: Round[] = [1, 2, 3];
+
+type UiKey = 'kicker' | 'title' | 'subtitle' | 'topicTitle' | 'topicAll' | 'chooseRegion' | 'wholeSkeleton' | 'countLine' | 'best' | 'start' | 'check' | 'next' | 'nextRound' | 'seeResult' | 'correct' | 'wrong' | 'inputLabel' | 'inputPlaceholder' | 'noHint' | 'result' | 'answers' | 'newBest' | 'playAgain' | 'pickPart' | 'tabs' | 'modelTitle' | 'modelCredit' | 'modelCreditSuffix' | 'pts' | 'topicOnly' | 'partLegend';
+const UI: Record<Lang, Record<UiKey, any>> = {
+  uz: {
+    kicker: 'Anatomiya mashqi', title: 'Suyaklarni yozib o‘rganing', subtitle: 'Suyak nomini lotincha yozing. Har bir bosqichda yordam kamayadi, ball esa ortadi.',
+    topicTitle: 'Mavzu bo‘yicha mashq', topicAll: 'Bu mavzu bo‘yicha butun skelet suyaklari so‘raladi.', topicOnly: (l: string) => `Faqat shu mavzu suyaklari so‘raladi: ${l}.`,
+    chooseRegion: 'Qaysi qism?', wholeSkeleton: 'Butun skelet', countLine: (n: number) => `3 bosqich, har birida ${n} ta suyak`, best: (n: number) => `Eng yaxshi natija: ${n} ball`,
+    start: 'Boshlash', check: 'Tekshirish', next: 'Keyingisi', nextRound: 'Keyingi bosqich', seeResult: 'Natijani ko‘rish',
+    correct: 'To‘g‘ri!', wrong: (e: string) => `Noto‘g‘ri. To‘g‘ri javob: ${e}`, inputLabel: 'Suyak nomini lotincha yozing', inputPlaceholder: 'Lotincha nomini yozing',
+    noHint: '— yordamsiz —', result: 'Natija', answers: (c: number, t: number, a: number) => `To‘g‘ri javoblar: ${c} / ${t} (${a}%)`, newBest: 'Yangi eng yaxshi natija!',
+    playAgain: 'Qayta o‘ynash', pickPart: 'Qism tanlash', tabs: '3D model tanlash', modelTitle: (l: string) => `${l} — 3D model`, modelCredit: '3D model:', modelCreditSuffix: ', CC BY (Sketchfab).', pts: 'ball', partLegend: 'Qaysi qism?',
+  },
+  ru: {
+    kicker: 'Анатомическая тренировка', title: 'Учите кости, записывая их названия', subtitle: 'Пишите название кости латинскими буквами. С каждым этапом подсказок меньше, а баллы больше.',
+    topicTitle: 'Тренировка по теме', topicAll: 'По этой теме спрашиваются кости всего скелета.', topicOnly: (l: string) => `Спрашиваются только кости этой темы: ${l}.`,
+    chooseRegion: 'Какая часть?', wholeSkeleton: 'Весь скелет', countLine: (n: number) => `3 этапа, в каждом ${n} костей`, best: (n: number) => `Лучший результат: ${n} баллов`,
+    start: 'Начать', check: 'Проверить', next: 'Далее', nextRound: 'Следующий этап', seeResult: 'Показать результат',
+    correct: 'Верно!', wrong: (e: string) => `Неверно. Правильный ответ: ${e}`, inputLabel: 'Напишите название кости латинскими буквами', inputPlaceholder: 'Латинское название',
+    noHint: '— без подсказки —', result: 'Результат', answers: (c: number, t: number, a: number) => `Правильных ответов: ${c} из ${t} (${a}%)`, newBest: 'Новый лучший результат!',
+    playAgain: 'Играть снова', pickPart: 'Выбрать часть', tabs: 'Выбор 3D-модели', modelTitle: (l: string) => `${l} — 3D-модель`, modelCredit: '3D-модель:', modelCreditSuffix: ', CC BY (Sketchfab).', pts: 'баллов', partLegend: 'Какая часть?',
+  },
+  en: {
+    kicker: 'Anatomy drill', title: 'Learn the bones by typing them', subtitle: 'Type each bone name in Latin. Hints shrink each round and points grow.',
+    topicTitle: 'Topic drill', topicAll: 'This topic uses bones from the whole skeleton.', topicOnly: (l: string) => `Only bones from this topic: ${l}.`,
+    chooseRegion: 'Which part?', wholeSkeleton: 'Whole skeleton', countLine: (n: number) => `3 rounds, ${n} bones each`, best: (n: number) => `Best score: ${n} pts`,
+    start: 'Start', check: 'Check', next: 'Next', nextRound: 'Next round', seeResult: 'See result',
+    correct: 'Correct!', wrong: (e: string) => `Wrong. Correct answer: ${e}`, inputLabel: 'Type the Latin name', inputPlaceholder: 'Latin name',
+    noHint: '— no hint —', result: 'Result', answers: (c: number, t: number, a: number) => `Correct answers: ${c} of ${t} (${a}%)`, newBest: 'New personal best!',
+    playAgain: 'Play again', pickPart: 'Choose part', tabs: 'Choose 3D model', modelTitle: (l: string) => `${l} — 3D model`, modelCredit: '3D model:', modelCreditSuffix: ', CC BY (Sketchfab).', pts: 'pts', partLegend: 'Which part?',
+  },
+};
+
+const MODEL_LABELS: Record<string, Record<Lang, string>> = {
+  skull: { uz: 'Bosh suyagi', ru: 'Череп', en: 'Skull' },
+  skeleton: { uz: 'Butun skelet', ru: 'Весь скелет', en: 'Whole skeleton' },
+  atlas: { uz: 'Atlas (C1)', ru: 'Атлант (C1)', en: 'Atlas (C1)' },
+  pelvis: { uz: 'Chanoq suyagi', ru: 'Тазовая кость', en: 'Pelvis' },
+  sacrum: { uz: 'Dumg‘aza suyagi', ru: 'Крестец', en: 'Sacrum' },
+  femur: { uz: 'Son suyagi', ru: 'Бедренная кость', en: 'Femur' },
+  foot: { uz: 'Oyoq suyaklari', ru: 'Кости стопы', en: 'Foot bones' },
+  humerus: { uz: 'Yelka suyagi', ru: 'Плечевая кость', en: 'Humerus' },
+  scapula: { uz: 'Kurak suyagi', ru: 'Лопатка', en: 'Scapula' },
+  clavicle: { uz: 'O‘mrov suyagi', ru: 'Ключица', en: 'Clavicle' },
+};
+
 
 // Loyihaning 3D katalogidagi (src/data/anatomyModels.ts) CC-BY suyak modellari (10 ta).
 const SKELETON_VIEWS = [
@@ -84,11 +131,12 @@ const SKELETON_VIEWS = [
   },
 ] as const;
 
-function SkeletonViewer() {
+function SkeletonViewer({ lang }: { lang: Lang }) {
+  const L = UI[lang];
   const [active, setActive] = useState<(typeof SKELETON_VIEWS)[number]>(SKELETON_VIEWS[0]);
   return (
     <section className="mb-8 space-y-3">
-      <div role="tablist" aria-label="3D model tanlash" className="flex flex-wrap gap-2">
+      <div role="tablist" aria-label={L.tabs} className="flex flex-wrap gap-2">
         {SKELETON_VIEWS.map((v) => (
           <button
             key={v.id}
@@ -101,14 +149,14 @@ function SkeletonViewer() {
                 : 'border border-brand-border'
             }`}
           >
-            {v.label}
+            {MODEL_LABELS[v.id]?.[lang] ?? v.label}
           </button>
         ))}
       </div>
       <div className="aspect-video w-full overflow-hidden rounded-2xl border border-brand-border">
         <iframe
           key={active.id}
-          title={`${active.label} — 3D model`}
+          title={L.modelTitle(MODEL_LABELS[active.id]?.[lang] ?? active.label)}
           src={active.embedUrl}
           className="h-full w-full"
           loading="lazy"
@@ -116,11 +164,11 @@ function SkeletonViewer() {
         />
       </div>
       <p className="text-xs text-brand-muted">
-        3D model:{' '}
+        {L.modelCredit}{' '}
         <a href={active.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline">
           {active.author}
         </a>
-        , CC BY (Sketchfab).
+        {L.modelCreditSuffix}
       </p>
     </section>
   );
@@ -145,6 +193,9 @@ function writeBest(n: number) {
 }
 
 export default function BoneTyping() {
+  const { language } = useLanguage();
+  const lang: Lang = language === 'ru' || language === 'en' ? language : 'uz';
+  const L = UI[lang];
   const [stage, setStage] = useState<Stage>('setup');
   const [region, setRegion] = useState<RegionChoice>('all');
   const [searchParams] = useSearchParams();
@@ -223,29 +274,29 @@ export default function BoneTyping() {
   return (
     <main className="mx-auto max-w-2xl px-4 py-10 text-brand-text">
       <header className="mb-8">
-        <p className="text-xs font-semibold uppercase tracking-widest text-brand-muted">Anatomiya mashqi</p>
-        <h1 className="mt-2 text-3xl font-bold">Suyaklarni yozib o‘rganing</h1>
+        <p className="text-xs font-semibold uppercase tracking-widest text-brand-muted">{L.kicker}</p>
+        <h1 className="mt-2 text-3xl font-bold">{L.title}</h1>
         <p className="mt-2 text-brand-muted">
-          Suyak nomini lotincha yozing. Har bir bosqichda yordam kamayadi, ball esa ortadi.
+          {L.subtitle}
         </p>
       </header>
 
-      <SkeletonViewer />
+      <SkeletonViewer lang={lang} />
 
       {stage === 'setup' && (
         <section className="space-y-6">
           {topicMode ? (
             <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
-              <p className="font-semibold">Mavzu bo‘yicha mashq</p>
+              <p className="font-semibold">{L.topicTitle}</p>
               <p className="mt-1">
                 {topicRegions === 'all'
-                  ? 'Bu mavzu bo‘yicha butun skelet suyaklari so‘raladi.'
-                  : `Faqat shu mavzu suyaklari so‘raladi: ${topicRegions.map((r) => BONE_REGION_LABELS[r]).join(', ')}.`}
+                  ? L.topicAll
+                  : L.topicOnly(topicRegions.map((r) => regionLabel(r, lang)).join(', '))}
               </p>
             </div>
           ) : (
           <fieldset>
-            <legend className="mb-3 text-sm font-semibold">Qaysi qism?</legend>
+            <legend className="mb-3 text-sm font-semibold">{L.partLegend}</legend>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {(['all', ...Object.keys(BONE_REGION_LABELS)] as RegionChoice[]).map((r) => (
                 <label
@@ -264,7 +315,7 @@ export default function BoneTyping() {
                     onChange={() => setRegion(r)}
                     className="sr-only"
                   />
-                  {r === 'all' ? 'Butun skelet' : BONE_REGION_LABELS[r]}
+                  {r === 'all' ? L.wholeSkeleton : regionLabel(r, lang)}
                 </label>
               ))}
             </div>
@@ -272,22 +323,22 @@ export default function BoneTyping() {
           )}
 
           <div className="rounded-xl border border-brand-border p-4 text-sm">
-            <p className="font-semibold">3 bosqich, har birida {QUESTIONS_PER_ROUND} ta suyak</p>
+            <p className="font-semibold">{L.countLine(QUESTIONS_PER_ROUND)}</p>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-brand-muted">
               {ROUNDS.map((r) => (
                 <li key={r}>
-                  {ROUND_INFO[r].title}: {ROUND_INFO[r].description} ({ROUND_INFO[r].points} ball)
+                  {roundInfo(r, lang).title}: {roundInfo(r, lang).description} ({roundInfo(r, lang).points} {L.pts})
                 </li>
               ))}
             </ul>
-            {best > 0 && <p className="mt-3 text-brand-muted">Eng yaxshi natija: {best} ball</p>}
+            {best > 0 && <p className="mt-3 text-brand-muted">{L.best(best)}</p>}
           </div>
 
           <button
             onClick={start}
             className="w-full rounded-xl bg-brand-primary px-4 py-3 font-semibold text-white hover:opacity-90"
           >
-            Boshlash
+            {L.start}
           </button>
         </section>
       )}
@@ -296,7 +347,7 @@ export default function BoneTyping() {
         <section className="space-y-5">
           <div>
             <div className="flex items-center justify-between text-sm text-brand-muted">
-              <span>{ROUND_INFO[round].title}</span>
+              <span>{roundInfo(round, lang).title}</span>
               <span>
                 {index + 1} / {roundQueueLength}
               </span>
@@ -310,11 +361,11 @@ export default function BoneTyping() {
           </div>
 
           <div className="rounded-2xl border border-brand-border p-6 text-center">
-            <p className="text-sm text-brand-muted">{BONE_REGION_LABELS[current.region]} · {current.uz}</p>
+            <p className="text-sm text-brand-muted">{regionLabel(current.region, lang)} · {boneName(current, lang)}</p>
             <p className="mt-3 min-h-[2.5rem] font-mono text-2xl tracking-wide">
-              {hintFor(current, round) ?? '— yordamsiz —'}
+              {hintFor(current, round, lang) ?? L.noHint}
             </p>
-            <p className="mt-2 text-sm text-brand-muted">{ROUND_INFO[round].description}</p>
+            <p className="mt-2 text-sm text-brand-muted">{roundInfo(round, lang).description}</p>
           </div>
 
           <div>
@@ -324,8 +375,8 @@ export default function BoneTyping() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKey}
               readOnly={!!feedback}
-              aria-label="Suyak nomini lotincha yozing"
-              placeholder="Lotincha nomini yozing"
+              aria-label={L.inputLabel}
+              placeholder={L.inputPlaceholder}
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
@@ -336,7 +387,7 @@ export default function BoneTyping() {
                 role="status"
                 className={`mt-3 text-sm font-medium ${feedback.ok ? 'text-emerald-600' : 'text-rose-600'}`}
               >
-                {feedback.ok ? 'To‘g‘ri!' : `Noto‘g‘ri. To‘g‘ri javob: ${feedback.expected}`}
+                {feedback.ok ? L.correct : L.wrong(feedback.expected)}
               </p>
             )}
           </div>
@@ -348,7 +399,7 @@ export default function BoneTyping() {
                 disabled={!input.trim()}
                 className="flex-1 rounded-xl bg-brand-primary px-4 py-3 font-semibold text-white disabled:opacity-40"
               >
-                Tekshirish
+                {L.check}
               </button>
             ) : (
               <button
@@ -356,10 +407,10 @@ export default function BoneTyping() {
                 className="flex-1 rounded-xl bg-brand-primary px-4 py-3 font-semibold text-white"
               >
                 {index + 1 < roundQueueLength
-                  ? 'Keyingisi'
+                  ? L.next
                   : ROUNDS.indexOf(round) + 1 < ROUNDS.length
-                    ? 'Keyingi bosqich'
-                    : 'Natijani ko‘rish'}
+                    ? L.nextRound
+                    : L.seeResult}
               </button>
             )}
           </div>
@@ -369,16 +420,16 @@ export default function BoneTyping() {
       {stage === 'done' && (
         <section className="space-y-6 text-center">
           <div className="rounded-2xl border border-brand-border p-8">
-            <p className="text-sm uppercase tracking-widest text-brand-muted">Natija</p>
+            <p className="text-sm uppercase tracking-widest text-brand-muted">{L.result}</p>
             <p className="mt-2 text-5xl font-bold">
               {summary.points}
               <span className="text-2xl text-brand-muted"> / {summary.maxPoints}</span>
             </p>
             <p className="mt-3 text-brand-muted">
-              To‘g‘ri javoblar: {summary.correctCount} / {summary.total} ({summary.accuracy}%)
+              {L.answers(summary.correctCount, summary.total, summary.accuracy)}
             </p>
             {summary.points >= best && summary.points > 0 && (
-              <p className="mt-2 text-sm font-medium text-emerald-600">Yangi eng yaxshi natija!</p>
+              <p className="mt-2 text-sm font-medium text-emerald-600">{L.newBest}</p>
             )}
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -386,13 +437,13 @@ export default function BoneTyping() {
               onClick={start}
               className="rounded-xl bg-brand-primary px-4 py-3 font-semibold text-white"
             >
-              Qayta o‘ynash
+              {L.playAgain}
             </button>
             <button
               onClick={() => setStage('setup')}
               className="rounded-xl border border-brand-border px-4 py-3 font-semibold"
             >
-              Qism tanlash
+              {L.pickPart}
             </button>
           </div>
         </section>

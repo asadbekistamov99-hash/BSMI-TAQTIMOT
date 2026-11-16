@@ -76,9 +76,9 @@ export const ROUND_INFO: Record<Round, { title: string; description: string; poi
 };
 
 /** Bosqichga qarab ekranda ko‘rsatiladigan yordam matni. */
-export function hintFor(bone: BoneEntry, round: Round): string | null {
+export function hintFor(bone: BoneEntry, round: Round, lang: Lang = 'uz'): string | null {
   if (round === 1) return bone.latin;
-  if (round === 2) return `${bone.latin[0]}${'_'.repeat(Math.max(0, bone.latin.length - 1))}  (${bone.uz})`;
+  if (round === 2) return `${bone.latin[0]}${'_'.repeat(Math.max(0, bone.latin.length - 1))}  (${boneName(bone, lang)})`;
   return null;
 }
 
@@ -148,4 +148,78 @@ export const TOPIC_BONE_REGIONS: Record<string, BoneRegion[] | 'all'> = {
 export function regionsForTopic(topicKey: string | null | undefined): BoneRegion[] | 'all' {
   if (!topicKey) return 'all';
   return TOPIC_BONE_REGIONS[topicKey] ?? 'all';
+}
+
+export type Lang = 'uz' | 'ru' | 'en';
+
+/** Suyak nomlari: ruscha va inglizcha (lotincha nom har doim yoziladi). */
+const BONE_NAMES_I18N: Record<string, { ru: string; en: string }> = {
+  frontal: { ru: 'лобная кость', en: 'frontal bone' },
+  parietal: { ru: 'теменная кость', en: 'parietal bone' },
+  temporal: { ru: 'височная кость', en: 'temporal bone' },
+  occipital: { ru: 'затылочная кость', en: 'occipital bone' },
+  sphenoid: { ru: 'клиновидная кость', en: 'sphenoid bone' },
+  ethmoid: { ru: 'решетчатая кость', en: 'ethmoid bone' },
+  mandible: { ru: 'нижняя челюсть', en: 'mandible' },
+  maxilla: { ru: 'верхняя челюсть', en: 'maxilla' },
+  cervical: { ru: 'шейный позвонок', en: 'cervical vertebra' },
+  thoracic: { ru: 'грудной позвонок', en: 'thoracic vertebra' },
+  lumbar: { ru: 'поясничный позвонок', en: 'lumbar vertebra' },
+  sacrum: { ru: 'крестец', en: 'sacrum' },
+  coccyx: { ru: 'копчик', en: 'coccyx' },
+  sternum: { ru: 'грудина', en: 'sternum' },
+  rib: { ru: 'ребро', en: 'rib' },
+  clavicle: { ru: 'ключица', en: 'clavicle' },
+  scapula: { ru: 'лопатка', en: 'scapula' },
+  humerus: { ru: 'плечевая кость', en: 'humerus' },
+  radius: { ru: 'лучевая кость', en: 'radius' },
+  ulna: { ru: 'локтевая кость', en: 'ulna' },
+  scaphoid: { ru: 'ладьевидная кость', en: 'scaphoid bone' },
+  lunate: { ru: 'полулунная кость', en: 'lunate bone' },
+  metacarpal: { ru: 'пястная кость', en: 'metacarpal bone' },
+  'hip-bone': { ru: 'тазовая кость', en: 'hip bone' },
+  femur: { ru: 'бедренная кость', en: 'femur' },
+  patella: { ru: 'надколенник', en: 'patella' },
+  tibia: { ru: 'большеберцовая кость', en: 'tibia' },
+  fibula: { ru: 'малоберцовая кость', en: 'fibula' },
+  talus: { ru: 'таранная кость', en: 'talus' },
+  calcaneus: { ru: 'пяточная кость', en: 'calcaneus' },
+  metatarsal: { ru: 'плюсневая кость', en: 'metatarsal bone' },
+};
+
+export function boneName(bone: BoneEntry, lang: Lang = 'uz'): string {
+  if (lang === 'uz') return bone.uz;
+  return BONE_NAMES_I18N[bone.id]?.[lang] ?? bone.latin;
+}
+
+const REGION_I18N: Record<Lang, Record<BoneRegion, string>> = {
+  uz: { head: 'Bosh suyagi', spine: 'Umurtqa pog‘onasi', thorax: 'Ko‘krak qafasi', upperLimb: 'Yuqori oyoq-qo‘l', lowerLimb: 'Pastki oyoq-qo‘l' },
+  ru: { head: 'Череп', spine: 'Позвоночник', thorax: 'Грудная клетка', upperLimb: 'Верхняя конечность', lowerLimb: 'Нижняя конечность' },
+  en: { head: 'Skull', spine: 'Spine', thorax: 'Thorax', upperLimb: 'Upper limb', lowerLimb: 'Lower limb' },
+};
+
+export function regionLabel(region: BoneRegion, lang: Lang = 'uz'): string {
+  return REGION_I18N[lang][region];
+}
+
+const ROUND_I18N: Record<Lang, Record<Round, { title: string; description: string }>> = {
+  uz: {
+    1: { title: '1-bosqich · Yozing', description: 'Nomi ekranda ko‘rinadi. Ustidan yozib, imlosini eslab qoling.' },
+    2: { title: '2-bosqich · Birinchi harf', description: 'Faqat birinchi harf va ko‘rsatma. Qolganini eslang.' },
+    3: { title: '3-bosqich · Xotiradan', description: 'Hech qanday yordamsiz yozing.' },
+  },
+  ru: {
+    1: { title: '1-й этап · Напишите', description: 'Название показано на экране. Напишите его поверх и запомните написание.' },
+    2: { title: '2-й этап · Первая буква', description: 'Только первая буква и подсказка. Вспомните остальное.' },
+    3: { title: '3-й этап · По памяти', description: 'Без подсказок.' },
+  },
+  en: {
+    1: { title: 'Round 1 · Type it', description: 'The name is on screen. Type over it to learn the spelling.' },
+    2: { title: 'Round 2 · First letter', description: 'Only the first letter and a clue. Recall the rest.' },
+    3: { title: 'Round 3 · From memory', description: 'No hints at all.' },
+  },
+};
+
+export function roundInfo(round: Round, lang: Lang = 'uz') {
+  return { ...ROUND_I18N[lang][round], points: ROUND_INFO[round].points };
 }
