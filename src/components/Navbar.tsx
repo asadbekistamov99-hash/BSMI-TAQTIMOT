@@ -841,6 +841,19 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
               <span>{t('nav.glossary')}</span>
             </Link>
 
+            <Link
+              to="/skelet-mashq"
+              className={`text-xs xl:text-sm font-black transition-all flex items-center gap-1.5 px-2.5 py-1.5 xl:px-3 xl:py-2 rounded-xl border tracking-tight whitespace-nowrap shadow-sm ${
+                location.pathname === '/skelet-mashq'
+                  ? 'bg-sky-100/90 border-sky-300 text-sky-800'
+                  : 'bg-sky-50 border-sky-200/80 text-sky-700 hover:bg-sky-100/80 hover:border-sky-300 hover:text-sky-800'
+              }`}
+              title="Suyaklarni yozib o‘rganish mashqi"
+            >
+              <Target className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+              <span>SKELET MASHQI</span>
+            </Link>
+
             <Link 
               to="/ai-assistant" 
               className={`text-xs xl:text-sm font-black transition-all flex items-center gap-1.5 px-2.5 py-1.5 xl:px-3 xl:py-2 rounded-xl border tracking-tight whitespace-nowrap shadow-sm ${
@@ -1062,6 +1075,18 @@ export default function Navbar({ isAdmin, user, onLogout }: NavbarProps) {
           >
             <BookOpen className="w-4 h-4 text-emerald-600 shrink-0" /> 
             <span>{t('nav.glossary')} (Lotincha lug'at)</span>
+          </Link>
+          <Link
+            to="/skelet-mashq"
+            onClick={() => setIsOpen(false)}
+            className={`flex items-center gap-2 text-base font-bold px-3.5 py-2.5 rounded-xl border transition-all ${
+              location.pathname === '/skelet-mashq'
+                ? 'bg-sky-100 border-sky-300 text-sky-800 shadow-sm'
+                : 'bg-sky-50 border-sky-200/80 text-sky-700 hover:bg-sky-100'
+            }`}
+          >
+            <Target className="w-4 h-4 text-sky-600 shrink-0" />
+            <span>Skelet mashqi</span>
           </Link>
           <Link 
             to="/ai-assistant" 
