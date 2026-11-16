@@ -1,0 +1,12 @@
+feature,area,priority,original,clone,notes
+typing drill with three rounds,game,must,yes,yes,src/pages/BoneTyping.tsx
+hint reduction per round,game,must,yes,yes,src/lib/boneTypingEngine.ts hintFor
+region picker,navigation,must,yes,yes,head spine thorax upper and lower limb
+results with score and accuracy,game,must,yes,yes,scoreAttempts
+personal best,progress,should,yes,yes,localStorage only
+3D skeleton with highlighted bone,visual,should,yes,no,licence review needed (CC BY-SA model)
+bone of the day,engagement,could,yes,no,
+body map unlock by region,progress,could,yes,no,
+muscles mode,content,could,yes,no,needs own content
+sign-in with cloud progress,progress,should,yes,no,app already has login; not wired to this drill
+languages other than uz,i18n,could,yes,no,

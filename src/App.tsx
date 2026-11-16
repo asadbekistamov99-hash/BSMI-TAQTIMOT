@@ -15,6 +15,7 @@ const LatinGlossary = lazy(() => import('./pages/LatinGlossary'));
 const AiAssistant = lazy(() => import('./pages/AiAssistant'));
 const Presentation = lazy(() => import('./pages/Presentation'));
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'));
+const BoneTyping = lazy(() => import('./pages/BoneTyping'));
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import AnnouncementBar from './components/AnnouncementBar';
@@ -384,6 +385,7 @@ export default function App() {
               <Route path="/latin-glossary" element={<LatinGlossary isAdmin={isAdmin} user={user} />} />
               <Route path="/pin-quiz" element={<Navigate to="/models" replace />} />
               <Route path="/leaderboard" element={<LeaderboardPage user={user} />} />
+              <Route path="/skelet-mashq" element={<BoneTyping />} />
               <Route path="/ai-assistant" element={<AiAssistant user={user} />} />
               <Route path="/presentation" element={<Presentation user={user} isAdmin={isAdmin} />} />
               <Route path="/admin/login" element={!isAdmin ? <AdminLogin onLogin={handleAdminLogin} /> : <Navigate to="/admin" />} />
