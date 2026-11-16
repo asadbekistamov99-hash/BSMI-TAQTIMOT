@@ -9,15 +9,8 @@ type RegionChoice = BoneRegion | 'all';
 
 const ROUNDS: Round[] = [1, 2, 3];
 
-// Loyihaning 3D katalogidagi (src/data/anatomyModels.ts) CC-BY skelet modellari.
+// Loyihaning 3D katalogidagi (src/data/anatomyModels.ts) CC-BY suyak modellari (10 ta).
 const SKELETON_VIEWS = [
-  {
-    id: 'skeleton',
-    label: 'Butun skelet',
-    embedUrl: 'https://sketchfab.com/models/911b9df7e7834175b69b4840ea15e054/embed',
-    sourceUrl: 'https://sketchfab.com/3d-models/human-skeleton-911b9df7e7834175b69b4840ea15e054',
-    author: 'Terrie Simmons-Ehrhardt',
-  },
   {
     id: 'skull',
     label: 'Bosh suyagi',
@@ -26,10 +19,66 @@ const SKELETON_VIEWS = [
     author: 'Kumar Thyadi',
   },
   {
+    id: 'skeleton',
+    label: 'Butun skelet',
+    embedUrl: 'https://sketchfab.com/models/911b9df7e7834175b69b4840ea15e054/embed',
+    sourceUrl: 'https://sketchfab.com/3d-models/human-skeleton-911b9df7e7834175b69b4840ea15e054',
+    author: 'Terrie Simmons-Ehrhardt',
+  },
+  {
+    id: 'atlas',
+    label: 'Atlas (C1)',
+    embedUrl: 'https://sketchfab.com/models/03657338956d41158be94cf19b150402/embed',
+    sourceUrl: 'https://sketchfab.com/3d-models/human-atlas-c1-vertebra-03657338956d41158be94cf19b150402',
+    author: 'Eric Bauer (@ebauer4)',
+  },
+  {
+    id: 'pelvis',
+    label: 'Chanoq suyagi',
+    embedUrl: 'https://sketchfab.com/models/71a2dfe1a80444f89d90212a921ed0a2/embed',
+    sourceUrl: 'https://sketchfab.com/3d-models/human-pelvic-bone-71a2dfe1a80444f89d90212a921ed0a2',
+    author: 'Eric Bauer (@ebauer4)',
+  },
+  {
+    id: 'sacrum',
+    label: 'Dumg‘aza suyagi',
+    embedUrl: 'https://sketchfab.com/models/49aafdac520046ab97afc33a26d47d0c/embed',
+    sourceUrl: 'https://sketchfab.com/3d-models/human-sacrum-49aafdac520046ab97afc33a26d47d0c',
+    author: 'Eric Bauer (@ebauer4)',
+  },
+  {
     id: 'femur',
     label: 'Son suyagi',
     embedUrl: 'https://sketchfab.com/models/a9c1f1a88b104c3fbfe975fa10b31b31/embed',
     sourceUrl: 'https://sketchfab.com/3d-models/human-femur-a9c1f1a88b104c3fbfe975fa10b31b31',
+    author: 'Eric Bauer (@ebauer4)',
+  },
+  {
+    id: 'foot',
+    label: 'Oyoq suyaklari',
+    embedUrl: 'https://sketchfab.com/models/d69e5651252e44d0bb5d7742670d1d48/embed',
+    sourceUrl: 'https://sketchfab.com/3d-models/foot-bones-anatomical-to-table-d69e5651252e44d0bb5d7742670d1d48',
+    author: 'Terrie Simmons-Ehrhardt',
+  },
+  {
+    id: 'humerus',
+    label: 'Yelka suyagi',
+    embedUrl: 'https://sketchfab.com/models/548132dc5a0a423581e2cba2014ea521/embed',
+    sourceUrl: 'https://sketchfab.com/3d-models/human-humerus-548132dc5a0a423581e2cba2014ea521',
+    author: 'Eric Bauer (@ebauer4)',
+  },
+  {
+    id: 'scapula',
+    label: 'Kurak suyagi',
+    embedUrl: 'https://sketchfab.com/models/0745bbb368b4401db89e73babe440ee8/embed',
+    sourceUrl: 'https://sketchfab.com/3d-models/human-scapula-0745bbb368b4401db89e73babe440ee8',
+    author: 'Eric Bauer (@ebauer4)',
+  },
+  {
+    id: 'clavicle',
+    label: 'O‘mrov suyagi',
+    embedUrl: 'https://sketchfab.com/models/fd3ae947be90403d9a79d8e9669af236/embed',
+    sourceUrl: 'https://sketchfab.com/3d-models/human-clavicle-fd3ae947be90403d9a79d8e9669af236',
     author: 'Eric Bauer (@ebauer4)',
   },
 ] as const;
