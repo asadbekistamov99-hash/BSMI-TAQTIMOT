@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   BONE_REGION_LABELS, BoneEntry, BoneRegion, ROUND_INFO, Round, Attempt,
-  bonesForRegion, hintFor, isCorrect, pickBones, scoreAttempts,
+  bonesForRegion, bonesForRegions, regionsForTopic, hintFor, isCorrect, pickBones, scoreAttempts,
 } from '../lib/boneTypingEngine';
 
 type Stage = 'setup' | 'play' | 'done';
@@ -146,6 +147,10 @@ function writeBest(n: number) {
 export default function BoneTyping() {
   const [stage, setStage] = useState<Stage>('setup');
   const [region, setRegion] = useState<RegionChoice>('all');
+  const [searchParams] = useSearchParams();
+  const topicKey = searchParams.get('topic');
+  const topicRegions = regionsForTopic(topicKey);
+  const topicMode = topicKey !== null;
   const [round, setRound] = useState<Round>(1);
   const [queue, setQueue] = useState<BoneEntry[]>([]);
   const [index, setIndex] = useState(0);
@@ -160,7 +165,8 @@ export default function BoneTyping() {
 
   const startRound = (r: Round, reg: RegionChoice) => {
     setRound(r);
-    setQueue(pickBones(bonesForRegion(reg), QUESTIONS_PER_ROUND));
+    const pool = topicMode ? bonesForRegions(topicRegions) : bonesForRegion(reg);
+    setQueue(pickBones(pool, QUESTIONS_PER_ROUND));
     setIndex(0);
     setInput('');
     setFeedback(null);
@@ -228,6 +234,16 @@ export default function BoneTyping() {
 
       {stage === 'setup' && (
         <section className="space-y-6">
+          {topicMode ? (
+            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-100">
+              <p className="font-semibold">Mavzu bo‘yicha mashq</p>
+              <p className="mt-1">
+                {topicRegions === 'all'
+                  ? 'Bu mavzu bo‘yicha butun skelet suyaklari so‘raladi.'
+                  : `Faqat shu mavzu suyaklari so‘raladi: ${topicRegions.map((r) => BONE_REGION_LABELS[r]).join(', ')}.`}
+              </p>
+            </div>
+          ) : (
           <fieldset>
             <legend className="mb-3 text-sm font-semibold">Qaysi qism?</legend>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -253,6 +269,7 @@ export default function BoneTyping() {
               ))}
             </div>
           </fieldset>
+          )}
 
           <div className="rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800">
             <p className="font-semibold">3 bosqich, har birida {QUESTIONS_PER_ROUND} ta suyak</p>

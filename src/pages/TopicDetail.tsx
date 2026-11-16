@@ -2434,8 +2434,15 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
                 <Target className="w-8 h-8" />
               </div>
               <h4 className="text-lg font-black text-brand-primary mb-3 uppercase tracking-tight">3D O‘YIN</h4>
-              <p className="text-brand-muted text-sm leading-relaxed mb-6">Suyaklarni 3D modelda ko‘rib, nomini yozib mashq qiling. Uch bosqichda yordam kamayadi.</p>
-              <Link to="/skelet-mashq" className="inline-block px-8 py-3 bg-brand-bg text-brand-primary border border-brand-border font-bold rounded-xl text-xs hover:bg-brand-accent hover:border-brand-accent transition-all">
+              <p className="text-brand-muted text-sm leading-relaxed mb-6">
+                {topic?.semester && topic?.order
+                  ? 'Ushbu mavzudagi suyaklarni yozib mashq qiling. Uch bosqichda yordam kamayadi.'
+                  : 'Suyaklarni yozib mashq qiling. Uch bosqichda yordam kamayadi.'}
+              </p>
+              <Link
+                to={topic?.semester && topic?.order ? `/skelet-mashq?topic=sem_${topic.semester}_top_${topic.order}` : '/skelet-mashq'}
+                className="inline-block px-8 py-3 bg-brand-bg text-brand-primary border border-brand-border font-bold rounded-xl text-xs hover:bg-brand-accent hover:border-brand-accent transition-all"
+              >
                 MASHQNI BOSHLASH
               </Link>
             </div>

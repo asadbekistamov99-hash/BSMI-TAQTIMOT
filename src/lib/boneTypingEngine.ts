@@ -109,3 +109,43 @@ export function scoreAttempts(attempts: Attempt[]) {
   const accuracy = attempts.length === 0 ? 0 : Math.round((correct.length / attempts.length) * 100);
   return { points, maxPoints, accuracy, correctCount: correct.length, total: attempts.length };
 }
+
+export function bonesForRegions(regions: BoneRegion[] | 'all'): BoneEntry[] {
+  return regions === 'all' ? BONES : BONES.filter((b) => regions.includes(b.region));
+}
+
+/**
+ * Har bir o'quv mavzusi (sem_<semestr>_top_<tartib>) uchun suyak mintaqalari.
+ * Mavzu suyak haqida bo'lmasa — 'all' (butun skelet bo'yicha mashq).
+ */
+export const TOPIC_BONE_REGIONS: Record<string, BoneRegion[] | 'all'> = {
+  sem_1_top_1: ['spine'],
+  sem_1_top_2: ['thorax', 'upperLimb'],
+  sem_1_top_3: ['upperLimb'],
+  sem_1_top_4: ['lowerLimb'],
+  sem_1_top_5: ['head'],
+  sem_1_top_6: ['head'],
+  sem_1_top_7: ['head'],
+  sem_1_top_8: ['spine', 'thorax', 'upperLimb'],
+  sem_1_top_9: ['spine', 'lowerLimb'],
+  sem_1_top_10: 'all',
+  sem_1_top_11: 'all',
+  sem_1_top_12: 'all',
+  sem_1_top_13: 'all',
+  sem_2_top_1: ['head'],
+  sem_2_top_4: ['thorax'],
+  sem_2_top_9: ['thorax'],
+  sem_3_top_1: ['spine'],
+  sem_3_top_6: ['upperLimb'],
+  sem_3_top_7: ['spine', 'lowerLimb'],
+  sem_3_top_8: ['head'],
+  sem_3_top_9: ['head'],
+  sem_3_top_10: ['head'],
+  sem_3_top_11: ['head'],
+  sem_3_top_13: ['head'],
+};
+
+export function regionsForTopic(topicKey: string | null | undefined): BoneRegion[] | 'all' {
+  if (!topicKey) return 'all';
+  return TOPIC_BONE_REGIONS[topicKey] ?? 'all';
+}
