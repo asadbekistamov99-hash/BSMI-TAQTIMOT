@@ -11,7 +11,7 @@ import { SEMESTER_2_DETAILED_TOPICS } from '../data/semester2TopicsData';
 import { SEMESTER_3_DETAILED_TOPICS } from '../data/semester3TopicsData';
 import { getGlossaryTermsByTopic } from '../data/topicGlossaryData';
 import { motion } from 'motion/react';
-import { Book, Play, Image as ImageIcon, Languages, ChevronRight, ClipboardCheck, Lock, Sparkles, Clock, Maximize2, Minimize2, ZoomIn, ZoomOut, X, Type, BookOpen, Search, CheckCircle, Edit3, Trash2, History, Download, Bold, Italic, List, Heading, Code, Check, Stethoscope, Printer, BookA, Bookmark, Presentation, FileText, RefreshCw, Box, HelpCircle } from 'lucide-react';
+import { Book, Play, Image as ImageIcon, Languages, ChevronRight, ClipboardCheck, Lock, Sparkles, Clock, Maximize2, Minimize2, ZoomIn, ZoomOut, X, Type, BookOpen, Search, CheckCircle, Edit3, Trash2, History, Download, Bold, Italic, List, Heading, Code, Check, Stethoscope, Printer, BookA, Bookmark, Presentation, FileText, RefreshCw, Box, HelpCircle, Target } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import PaymentModal from '../components/PaymentModal';
 import CreativeAnatomyDiagram from '../components/CreativeAnatomyDiagram';
@@ -2423,12 +2423,12 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
             {/* Help/Support Section */}
             <div className="p-8 bg-white rounded-[32px] border border-brand-border text-center">
               <div className="w-16 h-16 bg-brand-bg rounded-2xl flex items-center justify-center mx-auto mb-6 text-brand-accent border border-brand-border">
-                <ImageIcon className="w-8 h-8" />
+                <Target className="w-8 h-8" />
               </div>
-              <h4 className="text-lg font-black text-brand-primary mb-3 uppercase tracking-tight">{t('home.feat_atlas')}</h4>
-              <p className="text-brand-muted text-sm leading-relaxed mb-6">{t('home.feat_atlas_desc')}</p>
-              <Link to="/atlas" className="inline-block px-8 py-3 bg-brand-bg text-brand-primary border border-brand-border font-bold rounded-xl text-xs hover:bg-brand-accent hover:border-brand-accent transition-all">
-                {t('home.view_atlas').toUpperCase()}
+              <h4 className="text-lg font-black text-brand-primary mb-3 uppercase tracking-tight">3D O‘YIN</h4>
+              <p className="text-brand-muted text-sm leading-relaxed mb-6">Suyaklarni 3D modelda ko‘rib, nomini yozib mashq qiling. Uch bosqichda yordam kamayadi.</p>
+              <Link to="/skelet-mashq" className="inline-block px-8 py-3 bg-brand-bg text-brand-primary border border-brand-border font-bold rounded-xl text-xs hover:bg-brand-accent hover:border-brand-accent transition-all">
+                MASHQNI BOSHLASH
               </Link>
             </div>
           </aside>
