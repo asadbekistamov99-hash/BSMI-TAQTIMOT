@@ -8,6 +8,73 @@ type Stage = 'setup' | 'play' | 'done';
 type RegionChoice = BoneRegion | 'all';
 
 const ROUNDS: Round[] = [1, 2, 3];
+
+// Loyihaning 3D katalogidagi (src/data/anatomyModels.ts) CC-BY skelet modellari.
+const SKELETON_VIEWS = [
+  {
+    id: 'skeleton',
+    label: 'Butun skelet',
+    embedUrl: 'https://sketchfab.com/models/911b9df7e7834175b69b4840ea15e054/embed',
+    sourceUrl: 'https://sketchfab.com/3d-models/human-skeleton-911b9df7e7834175b69b4840ea15e054',
+    author: 'Terrie Simmons-Ehrhardt',
+  },
+  {
+    id: 'skull',
+    label: 'Bosh suyagi',
+    embedUrl: 'https://sketchfab.com/models/daaaa5668efa43f280e23196adb792ca/embed',
+    sourceUrl: 'https://sketchfab.com/3d-models/human-skull-anatomy-daaaa5668efa43f280e23196adb792ca',
+    author: 'Kumar Thyadi',
+  },
+  {
+    id: 'femur',
+    label: 'Son suyagi',
+    embedUrl: 'https://sketchfab.com/models/a9c1f1a88b104c3fbfe975fa10b31b31/embed',
+    sourceUrl: 'https://sketchfab.com/3d-models/human-femur-a9c1f1a88b104c3fbfe975fa10b31b31',
+    author: 'Eric Bauer (@ebauer4)',
+  },
+] as const;
+
+function SkeletonViewer() {
+  const [active, setActive] = useState<(typeof SKELETON_VIEWS)[number]>(SKELETON_VIEWS[0]);
+  return (
+    <section className="mb-8 space-y-3">
+      <div role="tablist" aria-label="3D model tanlash" className="flex gap-2">
+        {SKELETON_VIEWS.map((v) => (
+          <button
+            key={v.id}
+            role="tab"
+            aria-selected={active.id === v.id}
+            onClick={() => setActive(v)}
+            className={`rounded-lg px-3 py-1.5 text-sm transition ${
+              active.id === v.id
+                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                : 'border border-slate-300 dark:border-slate-700'
+            }`}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+      <div className="aspect-video w-full overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+        <iframe
+          key={active.id}
+          title={`${active.label} — 3D model`}
+          src={active.embedUrl}
+          className="h-full w-full"
+          loading="lazy"
+          allow="autoplay; fullscreen; xr-spatial-tracking"
+        />
+      </div>
+      <p className="text-xs text-slate-500">
+        3D model:{' '}
+        <a href={active.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline">
+          {active.author}
+        </a>
+        , CC BY (Sketchfab).
+      </p>
+    </section>
+  );
+}
 const BEST_KEY = 'bone_typing_best_v1';
 const QUESTIONS_PER_ROUND = 8;
 
@@ -107,6 +174,8 @@ export default function BoneTyping() {
           Suyak nomini lotincha yozing. Har bir bosqichda yordam kamayadi, ball esa ortadi.
         </p>
       </header>
+
+      <SkeletonViewer />
 
       {stage === 'setup' && (
         <section className="space-y-6">
