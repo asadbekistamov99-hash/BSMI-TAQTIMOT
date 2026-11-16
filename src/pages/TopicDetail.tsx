@@ -28,6 +28,7 @@ import TopicPresentationSection from '../components/TopicPresentationSection';
 import { getTheoryQuestionsForTopic } from '../data/topicTheoryQuestionsData';
 import { getCuratedQuizzesForTopic } from '../data/topicQuizzesData';
 import { ANATOMY_MODELS, SEED_MODELS, type AnatomyModel } from '../data/anatomyModels';
+import { TOPIC_MODEL_MAP } from '../data/topicModelMap';
 import { getActiveUserAiKey } from '../lib/userAiKey';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
@@ -204,7 +205,14 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
   const relatedModels: AnatomyModel[] = (() => {
     if (!topic || !topic.semester || !topic.order) return ANATOMY_MODELS.slice(0, 4);
     const curriculumTopicId = `sem_${topic.semester}_top_${topic.order}`;
-    const matched = [...ANATOMY_MODELS, ...SEED_MODELS].filter((m) => 
+    const allModels = [...ANATOMY_MODELS, ...SEED_MODELS];
+    // 1) Mavzu xaritasi (topicModelMap) — mavzuga aniq mos modellar, tartibi saqlanadi
+    const mapped = (TOPIC_MODEL_MAP[curriculumTopicId] || [])
+      .map((id) => allModels.find((m) => m.id === id))
+      .filter((m): m is AnatomyModel => !!m);
+    if (mapped.length > 0) return mapped;
+    // 2) Eski usul: model ichidagi topicIds yoki defaultModelId
+    const matched = allModels.filter((m) =>
       m.topicIds?.includes(curriculumTopicId) || (topic.defaultModelId && m.id === topic.defaultModelId)
     );
     if (matched.length > 0) return matched;
