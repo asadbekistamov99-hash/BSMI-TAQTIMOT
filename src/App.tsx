@@ -114,8 +114,6 @@ export default function App() {
       localStorage.removeItem('anatomy_unlocked_semesters');
       localStorage.removeItem('virtualGuestUser');
       localStorage.removeItem('guestModeFullAccess');
-      sessionStorage.removeItem('virtualGuestUser');
-      sessionStorage.removeItem('guestModeFullAccess');
       // Clean any stale mock payment keys from localStorage
       Object.keys(localStorage).forEach(key => {
         if (key.startsWith('payment_') || key.startsWith('profile_')) {
@@ -123,10 +121,47 @@ export default function App() {
         }
       });
     } catch (e) {}
-    setFaceIdVerified(readFaceIdSession(user?.uid));
+    const isGuestSession = sessionStorage.getItem('guestModeFullAccess') === 'true';
+    setFaceIdVerified(isGuestSession || readFaceIdSession(user?.uid));
   }, [user?.uid]);
 
   useEffect(() => {
+    const checkLocalGuest = () => {
+      const localGuest = sessionStorage.getItem('virtualGuestUser');
+      const isGuestModeFull = sessionStorage.getItem('guestModeFullAccess') === 'true';
+      if (localGuest || isGuestModeFull) {
+        try {
+          const parsed = localGuest ? JSON.parse(localGuest) : {};
+          const guestObj = {
+            ...parsed,
+            uid: parsed.uid || 'guest_bsmi_student',
+            displayName: parsed.displayName || 'Mehmon Foydalanuvchi',
+            email: parsed.email || 'mehmon@bsmi.uz',
+            purchasedSemesters: [1, 2, 3],
+            isAdmin: false,
+            isGuest: true,
+            hasFullAccess: true,
+            role: 'user'
+          };
+          setUser(guestObj);
+          setIsAdmin(false);
+          setLoading(false);
+          setFaceIdVerified(true);
+          return true;
+        } catch (e) {}
+      }
+      return false;
+    };
+
+    const handleLocalAuth = () => {
+      checkLocalGuest();
+    };
+    window.addEventListener('local_auth_changed', handleLocalAuth);
+
+    if (checkLocalGuest()) {
+      return () => window.removeEventListener('local_auth_changed', handleLocalAuth);
+    }
+
     let unsubscribeUserDoc: (() => void) | null = null;
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -134,6 +169,10 @@ export default function App() {
       if (unsubscribeUserDoc) {
         unsubscribeUserDoc();
         unsubscribeUserDoc = null;
+      }
+
+      if (checkLocalGuest()) {
+        return;
       }
 
       const savedAdminToken = sessionStorage.getItem('adminToken');
@@ -144,6 +183,7 @@ export default function App() {
         
         // Listen to the user's Firestore document in real-time
         unsubscribeUserDoc = onSnapshot(userRef, async (docSnap) => {
+          const isGuestModeFull = sessionStorage.getItem('guestModeFullAccess') === 'true';
           const adminEmail = "asadbekistamov99@gmail.com";
           const isActuallyAdminEmail = firebaseUser?.email?.toLowerCase() === adminEmail;
 
@@ -164,17 +204,25 @@ export default function App() {
               setUser({
                 uid: firebaseUser.uid,
                 isAnonymous: firebaseUser.isAnonymous,
-                ...initialProfile
+                isGuest: isGuestModeFull,
+                ...initialProfile,
+                purchasedSemesters: isGuestModeFull ? [1, 2, 3] : initialProfile.purchasedSemesters
               });
             } catch (err) {
               console.error("Error setting initial profile:", err);
             }
           } else {
             const dbData = docSnap.data();
+            const existingPurchased = (dbData.purchasedSemesters || []).map(Number);
+            const finalPurchased = isGuestModeFull
+              ? Array.from(new Set([...existingPurchased, 1, 2, 3]))
+              : existingPurchased;
             setUser({
               uid: firebaseUser.uid,
               isAnonymous: firebaseUser.isAnonymous,
-              ...dbData
+              isGuest: isGuestModeFull,
+              ...dbData,
+              purchasedSemesters: finalPurchased
             });
           }
           setLoading(false);
@@ -194,6 +242,7 @@ export default function App() {
       if (unsubscribeUserDoc) {
         unsubscribeUserDoc();
       }
+      window.removeEventListener('local_auth_changed', handleLocalAuth);
     };
   }, []);
 
@@ -350,11 +399,16 @@ export default function App() {
   // is being fixed. Missing setting = enabled (fail-safe default).
   const faceIdFeatureEnabled = settings?.features?.enableFaceId !== false;
 
+  const isGuestActive =
+    Boolean(user?.isGuest) ||
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('guestModeFullAccess') === 'true');
+
   const needsFaceVerification = 
     faceIdFeatureEnabled &&
     user && 
     !isAdmin &&
     !user.isAnonymous && 
+    !isGuestActive &&
     (!user.faceIdEnrolled || !faceIdVerified);
 
   return (

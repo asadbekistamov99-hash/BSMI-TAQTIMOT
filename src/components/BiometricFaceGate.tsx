@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
-import { Camera, ShieldCheck, ShieldAlert, UserCheck, RefreshCw, LogOut, CheckCircle2, AlertTriangle, Eye, ShieldOff } from 'lucide-react';
+import { Camera, ShieldCheck, ShieldAlert, UserCheck, RefreshCw, LogOut, CheckCircle2, AlertTriangle, Eye, ShieldOff, Sparkles } from 'lucide-react';
 import {
   analyzeLuminance,
   assessFrameQuality,
@@ -877,6 +877,41 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
     }
   };
 
+  // Mehmon sifatida kirish (barcha obunalar ochiq holatda)
+  const handleGuestAccess = () => {
+    try {
+      stopCamera();
+
+      const guestUid = user?.uid || 'guest_bsmi_student';
+      const guestUser = {
+        uid: guestUid,
+        displayName:
+          user?.displayName && user.displayName !== 'Foydalanuvchi'
+            ? `${user.displayName} (Mehmon)`
+            : 'Mehmon Foydalanuvchi',
+        email: user?.email || 'mehmon@bsmi.uz',
+        photoURL: user?.photoURL || 'https://api.iconify.design/solar:user-bold-duotone.svg',
+        isAnonymous: false,
+        isAdmin: false,
+        isGuest: true,
+        hasFullAccess: true,
+        purchasedSemesters: [1, 2, 3],
+        faceIdEnrolled: true,
+        faceIdVerified: true,
+        role: 'user'
+      };
+
+      sessionStorage.setItem('virtualGuestUser', JSON.stringify(guestUser));
+      sessionStorage.setItem('guestModeFullAccess', 'true');
+      writeFaceIdSession(guestUid);
+      window.dispatchEvent(new Event('local_auth_changed'));
+      onVerified();
+    } catch (err) {
+      console.error("Guest login error:", err);
+      onVerified();
+    }
+  };
+
   if (loadingProfile) {
     return (
       <div className="fixed inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-6 text-white font-sans select-none">
@@ -1107,6 +1142,14 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
                       <Camera className="w-3 h-3 text-cyan-400" />
                       Yuzni qayta suratga olish
                     </button>
+                    <button
+                      type="button"
+                      onClick={handleGuestAccess}
+                      className="w-full px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-500 active:scale-95 transition text-white font-bold text-[9px] uppercase tracking-wider rounded-xl flex items-center justify-center gap-1 cursor-pointer border border-emerald-400/40 shadow-md shadow-emerald-900/30 font-sans"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-300" />
+                      Mehmon sifatida kirish (Barcha obunalar ochiq)
+                    </button>
                   </div>
                 </>
               )}
@@ -1253,6 +1296,50 @@ export default function BiometricFaceGate({ user, onVerified }: BiometricFaceGat
               ) : null}
             </div>
           )}
+
+          {/* Mehmon sifatida kirish (barcha obunalar ochiq) */}
+          <div className="mt-3 p-3.5 rounded-2xl bg-gradient-to-br from-emerald-950/70 via-slate-900/95 to-teal-950/70 border border-emerald-500/40 text-left shadow-xl shadow-emerald-950/40 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="flex items-center justify-between gap-2 mb-2 relative z-10">
+              <div className="flex items-center gap-2">
+                <span className="flex h-2.5 w-2.5 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                  Mehmon Rejimi
+                </span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-[9px] font-black uppercase tracking-wider text-emerald-300">
+                Barcha obunalar ochiq
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-300 mb-3 leading-relaxed relative z-10">
+              Face ID tekshiruvisiz kirish uchun mehmon rejimidan foydalaning — barcha semestrlar va funksiyalar to'liq ochiq bo'ladi.
+            </p>
+
+            <button
+              type="button"
+              onClick={handleGuestAccess}
+              className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:via-teal-500 hover:to-cyan-500 active:scale-98 text-white font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/35 border border-emerald-400/40 transition-all cursor-pointer relative z-10"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+              <span>Mehmon sifatida kirish</span>
+            </button>
+
+            <div className="mt-2.5 pt-2 border-t border-emerald-500/20 grid grid-cols-2 gap-2 text-[10px] text-emerald-300/90 relative z-10 font-medium">
+              <span className="flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                1, 2, 3-semestrlar ochiq
+              </span>
+              <span className="flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                3D, Test, AI va Taqdimotlar
+              </span>
+            </div>
+          </div>
 
           {/* Cancel/Logout */}
           <button
