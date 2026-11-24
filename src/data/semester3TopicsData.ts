@@ -804,7 +804,7 @@ Har bir katta yarim shar ichida bittadan "C" harfi shaklidagi yon qorincha mavju
     defaultModelId: "spinothalamic-tract",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 4),
     title: {
-      uz: "4-Mavzu: Bosh miya va orqa miyaning o‘tkazuv yo‘llari. Oddiy refleks yoyi. Sezuvchi o‘tkazuv yo‘llari. Harakatlantiruvchi o‘tkazuv yo‘llari",
+      uz: "4-Mavzu: Bosh miya va orqa miyaning o‘tkazuv yo‘llari. Oddiy refleks yoyi. Sezuvchi o‘tkazuv yo‘llari. Bosh miya va orqa miyaning o‘tkazuv yo‘llari. Sezuvchi o‘tkazuv yo‘llari. Harakatlantiruvchi o‘tkazuv yo‘llari",
       ru: "Тема 4: Проводящие пути головного и спинного мозга. Рефлекторная дуга. Чувствительные и двигательные пути",
       en: "Topic 4: Pathways of the Brain and Spinal Cord. Reflex Arc. Sensory and Motor Pathways"
     },
