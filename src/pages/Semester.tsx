@@ -53,6 +53,16 @@ const getFallbackTopics = (sem: number): Topic[] => {
 };
 
 // Cross-navigation memory cache to eliminate lag and loading flickers
+// Ma'lumot manbasi javob bermasa, sahifa zaxira ma'lumot bilan tez ochiladi.
+const withTimeout = <T,>(promise: Promise<T>, ms = 5000): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+
 const semesterMemoryCache = new Map<number, {
   topics: Topic[];
   semesterInfo: SemesterType;
@@ -231,7 +241,7 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
     // Concurrently fetch all updates in parallel
     const runParallelSync = async () => {
       // 1. Semester Info
-      const pSemInfo = dbService.getSemesters()
+      const pSemInfo = withTimeout(dbService.getSemesters())
         .then((sems: any[]) => {
           if (!isCurrent) return null;
           const sem = sems.find((s: any) => s.number === semesterId);
@@ -250,7 +260,7 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
       const pPayment = (async () => {
         if (!user || isDirectlyPaid) return null;
         try {
-          const profile = await dbService.getProfile(user.uid);
+          const profile = await withTimeout(dbService.getProfile(user.uid));
           if (!isCurrent) return null;
           if (profile) {
             const purchased = (profile.purchasedSemesters || []).map(Number);
@@ -260,7 +270,7 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
               return true;
             }
           }
-          const payment = await dbService.getPayment(user.uid, semesterId);
+          const payment = await withTimeout(dbService.getPayment(user.uid, semesterId));
           if (!isCurrent) return null;
           if (payment) {
             if (payment.status === 'completed' || payment.status === 'approved') {
@@ -280,7 +290,7 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
       // 3. Topics
       const pTopics = (async () => {
         try {
-          const realTopics = await dbService.getTopics(semesterId);
+          const realTopics = await withTimeout(dbService.getTopics(semesterId));
           if (!isCurrent) return null;
           const detailedList = getFallbackTopics(semesterId);
           if (realTopics && realTopics.length > 0) {
@@ -311,7 +321,7 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
       const pMidterm = (async () => {
         try {
           const docRef = doc(db, 'midterms', `midterm_${semesterId}`);
-          const snapshot = await getDoc(docRef);
+          const snapshot = await withTimeout(getDoc(docRef));
           if (!isCurrent) return null;
           if (snapshot.exists()) {
             const mf = { id: snapshot.id, ...snapshot.data() } as MidtermFile;
