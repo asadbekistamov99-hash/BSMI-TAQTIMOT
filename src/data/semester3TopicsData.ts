@@ -6,6 +6,8 @@ export const SEMESTER_3_DETAILED_TOPICS: Topic[] = [
     id: "sem_3_top_1",
     semester: 3,
     order: 1,
+
+    hours: 2,
     defaultModelId: "brain-labeled",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 1),
     title: {
@@ -341,6 +343,8 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
     id: "sem_3_top_2",
     semester: 3,
     order: 2,
+
+    hours: 4,
     defaultModelId: "thalamus-brainsections",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 2),
     title: {
@@ -565,6 +569,8 @@ III qorincha — oraliq miya markazidagi tor sagittal tirqish bo'lib, likvor bil
     id: "sem_3_top_3",
     semester: 3,
     order: 3,
+
+    hours: 2,
     defaultModelId: "brain-cerebrum-brainstem",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 3),
     title: {
@@ -793,6 +799,8 @@ Har bir katta yarim shar ichida bittadan "C" harfi shaklidagi yon qorincha mavju
     id: "sem_3_top_4",
     semester: 3,
     order: 4,
+
+    hours: 4,
     defaultModelId: "spinothalamic-tract",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 4),
     title: {
@@ -979,6 +987,8 @@ Insonning barcha ixtiyoriy, ongli, nozik harakatlarini boshqaruvchi bosh motor y
     id: "sem_3_top_5",
     semester: 3,
     order: 5,
+
+    hours: 4,
     defaultModelId: "spinal-nerve-brachial-plexus",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 5),
     title: {
@@ -1157,6 +1167,8 @@ Ko'krak spinal nervlarining oldingi shoxlari (**Th1–Th11**) qovurg'alararo ner
     id: "sem_3_top_6",
     semester: 3,
     order: 6,
+
+    hours: 4,
     defaultModelId: "brachial-plexus-ubc",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 6),
     title: {
@@ -1325,6 +1337,8 @@ Yelka chigali pastki 4 ta bo'yin nervi va I ko'krak nervining oldingi shoxlari (
     id: "sem_3_top_7",
     semester: 3,
     order: 7,
+
+    hours: 4,
     defaultModelId: "human-nervous-system-full-body",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 7),
     title: {
@@ -1495,6 +1509,8 @@ Dumg‘aza chigali bel-dumg'aza poyasi (**Truncus lumbosacralis — L4, L5**) ha
     id: "sem_3_top_8",
     semester: 3,
     order: 8,
+
+    hours: 4,
     defaultModelId: "eye-anatomy-umcg",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 8),
     title: {
@@ -1687,6 +1703,8 @@ Sof sezuvchi nerv bo'lib, ikkita funktsional jihatdan butunlay mustaqil qismdan 
     id: "sem_3_top_9",
     semester: 3,
     order: 9,
+
+    hours: 4,
     defaultModelId: "cranial-nerve-nuclei",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 9),
     title: {
@@ -1882,6 +1900,8 @@ $$\mathbf{LR_6 \; SO_4 \; AO_3}$$
     id: "sem_3_top_10",
     semester: 3,
     order: 10,
+
+    hours: 4,
     defaultModelId: "cranial-nerve-nuclei",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 10),
     title: {
@@ -2044,6 +2064,8 @@ V juftning **yagona aralash shoxi**.
     id: "sem_3_top_11",
     semester: 3,
     order: 11,
+
+    hours: 4,
     defaultModelId: "cranial-nerve-nuclei",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 11),
     title: {
@@ -2231,6 +2253,8 @@ Inson organizmidagi **eng uzun kranial nerv** bo'lib, parasimpatik nerv tizimini
     id: "sem_3_top_12",
     semester: 3,
     order: 12,
+
+    hours: 4,
     defaultModelId: "cranial-nerve-nuclei",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 12),
     title: {
@@ -2405,6 +2429,8 @@ Parasimpatik tizim preganglionar tolalari nihoyatda uzun bo'lib, vegetativ tugun
     id: "sem_3_top_13",
     semester: 3,
     order: 13,
+
+    hours: 4,
     defaultModelId: "inner-ear",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 13),
     title: {
