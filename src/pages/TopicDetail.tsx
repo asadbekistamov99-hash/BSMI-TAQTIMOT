@@ -1134,6 +1134,11 @@ export default function TopicDetail({ isAdmin: isAdminProp, user }: { isAdmin?: 
               <span className="px-4 py-1.5 bg-brand-accent/20 border border-brand-accent/30 text-brand-accent rounded-lg font-black uppercase tracking-widest text-[10px]">
                 {t('study.unlocked').toUpperCase()} {topic.order}
               </span>
+              {topic.hours ? (
+                <span className="px-4 py-1.5 bg-white/5 border border-white/10 text-slate-300 rounded-lg font-black uppercase tracking-widest text-[10px]">
+                  {topic.hours} SOAT
+                </span>
+              ) : null}
             </div>
             <h1 className="text-2xl sm:text-3xl md:text-5xl font-black text-white tracking-tight leading-[1.15] mb-4 max-w-4xl">
               {parsedTopicTitle.mainTitle || topicTitle}

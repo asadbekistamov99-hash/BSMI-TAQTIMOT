@@ -48,6 +48,7 @@ export interface Topic {
   id: string;
   semester: number;
   order: number;
+  hours?: number; // Amaliy mashg'ulot soati (o'quv reja bo'yicha)
   title: Record<string, string>; // Multi-language support
   theory: Record<string, string>;
   latinTerms: string[];
