@@ -48,6 +48,16 @@ const UI: Record<Lang, Record<UiKey, any>> = {
 const BEST_KEY = 'bone_typing_best_v1';
 const QUESTIONS_PER_ROUND = 8;
 
+// Har bir savol uchun mintaqaga mos anatomik model. O'yin savol/ball logikasiga tegmaydi.
+const REGION_MODEL_IDS: Record<BoneRegion | 'all', string> = {
+  all: '911b9df7e7834175b69b4840ea15e054',
+  head: 'daaaa5668efa43f280e23196adb792ca',
+  spine: '9ef040d718cd4c269844cc5cabf6ceaa',
+  thorax: '4aba9b2ced344bdf8f09656c6a298b50',
+  upperLimb: 'f39e683a0af342b9801adedebf2b2a9a',
+  lowerLimb: 'e0401c95f53c46df97b1db1cf21f3a56',
+};
+
 function readBest(): number {
   try {
     const n = Number(localStorage.getItem(BEST_KEY));
@@ -86,6 +96,8 @@ export default function BoneTyping() {
 
   const current = queue[index];
   const roundQueueLength = queue.length;
+  const modelRegion: BoneRegion | 'all' = current?.region ?? (region === 'all' ? 'all' : region);
+  const modelId = REGION_MODEL_IDS[modelRegion];
 
   const startRound = (r: Round, reg: RegionChoice) => {
     setRound(r);
@@ -164,7 +176,7 @@ export default function BoneTyping() {
             <iframe
               title="Human Skeleton 3D anatomy model"
               className="h-full w-full rounded-xl"
-              src="https://sketchfab.com/models/911b9df7e7834175b69b4840ea15e054/embed?autostart=1&ui_theme=light&ui_infos=0&ui_watermark=0"
+              src={`https://sketchfab.com/models/${modelId}/embed?autostart=1&ui_theme=light&ui_infos=0&ui_watermark=0`}
               allow="autoplay; fullscreen; xr-spatial-tracking"
             />
           ) : (
