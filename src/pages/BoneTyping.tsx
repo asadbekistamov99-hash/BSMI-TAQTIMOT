@@ -57,6 +57,17 @@ const REGION_MODEL_IDS: Record<BoneRegion | 'all', string> = {
   upperLimb: 'f39e683a0af342b9801adedebf2b2a9a',
   lowerLimb: 'e0401c95f53c46df97b1db1cf21f3a56',
 };
+const BONE_MODEL_IDS: Record<string, string> = {
+  // Mavjud katalogdagi alohida suyak/kompleks modellari.
+  radius: 'f39e683a0af342b9801adedebf2b2a9a',
+  ulna: 'f39e683a0af342b9801adedebf2b2a9a',
+  humerus: '548132dc5a0a423581e2cba2014ea521',
+  femur: 'a9c1f1a88b104c3fbfe975fa10b31b31',
+  talus: 'd69e5651252e44d0bb5d7742670d1d48',
+  scaphoid: '1704c8bec5db422fbe17c1e9650c293a',
+  lunate: '1704c8bec5db422fbe17c1e9650c293a',
+  occipital: 'baf6ac7b781a46218dca2b59dee58817',
+};
 
 function readBest(): number {
   try {
@@ -97,7 +108,7 @@ export default function BoneTyping() {
   const current = queue[index];
   const roundQueueLength = queue.length;
   const modelRegion: BoneRegion | 'all' = current?.region ?? (region === 'all' ? 'all' : region);
-  const modelId = REGION_MODEL_IDS[modelRegion];
+  const modelId = (current && BONE_MODEL_IDS[current.id]) || REGION_MODEL_IDS[modelRegion];
 
   const startRound = (r: Round, reg: RegionChoice) => {
     setRound(r);
