@@ -11,7 +11,7 @@ export const SEMESTER_3_DETAILED_TOPICS: Topic[] = [
     defaultModelId: "brain-labeled",
     terms: SEMESTER_3_GLOSSARY_TERMS.filter(t => t.topicOrder === 1),
     title: {
-      uz: "1-Mavzu: Orqa miya. Orqa miya pardalari. Bosh miyaning umumiy tuzilishi. Bosh miya asosi. 12 juft bosh miya nervlarining chiqishi. Uzunchoq miya. Voroliy ko‘prigi. Miyacha. Bosh miyaning IV qorinchasi",
+      uz: "1-Mavzu: Orqa miya. Orqa miya pardalari. Bosh miyaning umumiy tuzilishi. Bosh miya asosi. 12 juft bosh miya nervlarining chiqishi. Uzunchoq miya. Varoliy ko‘prigi. Miyacha. Bosh miyaning IV qorinchasi",
       ru: "Тема 1: Спинной мозг и его оболочки. Общее строение головного мозга. Основание мозга. Выход 12 пар черепных нервов. Продоговатый мозг. Мост. Мозжечок. IV желудочек",
       en: "Topic 1: Spinal Cord and Meninges. General Brain Structure. Base of Brain. Exit of 12 Pairs of Cranial Nerves. Medulla Oblongata. Pons. Cerebellum. 4th Ventricle"
     },
@@ -27,7 +27,7 @@ export const SEMESTER_3_DETAILED_TOPICS: Topic[] = [
 4. **Bosh miyaning umumiy tuzilishi va Bosh miya asosi (*Basis encephali*):** Relyefi, egatlari, 12 juft kranial nervlarning chiqish joylari.
 5. **12 juft Bosh miya nervlarining to'liq super-jadvali:** Funksional tolalari, o'zaklari, kalla suyagi teshiklari va klinik zararlanish belgilari.
 6. **Uzunchoq miya (*Medulla oblongata / Bulbus*):** Tashqi yuzalari, o'zaklari, hayotiy markazlar (nafas, qon aylanish).
-7. **Voroliy ko'prigi (*Pons*):** Old yuzasi, tegmentum, o'tkazuvchi yo'llari va o'zaklari.
+7. **Varoliy ko'prigi (*Pons*):** Old yuzasi, tegmentum, o'tkazuvchi yo'llari va o'zaklari.
 8. **IV Qorincha (*Ventriculus quartus*) va Rombsimon chuqurcha (*Fossa rhomboidea*):** Devorlari, Lyushka va Majandi teshiklari, kranial nervlar o'zaklarining rombsimon chuqurchaga proyeksiyasi.
 9. **Miyacha (*Cerebellum*):** Yarim sharlar, chuvalchang (*vermis*), 4 juft chuqur o'zaklar, 3 juft oyoqchalar, po'stloq gistologiyasi va harakat koordinatsiyasi.
 10. **Klinik Neyroanatomiya & USMLE Keyslar:** Braun-Sekar, siringomiyeliya, Vallenberg-Zaxarchenko, Bell falaji, miyacha ataksiyasi, okklyuzion gidrosefaliya.
@@ -108,7 +108,7 @@ Oq modda miyelinli nerv tolalaridan iborat bo'lib, 3 juft tizimchaga (*funiculi*
 
 ### 3. BOSH MIYA ASOSI VA 12 JUFT KRANIAL NERVLARNING SUPER-JADVALI
 
-Bosh miya pastki (asosiy) yuzasi relyefida peshona bo'laklarining pastki yuzasi, hid biluvchi piyozcha va yo'l, ko'ruv xiazmasi, kulrang do'mboq, voronka, gipofiz bezi, so'rg'ichsimon tanalar, miya oyoqchalari, Voroliy ko'prigi, uzunchoq miya piramidalari va zaytunlari hamda miyacha yarim sharlari yaqqol ko'rinadi.
+Bosh miya pastki (asosiy) yuzasi relyefida peshona bo'laklarining pastki yuzasi, hid biluvchi piyozcha va yo'l, ko'ruv xiazmasi, kulrang do'mboq, voronka, gipofiz bezi, so'rg'ichsimon tanalar, miya oyoqchalari, Varoliy ko'prigi, uzunchoq miya piramidalari va zaytunlari hamda miyacha yarim sharlari yaqqol ko'rinadi.
 
 \`\`\`cranial_nerves
 [12 Juft Kranial Nervlar - Cranial Nerves Brainstem Base]
@@ -128,7 +128,7 @@ III. Oculomotorius (Fossa interped.)  │   IX. Glossopharyngeus (Sulcus retrool
 | **II — N. opticus** *(Ko'ruv)* | Sof Sezuvchi (SSA) | *Chiasma opticum* (Oraliq miya) | *Canalis opticus* (Ko'ruv kanali) | Ko'z to'r pardasi (retina) tayoqcha va kolbachalari | **Amavroz** (ko'rlik), **Bitemporal gemianopsiya** (xiazma ezilganda). |
 | **III — N. oculomotorius** *(Ko'z harakatlantiruvchi)* | Harakatlantiruvchi + Parasimpatik (GSE, GVE) | *Fossa interpeduncularis* (O'rta miya) | *Fissura orbitalis superior* | Ko'zning 4 ta mushagi (*m. rectus sup., inf., med., m. obliquus inf.*), *m. levator palpebrae*, qorachiq qisuvchi (*m. sphincter pupillae*) va siliar mushak | **Ptoz** (qovoq osilishi), **Midriaz** (qorachiq kengayishi), divergent g'ilaylik, akkomodatsiya falaji. |
 | **IV — N. trochlearis** *(G'altaksimon)* | Sof Harakatlantiruvchi (GSE) | **Miya poyasining ORQA yuzasi!** (*Velum medullare sup.*) | *Fissura orbitalis superior* | Ko'zning yuqori qiyshiq mushagi (*m. obliquus superior*) | Bemor pastga va ichkariga qaraganda **Diplopiya** (narsalar ikkita ko'rinishi, zinadan tushishda qiyinchilik). |
-| **V — N. trigeminus** *(Uch shoxli)* | Aralash (GSA, SVE) | Voroliy ko'prigi bilan o'rta miyacha oyoqchasi chegarasi | **V1:** *Fissura orbitalis sup.*<br>**V2:** *Foramen rotundum*<br>**V3:** *Foramen ovale* | Yuz terisi sezgisi, shox parda, og'iz va burun shilliq qavati, tishlar; Chaynash mushaklari (*m. masseter, m. temporalis, mm. pterygoidei*) | **Trigeminal nevralgiya** (yuzda o'ta qattiq sanchuvchi og'riq), chaynash falaji, shox parda refleksining yo'qolishi. |
+| **V — N. trigeminus** *(Uch shoxli)* | Aralash (GSA, SVE) | Varoliy ko'prigi bilan o'rta miyacha oyoqchasi chegarasi | **V1:** *Fissura orbitalis sup.*<br>**V2:** *Foramen rotundum*<br>**V3:** *Foramen ovale* | Yuz terisi sezgisi, shox parda, og'iz va burun shilliq qavati, tishlar; Chaynash mushaklari (*m. masseter, m. temporalis, mm. pterygoidei*) | **Trigeminal nevralgiya** (yuzda o'ta qattiq sanchuvchi og'riq), chaynash falaji, shox parda refleksining yo'qolishi. |
 | **VI — N. abducens** *(Uzoqlashtiruvchi)* | Sof Harakatlantiruvchi (GSE) | Ko'prik bilan uzunchoq miya piramidasi orasidagi egat | *Fissura orbitalis superior* | Ko'zning lateral to'g'ri mushagi (*m. rectus lateralis*) | Konvergent g'ilaylik (ko'z ichkariga qarab qoladi), tashqariga qaray olmaslik. |
 | **VII — N. facialis et intermedius** *(Yuz va oraliq)* | Aralash (SVE, GVE, SVA, GSA) | Ko'prik-miyacha burchagi (*Angulus pontocerebellaris*) | *Porus acusticus internus* ➔ *Canalis facialis* ➔ *Foramen stylomastoideum* | Yuz mimika mushaklari, platyzma; Ko'z yoshi bezi, jag'osti va tilosti so'lak bezlari; Tilning oldingi 2/3 qismi ta'm sezgisi | **Bell falaji** (yuz asimmetriyasi, lagoftalm — ko'z yumilmasligi, peshona burishmasligi, og'iz burchagi tushishi, agevziya). |
 | **VIII — N. vestibulocochlearis** *(Dahliz-chig'anoq)* | Sof Sezuvchi (SSA) | Ko'prik-miyacha burchagi (*Angulus pontocerebellaris*) | *Porus acusticus internus* (Kalla suyagidan tashqariga chiqmaydi) | Ichki quloq: Chig'anoq (eshitish organi) va Dahliz / Yarimhalqa naylar (muvozanat organi) | **Sensorinevral karlik**, quloqda shovqin (tinnitus), tizimli bosh aylanishi (**Vertigo**), nistagm. |
@@ -181,7 +181,7 @@ Uzunchoq miya miya poyasining eng pastki qismi bo'lib, orqa miyaning bevosita da
 
 ### 5. VOROLIY KO'PRIGI (*PONS*)
 
-Voroliy ko'prigi o'rta miya bilan uzunchoq miya oralig'ida ko'ndalangiga yotgan oq bo'rtma shaklidagi tuzilma.
+Varoliy ko'prigi o'rta miya bilan uzunchoq miya oralig'ida ko'ndalangiga yotgan oq bo'rtma shaklidagi tuzilma.
 
 * **Oldingi yuzasi:** Qavariq bo'lib, o'rtasidan **Sulcus basilaris** o'tadi (unda kalla suyagi ichidagi asosiy arteriya — *a. basilaris* yotadi). Ikki chetga qarab qalinlashib, **o'rta miyacha oyoqchalari (*pedunculi cerebellares medii / brachia pontis*)**ga aylanadi.
 * **Ko'prikning ichki tuzilishi:**
@@ -313,7 +313,7 @@ Oq moddaning qalinligida lateralldan medialga qarab 4 juft kulrang modda o'zagi 
       "Medulla oblongata / Bulbus (Uzunchoq miya)",
       "Pyramides medullae oblongatae (Uzunchoq miya piramidalari)",
       "Oliva medullae oblongatae (Uzunchoq miya zaytuni)",
-      "Pons / Pons Varolii (Voroliy ko'prigi)",
+      "Pons / Pons Varolii (Varoliy ko'prigi)",
       "Sulcus basilaris (Asosiy egat)",
       "Ventriculus quartus (IV Qorincha)",
       "Fossa rhomboidea (Rombsimon chuqurcha)",
