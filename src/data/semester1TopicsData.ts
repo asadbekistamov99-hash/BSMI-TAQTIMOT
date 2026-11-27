@@ -76,7 +76,7 @@ Tik turuvchi insonda 4 ta fiziologik egrilik mavjud:
 1. **Lordozlar (oldinga qavariq):** Bo'yin lordozi (chaqaloq boshini ko'targanda, 2-3 oyligida) va bel lordozi (bola o'tirib yura boshlaganda, 9-12 oyligida shakllanadi).
 2. **Kifozlar (orqaga qavariq):** Ko'krak kifozi va dumg'aza kifozi.
 * **Skolioz (*Scoliosis*):** Umurtqa pog'onasining patologik yon tomonga qiyshayishi.
-* **Lyumbal punksiya:** L3–L4 yoki L4–L5 umurtqalararo sohasidan orqa miyaning subaraxnoid bo'shlig'idan likvor olish uchun xavfsiz igna kiritiladi (orqa miya L1–L2 da tugaydi).`,
+* **Lumbal punksiya:** L3–L4 yoki L4–L5 umurtqalararo sohasidan orqa miyaning subaraxnoid bo'shlig'idan likvor olish uchun xavfsiz igna kiritiladi (orqa miya L1–L2 da tugaydi).`,
       ru: `## Позвоночный столб, терминология и анатомические плоскости. Подробный академический конспект.`,
       en: `## Vertebral column, anatomical planes, and terminology. Comprehensive lecture notes.`
     },
