@@ -8,7 +8,7 @@ export const SEMESTER_2_DETAILED_TOPICS: Topic[] = [
     semester: 2,
     order: 1,
     title: {
-      uz: "Og’iz bo’shlig’i, devorlari, og’iz dahlizi. Tishlar. Doimiy tishlar. Tishlarning roentgen anatomiyasi. Prikus. Tishlarning anatomik va klinik formulasi. Til. Qattiq tanglay. Yumshoq tanglay. Halqum. Pirogov xalqasi. Qizilo’ngach.",
+      uz: "Og’iz bo’shlig’i, devorlari, og’iz dahlizi. Tishlar. Doimiy tishlar. Tishlarning rentgen anatomiyasi. Prikus. Tishlarning anatomik va klinik formulasi. Til. Qattiq tanglay. Yumshoq tanglay. Halqum. Pirogov xalqasi. Qizilo’ngach.",
       ru: "Тема 1: Полость рта. Зубы. Язык. Нёбо. Глотка. Пищевод",
       en: "Topic 1: Oral Cavity. Teeth. Tongue. Palate. Pharynx. Esophagus"
     },
@@ -253,7 +253,7 @@ Plevra bo'shlig'ida suyuqlik to'planganda eng pastki chuqur cho'ntak — **Sinus
     semester: 2,
     order: 5,
     title: {
-      uz: "Qalqonsimon, qalqonorqasi, ayrisimon bezlar,buyrak usti bezi. Buyrak. Siydik yo’li. Siydik pufagi. Siydik chiqaruv kanali.",
+      uz: "Qalqonsimon, qalqonoldi, ayrisimon bezlar,buyrak usti bezi. Buyrak. Siydik yo’li. Siydik pufagi. Siydik chiqaruv kanali.",
       ru: "Тема 5: Эндокринная система: щитовидная, паращитовидные, надпочечники, гипофиз",
       en: "Topic 5: Endocrine System: Thyroid, Parathyroid, Adrenal Glands, Pituitary"
     },
@@ -621,7 +621,7 @@ Diafragmaning hiatus aorticus teshigidan chiqishi bilanoq Th12 sathida qorin aor
     semester: 2,
     order: 12,
     title: {
-      uz: "Yuqorigi kovak vena . Darvoza venasi .",
+      uz: "Yuqori kovak vena . Darvoza venasi .",
       ru: "Тема 12: Верхняя и нижняя полые вены. Воротная вена. Портокавальные и кава-кавальные анастомозы",
       en: "Topic 12: Superior and Inferior Vena Cava. Portal Vein. Portocaval & Cavocaval Anastomoses"
     },

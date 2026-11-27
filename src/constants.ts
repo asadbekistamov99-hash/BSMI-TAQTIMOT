@@ -15,18 +15,18 @@ export const SEMESTER_1_TOPICS = [
 ];
 
 export const SEMESTER_2_TOPICS = [
-  "Og’iz bo’shlig’i, devorlari, og’iz dahlizi. Tishlar. Doimiy tishlar. Tishlarning roentgen anatomiyasi. Prikus. Tishlarning anatomik va klinik formulasi. Til. Qattiq tanglay. Yumshoq tanglay. Halqum. Pirogov xalqasi. Qizilo’ngach.",
+  "Og’iz bo’shlig’i, devorlari, og’iz dahlizi. Tishlar. Doimiy tishlar. Tishlarning rentgen anatomiyasi. Prikus. Tishlarning anatomik va klinik formulasi. Til. Qattiq tanglay. Yumshoq tanglay. Halqum. Pirogov xalqasi. Qizilo’ngach.",
   "Qorin bo’shlig’idagi a’zolarning umumiy ko’rinishi. Me’da. Ingichka va yo’g’on ichak Jigar. Me’da osti bezi. Taloq.O’t pufagi va o’t yo’llari.",
   "Qorin parda. Qorin bo’shlig’ining topografiyasi.",
   "Burun bo’shlig’i. Hiqildoq. Traxeya. Bronxlar. O’pka. Plevra. Ko’ks oralig’i.",
-  "Qalqonsimon, qalqonorqasi, ayrisimon bezlar,buyrak usti bezi. Buyrak. Siydik yo’li. Siydik pufagi. Siydik chiqaruv kanali.",
+  "Qalqonsimon, qalqonoldi, ayrisimon bezlar,buyrak usti bezi. Buyrak. Siydik yo’li. Siydik pufagi. Siydik chiqaruv kanali.",
   "Ayollar jinsiy a’zolari.Sut bezi.",
   "Erkaklar jinsiy a’zolari. Oraliq.",
   "Yurak. Qon aylanish doirasi. Aorta . Umumiy uyqu arteriyasi . Ichki uyqu arteriyasi. Tashqi uyqu arteriyasi Yuz- jag’ sohasining qon bilan ta’minlanishi.",
   "O’mrov osti arteriyasi . Qo’l arteriyalari.",
   "Ko’krak aortasi . Qorin aortasining juft tarmoqlari. Qorin aortasining toq tarmoqlari .",
   "Ichki va tashqi yonbosh arteriyalar Oyoq arteriyalari .",
-  "Yuqorigi kovak vena . Darvoza venasi .",
+  "Yuqori kovak vena . Darvoza venasi .",
   "Pastki kovak vena. Venalar orasidagi anastomozlar . Homilada qon aylanishi. Limfa tizimi . Ko’krak limfa yo’li .O’ng limfa yo’li .Kalla sohasidagi limfa tomirlar va tugunlar"
 ];
 
