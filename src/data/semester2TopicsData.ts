@@ -8,7 +8,7 @@ export const SEMESTER_2_DETAILED_TOPICS: Topic[] = [
     semester: 2,
     order: 1,
     title: {
-      uz: "1-Mavzu: Og‘iz bo‘shlig‘i. Tishlar. Til. Tanglay. Halqum. Qizilo‘ngach",
+      uz: "Og’iz bo’shlig’i, devorlari, og’iz dahlizi. Tishlar. Doimiy tishlar. Tishlarning roentgen anatomiyasi. Prikus. Tishlarning anatomik va klinik formulasi. Til. Qattiq tanglay. Yumshoq tanglay. Halqum. Pirogov xalqasi. Qizilo’ngach.",
       ru: "Тема 1: Полость рта. Зубы. Язык. Нёбо. Глотка. Пищевод",
       en: "Topic 1: Oral Cavity. Teeth. Tongue. Palate. Pharynx. Esophagus"
     },
@@ -80,7 +80,7 @@ Uzunligi 25–30 sm. **3 ta anatomik toraymasi bor:**
     semester: 2,
     order: 2,
     title: {
-      uz: "2-Mavzu: Qorin bo‘shlig‘i a’zolari: oshqozon, ichaklar, jigar, o‘t pufagi, oshqozon osti bezi",
+      uz: "Qorin bo’shlig’idagi a’zolarning umumiy ko’rinishi. Me’da. Ingichka va yo’g’on ichak Jigar. Me’da osti bezi. Taloq.O’t pufagi va o’t yo’llari.",
       ru: "Тема 2: Органы брюшной полости: желудок, кишечник, печень, желчный пузырь, поджелудочная железа",
       en: "Topic 2: Abdominal Organs: Stomach, Intestines, Liver, Gallbladder, Pancreas"
     },
@@ -138,7 +138,7 @@ Yo'g'on ichak ingichka ichakdan quyidagi **3 ta anatomik xususiyati** bilan yaqq
     semester: 2,
     order: 3,
     title: {
-      uz: "3-Mavzu: Qorin pardasi va qorin bo‘shlig‘i topografiyasi",
+      uz: "Qorin parda. Qorin bo’shlig’ining topografiyasi.",
       ru: "Тема 3: Брюшина и топография брюшной полости. Сальники, сумки, синусы и карманы",
       en: "Topic 3: Peritoneum and Peritoneal Cavity Topography. Bursae, Spaces, Recesses"
     },
@@ -192,7 +192,7 @@ Ayollarda to'g'ri ichak va bachadon orasidagi qorin pardasining eng chuqur pastk
     semester: 2,
     order: 4,
     title: {
-      uz: "4-Mavzu: Nafas tizimi: burun, hiqildoq, traxeya, bronxlar, o‘pka, plevra",
+      uz: "Burun bo’shlig’i. Hiqildoq. Traxeya. Bronxlar. O’pka. Plevra. Ko’ks oralig’i.",
       ru: "Тема 4: Дыхательная система: нос, гортань, трахея, бронхи, легкие, плевра",
       en: "Topic 4: Respiratory System: Nose, Larynx, Trachea, Bronchi, Lungs, Pleura"
     },
@@ -253,7 +253,7 @@ Plevra bo'shlig'ida suyuqlik to'planganda eng pastki chuqur cho'ntak — **Sinus
     semester: 2,
     order: 5,
     title: {
-      uz: "5-Mavzu: Endokrin tizim: qalqonsimon, qalqon orqasi, buyrak usti bezlari",
+      uz: "Qalqonsimon, qalqonorqasi, ayrisimon bezlar,buyrak usti bezi. Buyrak. Siydik yo’li. Siydik pufagi. Siydik chiqaruv kanali.",
       ru: "Тема 5: Эндокринная система: щитовидная, паращитовидные, надпочечники, гипофиз",
       en: "Topic 5: Endocrine System: Thyroid, Parathyroid, Adrenal Glands, Pituitary"
     },
@@ -310,7 +310,7 @@ Har bir buyrakning yuqori qutbida yotadi (Th11–L1). 2 xil embriologik manbadan
     semester: 2,
     order: 6,
     title: {
-      uz: "6-Mavzu: Siydik tizimi: buyrak, siydik yo‘llari, siydik pufagi",
+      uz: "Ayollar jinsiy a’zolari.Sut bezi.",
       ru: "Тема 6: Мочевыделительная система: почки, мочеточники, мочевой пузырь, уретра",
       en: "Topic 6: Urinary System: Kidneys, Ureters, Urinary Bladder, Urethra"
     },
@@ -367,7 +367,7 @@ Siydik tosh kasalligida (urolitiaz) toshlar tiqilib qoladigan 3 ta muhim torayma
     semester: 2,
     order: 7,
     title: {
-      uz: "7-Mavzu: Ayollar jinsiy tizimi. Sut bezi",
+      uz: "Erkaklar jinsiy a’zolari. Oraliq.",
       ru: "Тема 7: Женская половая система. Матка, яичники, маточные трубы. Молочная железа",
       en: "Topic 7: Female Reproductive System: Ovaries, Uterine Tubes, Uterus, Vagina, Breast"
     },
@@ -417,7 +417,7 @@ Uzunligi 10–12 sm bo'lgan juft nay:
     semester: 2,
     order: 8,
     title: {
-      uz: "8-Mavzu: Erkaklar jinsiy tizimi",
+      uz: "Yurak. Qon aylanish doirasi. Aorta . Umumiy uyqu arteriyasi . Ichki uyqu arteriyasi. Tashqi uyqu arteriyasi Yuz- jag’ sohasining qon bilan ta’minlanishi.",
       ru: "Тема 8: Мужская половая система: яички, придатки, семявыносящий проток, простата",
       en: "Topic 8: Male Reproductive System: Testes, Epididymis, Ductus Deferens, Prostate"
     },
@@ -466,7 +466,7 @@ Kichik chanoqda siydik pufagining ostida joylashgan muskulli-bezli a'zo:
     semester: 2,
     order: 9,
     title: {
-      uz: "9-Mavzu: Yurak. Qon aylanish doirasi. Aorta. Uyqu arteriyalari",
+      uz: "O’mrov osti arteriyasi . Qo’l arteriyalari.",
       ru: "Тема 9: Сердце. Круги кровообращения. Аорта. Сонные артерии",
       en: "Topic 9: Heart. Circulatory Loops. Aorta. Carotid Arteries"
     },
@@ -523,7 +523,7 @@ Aorta yoyidan o'ngdan chapga qarab **3 ta yirik arteriya** chiqadi:
     semester: 2,
     order: 10,
     title: {
-      uz: "10-Mavzu: Qo‘l arteriyalari. O‘mrov osti arteriyasi",
+      uz: "Ko’krak aortasi . Qorin aortasining juft tarmoqlari. Qorin aortasining toq tarmoqlari .",
       ru: "Тема 10: Артерии верхней конечности. Подключичная, подмышечная и плечевая артерии",
       en: "Topic 10: Arteries of the Upper Limb: Subclavian, Axillary, Brachial, Radial, Ulnar"
     },
@@ -572,7 +572,7 @@ Qo'l panjasining boy kollateral qon ta'minoti 2 ta yoy orqali amalga oshadi:
     semester: 2,
     order: 11,
     title: {
-      uz: "11-Mavzu: Ko‘krak va qorin aortasi. Tarmoqlari",
+      uz: "Ichki va tashqi yonbosh arteriyalar Oyoq arteriyalari .",
       ru: "Тема 11: Грудная и брюшная аорта. Париетальные и висцеральные ветви",
       en: "Topic 11: Thoracic and Abdominal Aorta. Parietal and Visceral Branches"
     },
@@ -621,7 +621,7 @@ Diafragmaning hiatus aorticus teshigidan chiqishi bilanoq Th12 sathida qorin aor
     semester: 2,
     order: 12,
     title: {
-      uz: "12-Mavzu: Yuqori kovak vena. Pastki kovak vena. Darvoza venasi",
+      uz: "Yuqorigi kovak vena . Darvoza venasi .",
       ru: "Тема 12: Верхняя и нижняя полые вены. Воротная вена. Портокавальные и кава-кавальные анастомозы",
       en: "Topic 12: Superior and Inferior Vena Cava. Portal Vein. Portocaval & Cavocaval Anastomoses"
     },
@@ -677,7 +677,7 @@ Jigar sirrozi yoki darvoza venasi trombozida qon bosimi oshib (**Portal giperten
     semester: 2,
     order: 13,
     title: {
-      uz: "13-Mavzu: Limfa tizimi. Limfa yo‘llari. Anastomozlar",
+      uz: "Pastki kovak vena. Venalar orasidagi anastomozlar . Homilada qon aylanishi. Limfa tizimi . Ko’krak limfa yo’li .O’ng limfa yo’li .Kalla sohasidagi limfa tomirlar va tugunlar",
       ru: "Тема 13: Лимфатическая система: лимфатические сосуды, узлы, протоки. Селезенка",
       en: "Topic 13: Lymphatic System: Lymphatic Vessels, Nodes, Ducts. Spleen"
     },
