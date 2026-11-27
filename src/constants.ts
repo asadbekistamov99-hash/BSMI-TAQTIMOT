@@ -15,19 +15,19 @@ export const SEMESTER_1_TOPICS = [
 ];
 
 export const SEMESTER_2_TOPICS = [
-  "Og‘iz bo‘shlig‘i. Tishlar. Til. Tanglay. Halqum. Qizilo‘ngach",
-  "Qorin bo‘shlig‘i a’zolari: oshqozon, ichaklar, jigar, o‘t pufagi, oshqozon osti bezi",
-  "Qorin pardasi va qorin bo‘shlig‘i topografiyasi",
-  "Nafas tizimi: burun, hiqildoq, traxeya, bronxlar, o‘pka, plevra",
-  "Endokrin tizim: qalqonsimon, qalqon orqasi, buyrak usti bezlari",
-  "Siydik tizimi: buyrak, siydik yo‘llari, siydik pufagi",
-  "Ayollar jinsiy tizimi. Sut bezi",
-  "Erkaklar jinsiy tizimi",
-  "Yurak. Qon aylanish doirasi. Aorta. Uyqu arteriyalari",
-  "Qo‘l arteriyalari. O‘mrov osti arteriyasi",
-  "Ko‘krak va qorin aortasi. Tarmoqlari",
-  "Yuqori kovak vena. Pastki kovak vena. Darvoza venasi",
-  "Limfa tizimi. Limfa yo‘llari. Anastomozlar"
+  "Og’iz bo’shlig’i, devorlari, og’iz dahlizi. Tishlar. Doimiy tishlar. Tishlarning roentgen anatomiyasi. Prikus. Tishlarning anatomik va klinik formulasi. Til. Qattiq tanglay. Yumshoq tanglay. Halqum. Pirogov xalqasi. Qizilo’ngach.",
+  "Qorin bo’shlig’idagi a’zolarning umumiy ko’rinishi. Me’da. Ingichka va yo’g’on ichak Jigar. Me’da osti bezi. Taloq.O’t pufagi va o’t yo’llari.",
+  "Qorin parda. Qorin bo’shlig’ining topografiyasi.",
+  "Burun bo’shlig’i. Hiqildoq. Traxeya. Bronxlar. O’pka. Plevra. Ko’ks oralig’i.",
+  "Qalqonsimon, qalqonorqasi, ayrisimon bezlar,buyrak usti bezi. Buyrak. Siydik yo’li. Siydik pufagi. Siydik chiqaruv kanali.",
+  "Ayollar jinsiy a’zolari.Sut bezi.",
+  "Erkaklar jinsiy a’zolari. Oraliq.",
+  "Yurak. Qon aylanish doirasi. Aorta . Umumiy uyqu arteriyasi . Ichki uyqu arteriyasi. Tashqi uyqu arteriyasi Yuz- jag’ sohasining qon bilan ta’minlanishi.",
+  "O’mrov osti arteriyasi . Qo’l arteriyalari.",
+  "Ko’krak aortasi . Qorin aortasining juft tarmoqlari. Qorin aortasining toq tarmoqlari .",
+  "Ichki va tashqi yonbosh arteriyalar Oyoq arteriyalari .",
+  "Yuqorigi kovak vena . Darvoza venasi .",
+  "Pastki kovak vena. Venalar orasidagi anastomozlar . Homilada qon aylanishi. Limfa tizimi . Ko’krak limfa yo’li .O’ng limfa yo’li .Kalla sohasidagi limfa tomirlar va tugunlar"
 ];
 
 export const SEMESTER_3_TOPICS: string[] = [
