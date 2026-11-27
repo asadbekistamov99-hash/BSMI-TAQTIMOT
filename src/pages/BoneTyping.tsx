@@ -66,6 +66,7 @@ const BONE_MODEL_IDS: Record<string, string> = {
   talus: 'd69e5651252e44d0bb5d7742670d1d48',
   scaphoid: '1704c8bec5db422fbe17c1e9650c293a',
   lunate: '1704c8bec5db422fbe17c1e9650c293a',
+  metacarpal: '1704c8bec5db422fbe17c1e9650c293a',
   occipital: 'baf6ac7b781a46218dca2b59dee58817',
 };
 
