@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../hooks/useLanguage';
-import BoneFigure from '../components/BoneFigure';
 import {
   BONE_REGION_LABELS, BoneEntry, BoneRegion, Round, Attempt, Lang,
   bonesForRegion, bonesForRegions, regionsForTopic, hintFor, isCorrect, pickBones, scoreAttempts,
@@ -103,7 +102,6 @@ export default function BoneTyping() {
   const [feedback, setFeedback] = useState<null | { ok: boolean; expected: string }>(null);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [best, setBest] = useState<number>(readBest);
-  const [viewMode, setViewMode] = useState<'diagram' | '3d'>('diagram');
   const inputRef = useRef<HTMLInputElement>(null);
 
   const current = queue[index];
@@ -179,26 +177,15 @@ export default function BoneTyping() {
       </header>
 
       <section className="mb-8">
-        <div className="mb-3 flex justify-end gap-2">
-          <button onClick={() => setViewMode('diagram')} className={`rounded-lg border px-3 py-1 text-xs ${viewMode === 'diagram' ? 'border-brand-primary bg-brand-primary text-white' : 'border-brand-border'}`}>2D</button>
-          <button onClick={() => setViewMode('3d')} className={`rounded-lg border px-3 py-1 text-xs ${viewMode === '3d' ? 'border-brand-primary bg-brand-primary text-white' : 'border-brand-border'}`}>3D model</button>
-        </div>
         <div className="mx-auto flex h-[30rem] items-center justify-center rounded-2xl border border-brand-border bg-white p-4">
-          {viewMode === '3d' ? (
-            <iframe
-              title="Human Skeleton 3D anatomy model"
-              className="h-full w-full rounded-xl"
-              src={`https://sketchfab.com/models/${modelId}/embed?autostart=1&ui_theme=light&ui_infos=0&ui_watermark=0`}
-              allow="autoplay; fullscreen; xr-spatial-tracking"
-            />
-          ) : (
-          <BoneFigure
-            highlight={stage === 'play' && current ? current.id : null}
-            focusRegions={topicMode ? topicRegions : 'all'}
+          <iframe
+            title="Human Skeleton 3D anatomy model"
+            className="h-full w-full rounded-xl"
+            src={`https://sketchfab.com/models/${modelId}/embed?autostart=1&ui_theme=light&ui_infos=0&ui_watermark=0`}
+            allow="autoplay; fullscreen; xr-spatial-tracking"
           />
-          )}
         </div>
-        <p className="mt-2 text-center text-xs text-brand-muted">{viewMode === '3d' ? 'Human Skeleton — Terrie Simmons-Ehrhardt, CC-BY (Sketchfab).' : L.figureCaption}</p>
+        <p className="mt-2 text-center text-xs text-brand-muted">Human Skeleton — Terrie Simmons-Ehrhardt, CC-BY (Sketchfab).</p>
       </section>
 
       {stage === 'setup' && (
