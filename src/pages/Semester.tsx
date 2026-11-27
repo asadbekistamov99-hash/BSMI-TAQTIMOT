@@ -572,9 +572,9 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
                         return (
                           <div className="mb-1">
                             <h3 className="text-base sm:text-lg font-bold text-brand-primary tracking-tight group-hover:text-brand-accent transition-colors leading-snug">
-                              {semesterId === 2 ? rawTitle : (parsed.mainTitle || rawTitle)}
+                              {semesterId >= 2 ? rawTitle : (parsed.mainTitle || rawTitle)}
                             </h3>
-                            {semesterId !== 2 && parsed.subParts.length > 0 && (
+                            {semesterId < 2 && parsed.subParts.length > 0 && (
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2 mb-2.5 max-w-2xl">
                                 {parsed.subParts.map((sub, sIdx) => (
                                   <div key={sIdx} className="text-xs text-slate-600 font-medium inline-flex items-center gap-1.5 bg-slate-100/70 hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200/60 transition-colors">
