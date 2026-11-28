@@ -1,17 +1,17 @@
 export const SEMESTER_1_TOPICS = [
-  "Sath to‘g‘risida tushuncha. Anatomik terminologiya. Umurtqa pog‘onasi",
-  "Qovurg‘alar. Kurak suyagi. To‘sh suyagi. O‘mrov suyagi",
-  "Yelka suyagi. Bilak va tirsak suyaklari. Qo‘l panja suyaklari",
-  "Chanoq suyagi. Son, boldir va oyoq panja suyaklari",
-  "Kalla suyaklari (umumiy). Ensa, tepa, peshona, chakka, ponasimon suyaklar. Yuz suyaklari",
-  "Kallaning miya qismi va yuz qismi. Ko‘z kosasi. Og‘iz bo‘shlig‘i. Burun bo‘shlig‘i",
-  "Chakka osti va qanot-tanglay chuqurchalari. Bolalarda kalla suyaklari",
-  "Umurtqalar birlashuvi. Ko‘krak qafasi. Yelka kamari va qo‘l suyaklari birlashuvi",
-  "Chanoq va oyoq suyaklari birlashuvi. Chanoq-son bo‘g‘imi. Jag‘ bo‘g‘imi. Rentgen anatomiyasi",
-  "Ko‘krak mushaklari va fastsiyalari. Diafragma. Qorin mushaklari va topografiyasi",
-  "Bo‘yin mushaklari. Bosh mushaklari. Chaynov va mimika mushaklari",
-  "Orqa mushaklari. Yelka, bilak va qo‘l panja mushaklari",
-  "Chanoq, son, boldir va oyoq panja mushaklari"
+  "Sath to‘g‘risida tushuncha. Boshlang‘ich terminologiya. Umurtqaning umumiy tuzilishi. Ko‘krak umurtqasi. Bo‘yin umurtqasi. Bel umurtqasi. Dumg‘aza suyagi. Dum umurtqasi.",
+  "Qovurg‘a. Kurak suyagi. To‘sh suyagi. O‘mrov suyagi.",
+  "Yelka suyagi. Bilak va tirsak suyaklari. Panja suyaklari.",
+  "Chanoq suyagi. Son suyagi. Boldir suyagi. Oyoq panjasi suyaklari.",
+  "Kalla suyaklari (umumiy tushuncha). Ensa, tepa, peshona suyaklari. Chakka suyagi. Ponasimon suyak.",
+  "Kallaning yuz qismidagi suyaklarning tuzilishi.",
+  "Kallaning umumiy tuzilishi, uning miya qismi. Kallaning yuz qismi. Ko‘z kosasi. Og‘iz bo‘shlig‘i. Burun bo‘shlig‘i.",
+  "Chakka, chakka osti, qanot-tanglay chuqurchalari. Yosh bolalarning kalla suyaklari. Chaqaloq kalla suyagi.",
+  "Umurtqalarning o‘zaro birlashuvi. Umurtqa pog‘onasi. Qovurg‘alarning umurtqalar va to‘sh suyagi bilan birlashuvi. Ko‘krak qafasi va yelka kamari suyaklarining birlashuvi. Qo‘l sohasidagi suyaklarning o‘zaro birlashuvi. Chanoq. Chanoq-son bo‘g‘imi. Oyoq sohasidagi suyaklarning birlashuvi. Kalla suyaklarining birlashuvi. Chakka-pastki jag‘ bo‘g‘imi. Suyak va bo‘g‘imlarning rentgen anatomiyasi.",
+  "Ko‘krak mushaklari va fastsiyalari. Diafragma. Qorin sohasidagi mushaklar va fastsiyalar. Qorin sohasidagi mushaklarning qini, oq chiziq, chov kanali.",
+  "Bo‘yin mushaklari, fastsiyalari va topografiyasi. Bosh mushaklari. Chaynov va mimika mushaklari.",
+  "Tananing orqa sohasidagi mushaklar va fastsiyalar. Yelka kamari mushaklari va fastsiyalari. Yelka, bilak va qo‘l panja mushaklari va fastsiyalari.",
+  "Chanoq va son sohasidagi mushaklar, fastsiyalar. Boldir sohasi va oyoq panjasi mushaklari va fastsiyalari."
 ];
 
 export const SEMESTER_2_TOPICS = [
