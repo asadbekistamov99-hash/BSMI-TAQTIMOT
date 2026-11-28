@@ -16,7 +16,6 @@ import PaymentModal from '../components/PaymentModal';
 import { useSettings } from '../hooks/useSettings';
 import { useLanguage } from '../hooks/useLanguage';
 import SEO from '../components/SEO';
-import { parseTopicTitle } from './TopicDetail';
 
 const DEFAULT_SEMESTER_INFO: Record<number, SemesterType> = {
   1: {
@@ -568,24 +567,11 @@ export default function Semester({ isAdmin: isAdminProp, user }: { isAdmin?: boo
                     <div className="min-w-0 flex-1">
                       {(() => {
                         const rawTitle = getLocalized(topic.title);
-                        const parsed = parseTopicTitle(rawTitle);
                         return (
                           <div className="mb-1">
                             <h3 className="text-base sm:text-lg font-bold text-brand-primary tracking-tight group-hover:text-brand-accent transition-colors leading-snug">
-                              {semesterId >= 2 ? rawTitle : (parsed.mainTitle || rawTitle)}
+                              {rawTitle}
                             </h3>
-                            {semesterId < 2 && parsed.subParts.length > 0 && (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2 mb-2.5 max-w-2xl">
-                                {parsed.subParts.map((sub, sIdx) => (
-                                  <div key={sIdx} className="text-xs text-slate-600 font-medium inline-flex items-center gap-1.5 bg-slate-100/70 hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200/60 transition-colors">
-                                    <span className="w-4 h-4 rounded-md bg-brand-accent/40 text-brand-primary flex items-center justify-center text-[9px] font-black shrink-0">
-                                      {sIdx + 1}
-                                    </span>
-                                    <span className="truncate">{sub}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
                           </div>
                         );
                       })()}
